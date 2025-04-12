@@ -14,12 +14,14 @@ use Symfony\Component\HttpKernel\DependencyInjection\Extension;
 class PhpAmqpLibMessengerExtension extends Extension
 {
     /**
+     * @param array<array-key, array<array-key, mixed>> $configs
+     *
      * @throws Exception
      *
      * {@inheritDoc}
      */
     #[Override]
-    public function load(array $configs, ContainerBuilder $container)
+    public function load(array $configs, ContainerBuilder $container): void
     {
         $loader = new PhpFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.php');
