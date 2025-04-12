@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<ruleset
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="vendor/squizlabs/php_codesniffer/phpcs.xsd"
+>
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="extensions" value="php"/>
+    <arg value="nps" />
+
+    <rule ref="Doctrine">
+        <exclude name="Squiz.Commenting.FunctionComment.MissingParamName" />
+        <exclude name="SlevomatCodingStandard.ControlStructures.AssignmentInCondition.AssignmentInCondition" />
+    </rule>
+
+    <file>config/</file>
+    <file>src/</file>
+    <file>tests/</file>
+
+    <exclude-pattern>vendor/*</exclude-pattern>
+</ruleset>

@@ -1,0 +1,47 @@
+{
+    "name": "jwage/phpamqplib-messenger",
+    "type": "symfony-bundle",
+    "description": "Symfony messenger transport for the php-amqplib/php-amqplib library.",
+    "keywords": [
+        "symfony",
+        "messenger",
+        "enqueue"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Jonathan H. Wage",
+            "email": "jonwage@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "php-amqplib/php-amqplib": "^3.7",
+        "symfony/framework-bundle": "^6.4 || ^7.0",
+        "symfony/messenger": "^6.4 || ^7.0"
+    },
+    "require-dev": {
+        "doctrine/coding-standard": "^13.0",
+        "phpunit/phpunit": "^12.1",
+        "psalm/plugin-phpunit": "^0.19.5",
+        "psalm/plugin-symfony": "^5.2",
+        "vimeo/psalm": "^6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Jwage\\PhpAmqpLibMessengerBundle\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Jwage\\PhpAmqpLibMessengerBundle\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "minimum-stability": "stable"
+}
