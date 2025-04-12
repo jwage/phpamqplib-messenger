@@ -15,7 +15,7 @@ jobs:
         php: ['8.3', '8.4']
         symfony_version: ['6.4.*', '7.0.*']
 
-    name: PHP ${{ matrix.php }} tests on Sf ${{ matrix.symfony_version }}
+    name: PHP ${{ matrix.php }} Symfony ${{ matrix.symfony_version }}
 
     steps:
       - uses: actions/checkout@v4

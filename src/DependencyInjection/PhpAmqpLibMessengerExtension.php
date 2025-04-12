@@ -11,6 +11,7 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
 use Symfony\Component\HttpKernel\DependencyInjection\Extension;
 
+/** @psalm-suppress InternalClass */
 class PhpAmqpLibMessengerExtension extends Extension
 {
     /**
