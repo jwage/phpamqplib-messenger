@@ -39,8 +39,10 @@ jobs:
           coverage: none
           extensions: :xdebug
 
-      - run: php ./Tests/bin/pin-symfony-version.php "${{ matrix.symfony_version }}"
+      - run: php ./tests/bin/pin-symfony-version.php "${{ matrix.symfony_version }}"
 
       - run: composer update --no-progress ${{ matrix.dependencies }}
 
+      - run: ./vendor/bin/phpcs
+      - run: ./vendor/bin/psalm
       - run: ./vendor/bin/phpunit
