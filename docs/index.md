@@ -95,3 +95,51 @@ You can optionally specify any setting on the DSN instead of in the `messenger.y
 ```
 phpamqplib://username:password@localhost[:port]/vhost[/exchange]?heartbeat=60&read_timeout=5.0
 ```
+
+## Batch Dispatching
+
+Batch dispatching messages is supposed by the bundle. You can inject the `BatchMessageInterface` service in your application and use the new methods available:
+
+- `dispatchBatches(iterable $messages, int $batchSize = 100): void`
+- `dispatchInBatch(object $message, int $batchSize): void`
+- `flush(): void`
+
+If you have an iterable list of messages, you can use the `dispatchBatches` method to dispatch the messages in batches:
+
+```php
+$batchSize = 2;
+
+$batchMessageBus->dispatchBatches([
+    new SomeMessage(),
+    new SomeMessage(),
+    new SomeMessage(),
+    new SomeMessage(),
+    new SomeMessage(),
+], $batchSize);
+```
+
+You can also use the `dispatchInBatch` method if you want more low level control over the batching process. Be sure to call the `flush()` method afterwards to handle when you have an uneven number of messages in the last batch:
+
+```php
+$batchSize = 10;
+
+foreach ($messages as $message) {
+    $batchMessageBus->dispatchInBatch($message, $batchSize);
+}
+
+$batchMessageBus->flush();
+```
+
+The batch dispatching is controlled with the `AMQPBatchStamp` stamp. The above methods are shortcuts for the following:
+
+```php
+$batchSize = 10;
+
+foreach ($messages as $message) {
+    $envelope = Envelope::wrap($message, [new AMQPBatchStamp($batchSize)]);
+
+    $batchMessageBus->dispatch($envelope);
+}
+
+$batchMessageBus->flush();
+```

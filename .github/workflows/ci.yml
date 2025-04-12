@@ -17,6 +17,15 @@ jobs:
 
     name: PHP ${{ matrix.php }} Symfony ${{ matrix.symfony_version }}
 
+    services:
+      rabbitmq:
+        image: rabbitmq:4.0
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        ports:
+          - 5672
+
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +51,13 @@ jobs:
 
       - run: composer update --no-progress
 
-      - run: ./vendor/bin/phpcs
-      - run: ./vendor/bin/psalm
-      - run: ./vendor/bin/phpunit
+      - name: PHPCS
+        run: ./vendor/bin/phpcs
+
+      - name: Psalm
+        run: ./vendor/bin/psalm
+
+      - name: PHPUnit
+        run: ./vendor/bin/phpunit
+        env:
+          MESSENGER_TRANSPORT_PHPAMQPLIB_DSN: "phpamqplib://guest:guest@127.0.0.1:${{ job.services.rabbitmq.ports['5672'] }}/%2f/messages"

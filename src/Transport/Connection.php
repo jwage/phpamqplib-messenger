@@ -25,7 +25,7 @@ class Connection
 
     private AMQPConsumer|null $consumer = null;
 
-    private int $batchCount = 1;
+    private int $batchCount = 0;
 
     private bool $autoSetup;
 
@@ -161,15 +161,11 @@ class Connection
                 routing_key: $publishRoutingKey ?? '',
             );
 
-            if ($this->batchCount === $batchSize) {
-                $this->batchCount = 0;
-
-                $channel->publish_batch();
-
-                $channel->wait_for_pending_acks(timeout: 3);
-            }
-
             $this->batchCount++;
+
+            if ($this->batchCount === $batchSize) {
+                $this->flush();
+            }
         } else {
             $channel->basic_publish(
                 msg: $amqpEnvelope->getAMQPMessage(),
@@ -177,8 +173,18 @@ class Connection
                 routing_key: $publishRoutingKey ?? '',
             );
 
-            $channel->wait_for_pending_acks(3);
+            $channel->wait_for_pending_acks(timeout: 3);
         }
+    }
+
+    /** @throws AMQPExceptionInterface */
+    public function flush(): void
+    {
+        $this->channel()->publish_batch();
+
+        $this->channel()->wait_for_pending_acks(3);
+
+        $this->batchCount = 0;
     }
 
     public function countMessagesInQueues(): int
