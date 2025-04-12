@@ -14,24 +14,18 @@ jobs:
       matrix:
         php: ['8.3', '8.4']
         symfony_version: ['6.4.*', '7.0.*']
-        dependencies: ['--prefer-lowest', '--prefer-dist']
 
-    name: PHP ${{ matrix.php }} tests on Sf ${{ matrix.symfony_version }}, deps=${{ matrix.dependencies }}
+    name: PHP ${{ matrix.php }} tests on Sf ${{ matrix.symfony_version }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get Composer Cache Directory
-        id: composer-cache
-        run: |
-          echo "::set-output name=dir::$(composer config cache-files-dir)"
-
       - uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: composer-${{ matrix.php }}-${{ matrix.symfony_version }}-${{ matrix.dependencies }}-${{ hashFiles('**/composer.json') }}
+          key: composer-${{ matrix.php }}-${{ matrix.symfony_version }}-${{ hashFiles('**/composer.json') }}
           restore-keys: |
-            composer-${{ matrix.php }}-${{ matrix.symfony_version }}-${{ matrix.dependencies }}-
+            composer-${{ matrix.php }}-${{ matrix.symfony_version }}-
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -41,7 +35,7 @@ jobs:
 
       - run: php ./tests/bin/pin-symfony-version.php "${{ matrix.symfony_version }}"
 
-      - run: composer update --no-progress ${{ matrix.dependencies }}
+      - run: composer update --no-progress
 
       - run: ./vendor/bin/phpcs
       - run: ./vendor/bin/psalm
