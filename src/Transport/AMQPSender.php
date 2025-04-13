@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
-use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Override;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
@@ -59,22 +58,19 @@ class AMQPSender implements SenderInterface, BatchSenderInterface
         }
 
         try {
-            $this->retryFactory->retry()
-                ->run(function (Retry $_retry, bool $isRetry) use ($encodedMessage, $batchSize, $delay, $amqpStamp): void {
-                    if ($isRetry) {
-                        $this->connection->reconnect();
-                    }
+            $this->retryFactory->retry(function () use ($encodedMessage, $batchSize, $delay, $amqpStamp): void {
+                $body = $encodedMessage['body'];
+                assert(is_string($body));
 
-                    $body = $encodedMessage['body'];
-                    assert(is_string($body));
-
-                    $this->connection->publish(
-                        body: $body,
-                        delayInMs: $delay,
-                        batchSize: $batchSize,
-                        amqpStamp: $amqpStamp,
-                    );
-                });
+                $this->connection->publish(
+                    body: $body,
+                    delayInMs: $delay,
+                    batchSize: $batchSize,
+                    amqpStamp: $amqpStamp,
+                );
+            })->beforeRetry(function (): void {
+                $this->connection->reconnect();
+            })->run();
         } catch (AMQPExceptionInterface $e) {
             throw new TransportException($e->getMessage(), 0, $e);
         }

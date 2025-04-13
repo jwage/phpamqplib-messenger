@@ -8,6 +8,7 @@ use Closure;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
+use function assert;
 use function mt_rand;
 use function usleep;
 
@@ -32,8 +33,13 @@ class Retry
 
     private string|null $exceptionClass = null;
 
+    private bool $isRetry = false;
+
+    private Closure|null $beforeRetry = null;
+
     /** @param positive-int|0 $waitTime */
     public function __construct(
+        private Closure|null $run = null,
         int|null $retries = null,
         int|null $waitTime = null,
         bool|null $jitter = null,
@@ -57,20 +63,35 @@ class Retry
         return $this;
     }
 
+    public function beforeRetry(Closure $beforeRetry): self
+    {
+        $this->beforeRetry = $beforeRetry;
+
+        return $this;
+    }
+
     /**
      * @throws Throwable
      *
      * @psalm-suppress InvalidReturnType
      * @psalm-suppress UnusedVariable
      */
-    public function run(Closure $callable): mixed
+    public function run(Closure|null $callable = null): mixed
     {
-        $isRetry = false;
+        if ($callable === null) {
+            $callable = $this->run;
+        }
+
+        assert($callable !== null);
 
         beginning:
 
         try {
-            return $callable($this, $isRetry);
+            if ($this->isRetry === true && $this->beforeRetry !== null) {
+                return ($this->beforeRetry)($this);
+            }
+
+            return $callable($this);
         } catch (Throwable $e) {
             if ($this->exceptionClass !== null && ! $e instanceof $this->exceptionClass) {
                 throw $e;
@@ -91,10 +112,12 @@ class Retry
 
             usleep($this->getTimeToWait() * 1000);
 
-            $isRetry = true;
+            $this->isRetry = true;
 
             goto beginning;
         }
+
+        $this->isRetry = false;
     }
 
     /** @return int<0, max> */
