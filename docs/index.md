@@ -123,7 +123,7 @@ phpamqplib://guest:guest@localhost?heartbeat=60&read_timeout=5.0
 
 ## Batch Dispatching
 
-Batch dispatching messages is supposed by the bundle. You can inject the `BatchMessageInterface` service in your application and use the new methods available:
+The bundle supports batch dispatching of messages. You can inject the `Jwage\PhpAmqpLibMessengerBundle\BatchMessageInterface` service, which wraps the default message bus in your application and provides new methods for dispatching messages in batches:
 
 - `dispatchBatches(iterable $messages, int $batchSize = 100): void`
 - `dispatchInBatch(object $message, int $batchSize): void`
@@ -134,13 +134,10 @@ If you have an iterable list of messages, you can use the `dispatchBatches` meth
 ```php
 $batchSize = 2;
 
-$batchMessageBus->dispatchBatches([
-    new SomeMessage(),
-    new SomeMessage(),
-    new SomeMessage(),
-    new SomeMessage(),
-    new SomeMessage(),
-], $batchSize);
+// can be an array or any iterable
+$messages = [...];
+
+$batchMessageBus->dispatchBatches($messages, $batchSize);
 ```
 
 You can also use the `dispatchInBatch` method if you want more low level control over the batching process. Be sure to call the `flush()` method afterwards to handle when you have an uneven number of messages in the last batch:
