@@ -17,8 +17,6 @@ use Symfony\Component\Messenger\Transport\Receiver\QueueReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Throwable;
 
-use function assert;
-
 class AMQPReceiver implements QueueReceiverInterface, MessageCountAwareInterface
 {
     public function __construct(
@@ -46,7 +44,7 @@ class AMQPReceiver implements QueueReceiverInterface, MessageCountAwareInterface
     public function getFromQueues(array $queueNames): iterable
     {
         foreach ($queueNames as $queueName) {
-            yield from $this->getEnvelope($queueName);
+            yield from $this->getEnvelopes($queueName);
         }
     }
 
@@ -106,47 +104,45 @@ class AMQPReceiver implements QueueReceiverInterface, MessageCountAwareInterface
      * @throws TransportException
      * @throws Throwable
      */
-    private function getEnvelope(string $queueName): iterable
+    private function getEnvelopes(string $queueName): iterable
     {
         try {
-            $amqpEnvelope = $this->retryFactory->retry(
-                function () use ($queueName): AMQPEnvelope|null {
-                    return $this->connection->get($queueName);
+            /** @var iterable<AMQPEnvelope> $amqpEnvelopes */
+            $amqpEnvelopes = $this->retryFactory->retry(
+                function () use ($queueName): iterable {
+                    yield from $this->connection->get($queueName);
                 },
             )->beforeRetry(function (): void {
                 $this->connection->reconnect();
             })->run();
-            assert($amqpEnvelope instanceof AMQPEnvelope || $amqpEnvelope === null);
         } catch (AMQPExceptionInterface $e) {
             throw new TransportException($e->getMessage(), 0, $e);
         }
 
-        if ($amqpEnvelope === null) {
-            return;
+        foreach ($amqpEnvelopes as $amqpEnvelope) {
+            $body = $amqpEnvelope->getBody();
+
+            $headers = $amqpEnvelope->getHeaders();
+
+            try {
+                $envelope = $this->serializer->decode([
+                    'body' => $body,
+                    'headers' => $headers,
+                ]);
+            } catch (MessageDecodingFailedException $e) {
+                $amqpEnvelope->nack();
+
+                throw $e;
+            }
+
+            if (($messageId = $amqpEnvelope->getMessageId()) !== null) {
+                $envelope = $envelope
+                    ->withoutAll(TransportMessageIdStamp::class)
+                    ->with(new TransportMessageIdStamp($messageId));
+            }
+
+            yield $envelope->with(new AMQPReceivedStamp($amqpEnvelope, $queueName));
         }
-
-        $body = $amqpEnvelope->getBody();
-
-        $headers = $amqpEnvelope->getHeaders();
-
-        try {
-            $envelope = $this->serializer->decode([
-                'body' => $body,
-                'headers' => $headers,
-            ]);
-        } catch (MessageDecodingFailedException $e) {
-            $amqpEnvelope->nack();
-
-            throw $e;
-        }
-
-        if (($messageId = $amqpEnvelope->getMessageId()) !== null) {
-            $envelope = $envelope
-                ->withoutAll(TransportMessageIdStamp::class)
-                ->with(new TransportMessageIdStamp($messageId));
-        }
-
-        yield $envelope->with(new AMQPReceivedStamp($amqpEnvelope, $queueName));
     }
 
     /** @throws LogicException */

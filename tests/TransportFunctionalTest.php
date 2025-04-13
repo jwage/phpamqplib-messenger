@@ -22,10 +22,6 @@ class TransportFunctionalTest extends KernelTestCase
 
     public function testTransport(): void
     {
-        $envelope = $this->getEnvelope();
-
-        self::assertNull($envelope);
-
         $message1 = (object) ['test' => 1];
         $message2 = (object) ['test' => 2];
         $message3 = (object) ['test' => 3];
@@ -62,21 +58,24 @@ class TransportFunctionalTest extends KernelTestCase
     /** @return array<Envelope> */
     private function getEnvelopes(int $count): array
     {
-        $envelopes = [];
+        $collectedEnvelopes = [];
 
         while (true) {
-            $envelope = $this->getEnvelope();
+            /** @var Traversable<Envelope> $envelopes */
+            $envelopes = $this->transport->get();
 
-            if ($envelope !== null) {
-                $envelopes[] = $envelope;
+            foreach ($envelopes as $envelope) {
+                $collectedEnvelopes[] = $envelope;
+
+                $this->transport->ack($envelope);
             }
 
-            if (count($envelopes) === $count) {
+            if (count($collectedEnvelopes) === $count) {
                 break;
             }
         }
 
-        return $envelopes;
+        return $collectedEnvelopes;
     }
 
     private function getEnvelope(): Envelope|null
