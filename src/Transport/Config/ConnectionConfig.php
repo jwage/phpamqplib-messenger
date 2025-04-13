@@ -15,8 +15,10 @@ use function count;
 use function implode;
 use function sprintf;
 
-final readonly class ConnectionConfig
+readonly class ConnectionConfig
 {
+    public const int DEFAULT_PREFETCH_COUNT = 5;
+
     private const array AVAILABLE_OPTIONS = [
         'auto_setup',
         'host',
@@ -34,6 +36,7 @@ final readonly class ConnectionConfig
         'channel_rpc_timeout',
         'heartbeat',
         'keepalive',
+        'prefetch_count',
         'exchange',
         'delay',
         'queues',
@@ -69,6 +72,8 @@ final readonly class ConnectionConfig
 
     public bool $keepalive;
 
+    public int $prefetchCount;
+
     public ExchangeConfig $exchange;
 
     public DelayConfig $delay;
@@ -95,6 +100,7 @@ final readonly class ConnectionConfig
         float|null $channelRPCTimeout = null,
         int|null $heartbeat = null,
         bool|null $keepalive = null,
+        int|null $prefetchCount = null,
         ExchangeConfig|null $exchange = null,
         DelayConfig|null $delay = null,
         array|null $queues = null,
@@ -114,6 +120,7 @@ final readonly class ConnectionConfig
         $this->channelRPCTimeout = $channelRPCTimeout ?? 3.0;
         $this->heartbeat         = $heartbeat ?? 0;
         $this->keepalive         = $keepalive ?? true;
+        $this->prefetchCount     = $prefetchCount ?? self::DEFAULT_PREFETCH_COUNT;
         $this->exchange          = $exchange ?? new ExchangeConfig();
         $this->delay             = $delay ?? new DelayConfig();
         $this->queues            = $queues ?? [];
@@ -137,6 +144,7 @@ final readonly class ConnectionConfig
      *     channel_rpc_timeout?: float|mixed,
      *     heartbeat?: int|mixed,
      *     keepalive?: bool|mixed,
+     *     prefetch_count?: int|mixed,
      *     exchange?: array{
      *         name?: string,
      *         default_publish_routing_key?: string,
@@ -159,6 +167,7 @@ final readonly class ConnectionConfig
      *         queue_name_pattern?: string,
      *     },
      *     queues?: array<string, array{
+     *         prefetch_count?: int|mixed,
      *         passive?: bool|mixed,
      *         durable?: bool|mixed,
      *         exclusive?: bool|mixed,
@@ -174,6 +183,9 @@ final readonly class ConnectionConfig
     public static function fromArray(array $connectionConfig): self
     {
         self::validate($connectionConfig);
+
+        $prefetchCount = isset($connectionConfig['prefetch_count'])
+            ? (int) $connectionConfig['prefetch_count'] : null;
 
         return new self(
             autoSetup: $connectionConfig['auto_setup'] ?? null,
@@ -192,9 +204,14 @@ final readonly class ConnectionConfig
             channelRPCTimeout: isset($connectionConfig['channel_rpc_timeout']) ? (float) $connectionConfig['channel_rpc_timeout'] : null,
             heartbeat: isset($connectionConfig['heartbeat']) ? (int) $connectionConfig['heartbeat'] : null,
             keepalive: isset($connectionConfig['keepalive']) ? (bool) $connectionConfig['keepalive'] : null,
+            prefetchCount: $prefetchCount,
             exchange: isset($connectionConfig['exchange']) ? ExchangeConfig::fromArray($connectionConfig['exchange']) : null,
             delay: isset($connectionConfig['delay']) ? DelayConfig::fromArray($connectionConfig['delay']) : null,
-            queues: array_map(static function (array|null $queue) {
+            queues: array_map(static function (array|null $queue) use ($prefetchCount) {
+                if ($prefetchCount !== null && ! isset($queue['prefetch_count'])) {
+                    $queue['prefetch_count'] = $prefetchCount;
+                }
+
                 return QueueConfig::fromArray($queue ?? []);
             }, $connectionConfig['queues'] ?? []),
         );

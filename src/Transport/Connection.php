@@ -101,13 +101,13 @@ class Connection
      * @throws AMQPExceptionInterface
      * @throws InvalidArgumentException
      */
-    public function get(string $queueName, int $timeout = 1): AMQPEnvelope|null
+    public function get(string $queueName): AMQPEnvelope|null
     {
         if ($this->autoSetup) {
             $this->setupExchangeAndQueues();
         }
 
-        return ($this->consumer ??= new AMQPConsumer($this))->get($queueName, $timeout);
+        return ($this->consumer ??= new AMQPConsumer($this, $this->connectionConfig))->get($queueName);
     }
 
     /**

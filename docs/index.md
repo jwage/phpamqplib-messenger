@@ -78,6 +78,9 @@ framework:
                     heartbeat: 60
                     keepalive: true
 
+                    # Prefetch settings
+                    prefetch_count: 10
+
                     # Exchange configuration
                     exchange:
                         name: 'orders_exchange'
@@ -91,6 +94,7 @@ framework:
                     # Queue configuration
                     queues:
                         orders_messages:
+                            prefetch_count: 5 # overrides the connection prefetch_count: 10
                             passive: false
                             durable: true
                             exclusive: false

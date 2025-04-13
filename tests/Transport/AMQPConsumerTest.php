@@ -7,9 +7,10 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 use Closure;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPConsumer;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Channel\AMQPChannel;
-use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
 
@@ -17,6 +18,11 @@ class AMQPConsumerTest extends TestCase
 {
     /** @var MockObject&Connection */
     private Connection $connection;
+
+    /** @var MockObject&ConnectionConfig */
+    private ConnectionConfig $connectionConfig;
+
+    private QueueConfig $queueConfig;
 
     private AMQPConsumer $consumer;
 
@@ -36,7 +42,7 @@ class AMQPConsumerTest extends TestCase
             ->method('basic_qos')
             ->with(
                 prefetch_size: 0,
-                prefetch_count: 1,
+                prefetch_count: 5,
                 a_global: false,
             );
 
@@ -52,16 +58,14 @@ class AMQPConsumerTest extends TestCase
                 callback: self::isInstanceOf(Closure::class),
             );
 
-        $channel->expects(self::once())
+        $channel->expects(self::exactly(2))
             ->method('wait')
             ->with(
                 allowed_methods: null,
-                non_blocking: false,
-                timeout: 2,
-            )
-            ->willThrowException(new AMQPTimeoutException());
+                non_blocking: true,
+            );
 
-        $amqpEnvelope = $this->consumer->get('test_queue', 2);
+        $amqpEnvelope = $this->consumer->get('test_queue');
 
         self::assertNull($amqpEnvelope);
 
@@ -69,7 +73,7 @@ class AMQPConsumerTest extends TestCase
 
         $this->consumer->callback($message);
 
-        $amqpEnvelope = $this->consumer->get('test_queue', 2);
+        $amqpEnvelope = $this->consumer->get('test_queue');
 
         self::assertNotNull($amqpEnvelope);
     }
@@ -80,6 +84,14 @@ class AMQPConsumerTest extends TestCase
 
         $this->connection = $this->createMock(Connection::class);
 
-        $this->consumer = new AMQPConsumer($this->connection);
+        $this->connectionConfig = $this->createMock(ConnectionConfig::class);
+
+        $this->queueConfig = new QueueConfig();
+
+        $this->connectionConfig->expects(self::any())
+            ->method('getQueueConfig')
+            ->willReturn($this->queueConfig);
+
+        $this->consumer = new AMQPConsumer($this->connection, $this->connectionConfig);
     }
 }

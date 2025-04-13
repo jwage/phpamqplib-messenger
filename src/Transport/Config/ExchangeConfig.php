@@ -13,7 +13,7 @@ use function count;
 use function implode;
 use function sprintf;
 
-final readonly class ExchangeConfig
+readonly class ExchangeConfig
 {
     private const array AVAILABLE_OPTIONS = [
         'name',

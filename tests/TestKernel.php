@@ -52,9 +52,10 @@ class TestKernel extends Kernel implements CompilerPassInterface
                         'test_phpamqplib' => [
                             'dsn' => '%env(MESSENGER_TRANSPORT_PHPAMQPLIB_DSN)%',
                             'options' => [
+                                'prefetch_count' => 10,
                                 'exchange' => ['name' => 'test_phpamqplib_exchange'],
                                 'queues' => [
-                                    'test_phpamqplib_queue' => [],
+                                    'test_phpamqplib_queue' => ['prefetch_count' => 2],
                                 ],
                             ],
                         ],
