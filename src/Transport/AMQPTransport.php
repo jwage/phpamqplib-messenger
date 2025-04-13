@@ -11,14 +11,14 @@ use PhpAmqpLib\Exception\AMQPExceptionInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
-use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
+use Symfony\Component\Messenger\Transport\Receiver\QueueReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\SetupableTransportInterface;
 use Symfony\Component\Messenger\Transport\TransportInterface;
 use Throwable;
 
-class AMQPTransport implements ReceiverInterface, TransportInterface, MessageCountAwareInterface, SetupableTransportInterface, BatchTransportInterface
+class AMQPTransport implements QueueReceiverInterface, TransportInterface, MessageCountAwareInterface, SetupableTransportInterface, BatchTransportInterface
 {
     public function __construct(
         private RetryFactory $retryFactory,
@@ -34,6 +34,19 @@ class AMQPTransport implements ReceiverInterface, TransportInterface, MessageCou
     public function get(): iterable
     {
         return $this->getReceiver()->get();
+    }
+
+    /**
+     * @param array<string> $queueNames
+     *
+     * @return iterable<Envelope>
+     *
+     * @psalm-suppress ImplementedReturnTypeMismatch
+     */
+    #[Override]
+    public function getFromQueues(array $queueNames): iterable
+    {
+        return $this->getReceiver()->getFromQueues($queueNames);
     }
 
     /** @throws Throwable */
