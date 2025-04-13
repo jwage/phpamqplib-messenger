@@ -19,14 +19,26 @@ return [
 
 ## Configuration
 
-The bundle supports all standard RabbitMQ configuration options:
+It is easy to configure the bundle using a DSN and the `config/packages/messenger.yaml` file. The DSN format for the transport is:
+
+```
+phpamqplib://username:password@localhost[:post]/vhost[/exchange]
+```
+
+For SSL/TLS connections, use:
+
+```
+phpamqplibs://username:password@localhost[:port]/vhost[/exchange]
+```
+
+The bundle supports all standard RabbitMQ configuration options in your `config/packages/messenger.yaml` file. Here is an example configuration with all the default values:
 
 ```yaml
 # config/packages/messenger.yaml
 framework:
     messenger:
         transports:
-            amqp:
+            orders:
                 dsn: 'phpamqplib://localhost:5672/%2f'
                 options:
                     # Connection options
@@ -51,20 +63,24 @@ framework:
 
                     # Exchange configuration
                     exchange:
-                        name: 'messages'
-                        type: 'direct'
+                        name: 'orders_exchange'
+                        type: 'fanout'
+                        default_publish_routing_key: ''
+                        passive: false
                         durable: true
                         auto_delete: false
                         arguments: []
 
                     # Queue configuration
                     queues:
-                        messages:
-                            name: 'messages'
+                        orders_messages:
+                            name: 'orders_messages'
+                            passive: false
                             durable: true
                             exclusive: false
                             auto_delete: false
-                            binding_keys: ['']
+                            binding_keys: []
+                            binding_arguments: []
                             arguments:
                                 x-message-ttl: 10000
                                 x-max-length: 1000
@@ -72,25 +88,18 @@ framework:
 
                     # Delay configuration
                     delay:
-                        exchange_name: 'delayed'
+                        exchange:
+                            name: 'delays'
+                            type: 'direct'
+                            default_publish_routing_key: ''
+                            passive: false
+                            durable: true
+                            auto_delete: false
+                            arguments: []
                         queue_name_pattern: 'delay_%exchange_name%_%routing_key%_%delay%'
 ```
 
-### DSN Format
-
-The DSN format for the transport is:
-
-```
-phpamqplib://username:password@localhost[:post]/vhost[/exchange]
-```
-
-For SSL/TLS connections, use:
-
-```
-phpamqplibs://username:password@localhost[:port]/vhost[/exchange]
-```
-
-You can optionally specify any setting on the DSN instead of in the `messenger.yaml` file:
+You can optionally specify any option in the DSN instead of in the `messenger.yaml` file:
 
 ```
 phpamqplib://username:password@localhost[:port]/vhost[/exchange]?heartbeat=60&read_timeout=5.0
