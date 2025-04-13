@@ -8,6 +8,28 @@ This bundle adds support for `php-amqplib/php-amqplib` to Symfony Messenger, pro
 composer require jwage/phpamqplib-messenger
 ```
 
+Make sure the bundled is enabled in `config/bundles.php`:
+
+```php
+return [
+    // ...
+    Jwage\PhpAmqpLibMessengerBundle\PhpAmqpLibMessengerBundle::class => ['all' => true],
+];
+```
+
+The minimum configuration required is the transports name and the DSN.
+
+```yaml
+# config/packages/messenger.yaml
+framework:
+    messenger:
+        transports:
+            orders:
+                dsn: 'phpamqplib://guest:guest@localhost:5672/myvhost/orders'
+```
+
+The configuration above will create an exchange named `orders` and bind a queue named `orders` to it within the vhost `myvhost`.
+
 ## Documentation
 
 For detailed documentation, including advanced configuration options, features, and usage examples, please see the [documentation](docs/index.md).

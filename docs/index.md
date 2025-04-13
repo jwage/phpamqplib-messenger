@@ -17,7 +17,7 @@ return [
 ];
 ```
 
-## Configuration
+## DSN Format
 
 It is easy to configure the bundle using a DSN and the `config/packages/messenger.yaml` file. The DSN format for the transport is:
 
@@ -31,7 +31,24 @@ For SSL/TLS connections, use:
 phpamqplibs://username:password@localhost[:port]/vhost[/exchange]
 ```
 
-The bundle supports all standard RabbitMQ configuration options in your `config/packages/messenger.yaml` file. Here is an example configuration with all the default values:
+## Minimum Configuration
+
+The minimum configuration required is the transports name and the DSN.
+
+```yaml
+# config/packages/messenger.yaml
+framework:
+    messenger:
+        transports:
+            orders:
+                dsn: 'phpamqplib://guest:guest@localhost:5672/myvhost/orders'
+```
+
+The configuration above will create an exchange named `orders` and bind a queue named `orders` to it within the vhost `myvhost`.
+
+## Advanced Configuration
+
+The bundle supports all advanced RabbitMQ configuration options in your `config/packages/messenger.yaml` file. Here is an example configuration with all the default values you can customize:
 
 ```yaml
 # config/packages/messenger.yaml
@@ -74,7 +91,6 @@ framework:
                     # Queue configuration
                     queues:
                         orders_messages:
-                            name: 'orders_messages'
                             passive: false
                             durable: true
                             exclusive: false
@@ -99,10 +115,10 @@ framework:
                         queue_name_pattern: 'delay_%exchange_name%_%routing_key%_%delay%'
 ```
 
-You can optionally specify any option in the DSN instead of in the `messenger.yaml` file:
+Any option can be specified in the DSN as an alternative to defining it in the `messenger.yaml` file:
 
 ```
-phpamqplib://username:password@localhost[:port]/vhost[/exchange]?heartbeat=60&read_timeout=5.0
+phpamqplib://guest:guest@localhost?heartbeat=60&read_timeout=5.0
 ```
 
 ## Batch Dispatching
