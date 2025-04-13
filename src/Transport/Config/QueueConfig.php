@@ -15,6 +15,7 @@ use function sprintf;
 final readonly class QueueConfig
 {
     private const array AVAILABLE_OPTIONS = [
+        'prefetch_count',
         'passive',
         'durable',
         'exclusive',
@@ -23,6 +24,8 @@ final readonly class QueueConfig
         'binding_arguments',
         'arguments',
     ];
+
+    public int $prefetchCount;
 
     public bool $passive;
 
@@ -47,6 +50,7 @@ final readonly class QueueConfig
      * @param array<string, mixed> $arguments
      */
     public function __construct(
+        int|null $prefetchCount = null,
         bool|null $passive = null,
         bool|null $durable = null,
         bool|null $exclusive = null,
@@ -55,6 +59,7 @@ final readonly class QueueConfig
         array|null $bindingArguments = null,
         array|null $arguments = null,
     ) {
+        $this->prefetchCount    = $prefetchCount ?? 5;
         $this->passive          = $passive ?? false;
         $this->durable          = $durable ?? true;
         $this->exclusive        = $exclusive ?? false;
@@ -66,6 +71,7 @@ final readonly class QueueConfig
 
     /**
      * @param array{
+     *     prefetch_count?: int|mixed,
      *     passive?: bool|mixed,
      *     durable?: bool|mixed,
      *     exclusive?: bool|mixed,
@@ -82,6 +88,7 @@ final readonly class QueueConfig
         self::validate($queueConfig);
 
         return new self(
+            prefetchCount: isset($queueConfig['prefetch_count']) ? (int) $queueConfig['prefetch_count'] : null,
             passive: isset($queueConfig['passive']) ? (bool) $queueConfig['passive'] : null,
             durable: isset($queueConfig['durable']) ? (bool) $queueConfig['durable'] : null,
             exclusive: isset($queueConfig['exclusive']) ? (bool) $queueConfig['exclusive'] : null,

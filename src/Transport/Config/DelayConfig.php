@@ -14,7 +14,7 @@ use function implode;
 use function sprintf;
 use function str_replace;
 
-final readonly class DelayConfig
+readonly class DelayConfig
 {
     private const array AVAILABLE_OPTIONS = [
         'exchange',

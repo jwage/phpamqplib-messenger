@@ -15,7 +15,7 @@ use function count;
 use function implode;
 use function sprintf;
 
-final readonly class ConnectionConfig
+readonly class ConnectionConfig
 {
     private const array AVAILABLE_OPTIONS = [
         'auto_setup',
@@ -159,6 +159,7 @@ final readonly class ConnectionConfig
      *         queue_name_pattern?: string,
      *     },
      *     queues?: array<string, array{
+     *         prefetch_count?: int|mixed,
      *         passive?: bool|mixed,
      *         durable?: bool|mixed,
      *         exclusive?: bool|mixed,

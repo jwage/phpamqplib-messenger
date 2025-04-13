@@ -19,8 +19,12 @@ class TransportFunctionalTest extends KernelTestCase
 
     private AMQPTransport $transport;
 
-    public function testTransport(): void
+    public function testServiceIsWired(): void
     {
+        $envelope = $this->getEnvelope();
+
+        self::assertNull($envelope);
+
         $message1 = (object) ['test' => 1];
         $message2 = (object) ['test' => 2];
         $message3 = (object) ['test' => 3];
@@ -29,7 +33,7 @@ class TransportFunctionalTest extends KernelTestCase
 
         $this->bus->dispatchBatches($messages, 2);
 
-        $envelopes = $this->getEnvelopes(3);
+        $envelopes = $this->getEnvelopes();
 
         self::assertCount(3, $envelopes);
 
@@ -55,15 +59,11 @@ class TransportFunctionalTest extends KernelTestCase
     }
 
     /** @return array<Envelope> */
-    private function getEnvelopes(int $count): array
+    private function getEnvelopes(): array
     {
         $envelopes = [];
 
-        for ($i = 0; $i < $count; $i++) {
-            if (! $envelope = $this->getEnvelope()) {
-                continue;
-            }
-
+        while ($envelope = $this->getEnvelope()) {
             $envelopes[] = $envelope;
         }
 

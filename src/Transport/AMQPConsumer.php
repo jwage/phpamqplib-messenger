@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use InvalidArgumentException;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
-use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 
 use function array_shift;
@@ -20,6 +20,7 @@ class AMQPConsumer
 
     public function __construct(
         private Connection $connection,
+        private ConnectionConfig $connectionConfig,
     ) {
     }
 
@@ -27,14 +28,16 @@ class AMQPConsumer
      * @throws AMQPExceptionInterface
      * @throws InvalidArgumentException
      */
-    public function get(string $queueName, int $timeout = 1): AMQPEnvelope|null
+    public function get(string $queueName): AMQPEnvelope|null
     {
+        $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
+
         $channel = $this->connection->channel();
 
         if ($this->isConsuming === false) {
             $channel->basic_qos(
                 prefetch_size: 0,
-                prefetch_count: 1,
+                prefetch_count: $queueConfig->prefetchCount,
                 a_global: false,
             );
 
@@ -51,17 +54,10 @@ class AMQPConsumer
             $this->isConsuming = true;
         }
 
-        if ($this->buffer === []) {
-            try {
-                $channel->wait(
-                    allowed_methods: null,
-                    non_blocking: false,
-                    timeout: $timeout,
-                );
-            // When we get the timeout from wait(), do nothing
-            } catch (AMQPTimeoutException) {
-            }
-        }
+        $channel->wait(
+            allowed_methods: null,
+            non_blocking: true,
+        );
 
         return array_shift($this->buffer);
     }
