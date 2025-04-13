@@ -59,7 +59,7 @@ final readonly class QueueConfig
         array|null $bindingArguments = null,
         array|null $arguments = null,
     ) {
-        $this->prefetchCount    = $prefetchCount ?? 5;
+        $this->prefetchCount    = $prefetchCount ?? ConnectionConfig::DEFAULT_PREFETCH_COUNT;
         $this->passive          = $passive ?? false;
         $this->durable          = $durable ?? true;
         $this->exclusive        = $exclusive ?? false;

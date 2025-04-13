@@ -11,6 +11,7 @@ use Symfony\Component\Messenger\Envelope;
 use Traversable;
 
 use function assert;
+use function count;
 use function iterator_to_array;
 
 class TransportFunctionalTest extends KernelTestCase
@@ -19,7 +20,7 @@ class TransportFunctionalTest extends KernelTestCase
 
     private AMQPTransport $transport;
 
-    public function testServiceIsWired(): void
+    public function testTransport(): void
     {
         $envelope = $this->getEnvelope();
 
@@ -33,7 +34,7 @@ class TransportFunctionalTest extends KernelTestCase
 
         $this->bus->dispatchBatches($messages, 2);
 
-        $envelopes = $this->getEnvelopes();
+        $envelopes = $this->getEnvelopes(3);
 
         self::assertCount(3, $envelopes);
 
@@ -59,12 +60,20 @@ class TransportFunctionalTest extends KernelTestCase
     }
 
     /** @return array<Envelope> */
-    private function getEnvelopes(): array
+    private function getEnvelopes(int $count): array
     {
         $envelopes = [];
 
-        while ($envelope = $this->getEnvelope()) {
-            $envelopes[] = $envelope;
+        while (true) {
+            $envelope = $this->getEnvelope();
+
+            if ($envelope !== null) {
+                $envelopes[] = $envelope;
+            }
+
+            if (count($envelopes) === $count) {
+                break;
+            }
         }
 
         return $envelopes;
