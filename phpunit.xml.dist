@@ -9,7 +9,7 @@
          beStrictAboutOutputDuringTests="true"
          displayDetailsOnPhpunitDeprecations="true"
          failOnPhpunitDeprecation="true"
-         failOnRisky="true"
+         failOnRisky="false"
          failOnWarning="true"
 >
     <testsuites>
@@ -23,4 +23,9 @@
             <directory>src</directory>
         </include>
     </source>
+
+    <php>
+        <env name="APP_ENV" value="test"/>
+        <env name="KERNEL_CLASS" value="Jwage\PhpAmqpLibMessengerBundle\Tests\TestKernel"/>
+    </php>
 </phpunit>

@@ -20,7 +20,7 @@ use Throwable;
 use function assert;
 use function is_string;
 
-class AMQPSender implements SenderInterface
+class AMQPSender implements SenderInterface, BatchSenderInterface
 {
     public function __construct(
         private RetryFactory $retryFactory,
@@ -80,5 +80,19 @@ class AMQPSender implements SenderInterface
         }
 
         return $envelope;
+    }
+
+    /**
+     * @throws TransportException
+     * @throws Throwable
+     */
+    #[Override]
+    public function flush(): void
+    {
+        try {
+            $this->connection->flush();
+        } catch (AMQPExceptionInterface $e) {
+            throw new TransportException($e->getMessage(), 0, $e);
+        }
     }
 }

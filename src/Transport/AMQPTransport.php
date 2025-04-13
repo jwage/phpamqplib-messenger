@@ -18,7 +18,7 @@ use Symfony\Component\Messenger\Transport\SetupableTransportInterface;
 use Symfony\Component\Messenger\Transport\TransportInterface;
 use Throwable;
 
-class AMQPTransport implements ReceiverInterface, TransportInterface, MessageCountAwareInterface, SetupableTransportInterface
+class AMQPTransport implements ReceiverInterface, TransportInterface, MessageCountAwareInterface, SetupableTransportInterface, BatchTransportInterface
 {
     public function __construct(
         private RetryFactory $retryFactory,
@@ -58,6 +58,16 @@ class AMQPTransport implements ReceiverInterface, TransportInterface, MessageCou
     public function send(Envelope $envelope): Envelope
     {
         return $this->getSender()->send($envelope);
+    }
+
+    /**
+     * @throws TransportException
+     * @throws Throwable
+     */
+    #[Override]
+    public function flush(): void
+    {
+        $this->getSender()->flush();
     }
 
     /** @throws TransportException */
