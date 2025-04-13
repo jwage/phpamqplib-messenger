@@ -17,6 +17,9 @@ use function array_filter;
 
 class BatchMessageBus implements MessageBusInterface, BatchMessageBusInterface
 {
+    /** @var array<BatchTransportInterface>|null */
+    private array|null $batchTransports = null;
+
     /**
      * @param array<TransportInterface> $transports
      *
@@ -68,9 +71,8 @@ class BatchMessageBus implements MessageBusInterface, BatchMessageBusInterface
     #[Override]
     public function dispatchInBatch(object $message, int $batchSize): void
     {
-        $envelope = Envelope::wrap($message, [
-            new AMQPBatchStamp($batchSize),
-        ]);
+        $envelope = Envelope::wrap($message)
+            ->with(new AMQPBatchStamp($batchSize));
 
         $this->dispatch($envelope);
     }
@@ -100,8 +102,12 @@ class BatchMessageBus implements MessageBusInterface, BatchMessageBusInterface
     /** @return array<BatchTransportInterface> */
     private function getBatchTransports(): array
     {
-        return array_filter($this->transports, static function (TransportInterface $transport): bool {
-            return $transport instanceof BatchTransportInterface;
-        });
+        if ($this->batchTransports === null) {
+            $this->batchTransports = array_filter($this->transports, static function (TransportInterface $transport): bool {
+                return $transport instanceof BatchTransportInterface;
+            });
+        }
+
+        return $this->batchTransports;
     }
 }
