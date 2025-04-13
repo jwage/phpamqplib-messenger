@@ -7,6 +7,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPConnectionFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ExchangeConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
@@ -16,6 +17,9 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use PHPUnit\Framework\MockObject\MockObject;
+use Traversable;
+
+use function iterator_to_array;
 
 class ConnectionTest extends TestCase
 {
@@ -119,9 +123,10 @@ class ConnectionTest extends TestCase
 
     public function testGet(): void
     {
-        $amqpEnvelope = $this->connection->get('queue_name');
+        /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $this->connection->get('queue_name');
 
-        self::assertNull($amqpEnvelope);
+        self::assertCount(0, iterator_to_array($amqpEnvelopes));
     }
 
     public function testPublish(): void

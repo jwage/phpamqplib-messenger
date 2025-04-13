@@ -98,16 +98,18 @@ class Connection
     }
 
     /**
+     * @return iterable<AMQPEnvelope>
+     *
      * @throws AMQPExceptionInterface
      * @throws InvalidArgumentException
      */
-    public function get(string $queueName): AMQPEnvelope|null
+    public function get(string $queueName): iterable
     {
         if ($this->autoSetup) {
             $this->setupExchangeAndQueues();
         }
 
-        return ($this->consumer ??= new AMQPConsumer($this, $this->connectionConfig))->get($queueName);
+        yield from ($this->consumer ??= new AMQPConsumer($this, $this->connectionConfig))->get($queueName);
     }
 
     /**

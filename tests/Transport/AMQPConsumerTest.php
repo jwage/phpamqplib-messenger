@@ -7,12 +7,16 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 use Closure;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPConsumer;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
+use Traversable;
+
+use function iterator_to_array;
 
 class AMQPConsumerTest extends TestCase
 {
@@ -58,24 +62,27 @@ class AMQPConsumerTest extends TestCase
                 callback: self::isInstanceOf(Closure::class),
             );
 
-        $channel->expects(self::exactly(2))
+        $channel->expects(self::once())
             ->method('wait')
             ->with(
                 allowed_methods: null,
-                non_blocking: true,
+                non_blocking: false,
+                timeout: 1,
             );
 
-        $amqpEnvelope = $this->consumer->get('test_queue');
+        /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $this->consumer->get('test_queue');
 
-        self::assertNull($amqpEnvelope);
+        self::assertCount(0, iterator_to_array($amqpEnvelopes));
 
         $message = $this->createMock(AMQPMessage::class);
 
         $this->consumer->callback($message);
 
-        $amqpEnvelope = $this->consumer->get('test_queue');
+        /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $this->consumer->get('test_queue');
 
-        self::assertNotNull($amqpEnvelope);
+        self::assertCount(1, iterator_to_array($amqpEnvelopes));
     }
 
     protected function setUp(): void

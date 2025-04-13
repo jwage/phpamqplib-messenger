@@ -48,7 +48,7 @@ class AMQPReceiverTest extends TestCase
 
         $this->connection->expects(self::once())
             ->method('get')
-            ->willReturn($amqpEnvelope);
+            ->willReturn([$amqpEnvelope]);
 
         $this->serializer->expects(self::once())
             ->method('decode')
