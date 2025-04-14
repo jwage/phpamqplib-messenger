@@ -32,7 +32,7 @@ class BindingConfigTest extends TestCase
     }
 
     /** @psalm-suppress InvalidArgument */
-    public function testFromArrayWithInvalidBindingConfig(): void
+    public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
         self::expectExceptionMessage('Invalid binding option(s) "invalid" passed to the AMQP Messenger transport.');
