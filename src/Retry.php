@@ -9,16 +9,17 @@ use Psr\Log\LoggerInterface;
 use Throwable;
 
 use function assert;
+use function is_array;
 use function mt_rand;
 use function usleep;
 
 class Retry
 {
     /** @var positive-int|0 $defaultRetries */
-    public static int $defaultRetries = 2;
+    public static int $defaultRetries = 10;
 
     /** @var positive-int|0 $defaultWaitTime */
-    public static int $defaultWaitTime = 1000;
+    public static int $defaultWaitTime = 2000;
 
     public static bool $defaultJitter = true;
 
@@ -31,7 +32,8 @@ class Retry
 
     private LoggerInterface|null $logger = null;
 
-    private string|null $exceptionClass = null;
+    /** @var array<class-string> */
+    private array $catch = [Throwable::class];
 
     private bool $isRetry = false;
 
@@ -49,9 +51,14 @@ class Retry
         $this->jitter   = $jitter ?? self::$defaultJitter;
     }
 
-    public function catch(string $exceptionClass): self
+    /** @param array<class-string>|class-string $catch */
+    public function catch(array|string $catch): self
     {
-        $this->exceptionClass = $exceptionClass;
+        if (! is_array($catch)) {
+            $catch = [$catch];
+        }
+
+        $this->catch = $catch;
 
         return $this;
     }
@@ -88,12 +95,12 @@ class Retry
 
         try {
             if ($this->isRetry === true && $this->beforeRetry !== null) {
-                return ($this->beforeRetry)($this);
+                ($this->beforeRetry)($this);
             }
 
             return $callable($this);
         } catch (Throwable $e) {
-            if ($this->exceptionClass !== null && ! $e instanceof $this->exceptionClass) {
+            if (! $this->isExceptionToCatch($e)) {
                 throw $e;
             }
 
@@ -128,5 +135,20 @@ class Retry
         }
 
         return $this->waitTime;
+    }
+
+    private function isExceptionToCatch(Throwable $e): bool
+    {
+        if ($this->catch === []) {
+            return true;
+        }
+
+        foreach ($this->catch as $exceptionClass) {
+            if ($e instanceof $exceptionClass) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
