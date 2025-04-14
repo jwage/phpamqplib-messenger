@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
-use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Override;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
 use Symfony\Component\Messenger\Envelope;
@@ -22,7 +21,6 @@ use function is_string;
 class AMQPSender implements SenderInterface, BatchSenderInterface
 {
     public function __construct(
-        private RetryFactory $retryFactory,
         private Connection $connection,
         private SerializerInterface $serializer,
     ) {
@@ -58,19 +56,15 @@ class AMQPSender implements SenderInterface, BatchSenderInterface
         }
 
         try {
-            $this->retryFactory->retry(function () use ($encodedMessage, $batchSize, $delay, $amqpStamp): void {
-                $body = $encodedMessage['body'];
-                assert(is_string($body));
+            $body = $encodedMessage['body'];
+            assert(is_string($body));
 
-                $this->connection->publish(
-                    body: $body,
-                    delayInMs: $delay,
-                    batchSize: $batchSize,
-                    amqpStamp: $amqpStamp,
-                );
-            })->beforeRetry(function (): void {
-                $this->connection->reconnect();
-            })->run();
+            $this->connection->publish(
+                body: $body,
+                delayInMs: $delay,
+                batchSize: $batchSize,
+                amqpStamp: $amqpStamp,
+            );
         } catch (AMQPExceptionInterface $e) {
             throw new TransportException($e->getMessage(), 0, $e);
         }

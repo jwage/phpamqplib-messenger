@@ -117,7 +117,6 @@ class AMQPTransport implements QueueReceiverInterface, TransportInterface, Messa
     private function getSender(): AMQPSender
     {
         return $this->sender ??= new AMQPSender(
-            $this->retryFactory,
             $this->connection,
             $this->getSerializer(),
         );
