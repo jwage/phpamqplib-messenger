@@ -8,6 +8,7 @@ use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPEnvelope;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ExchangeConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
@@ -108,8 +109,9 @@ class ConnectionTest extends TestCase
             ->with(
                 queue: 'queue_name',
                 exchange: 'exchange_name',
-                routing_key: '',
+                routing_key: 'routing_key',
                 nowait: true,
+                arguments: new AMQPTable(['arg1' => 'value1', 'arg2' => 'value2']),
             );
 
         $this->connection->setup();
@@ -237,7 +239,15 @@ class ConnectionTest extends TestCase
             connectionConfig: new ConnectionConfig(
                 exchange: new ExchangeConfig(name: 'exchange_name'),
                 queues: [
-                    'queue_name' => new QueueConfig(),
+                    'queue_name' => new QueueConfig(
+                        name: 'queue_name',
+                        bindings: [
+                            'routing_key' => new BindingConfig(
+                                routingKey: 'routing_key',
+                                arguments: ['arg1' => 'value1', 'arg2' => 'value2'],
+                            ),
+                        ],
+                    ),
                 ],
             ),
         );

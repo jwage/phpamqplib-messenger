@@ -6,6 +6,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\DelayConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ExchangeConfig;
@@ -41,7 +42,7 @@ class DsnParserTest extends TestCase
         $this->assertSame(true, $connectionConfig->keepalive);
         $this->assertEquals(new ExchangeConfig(name: 'messages'), $connectionConfig->exchange);
         $this->assertEquals(new DelayConfig(), $connectionConfig->delay);
-        $this->assertEquals(['messages' => new QueueConfig()], $connectionConfig->queues);
+        $this->assertEquals(['messages' => new QueueConfig(name: 'messages')], $connectionConfig->queues);
     }
 
     public function testMissingCaCert(): void
@@ -127,20 +128,31 @@ class DsnParserTest extends TestCase
 
         self::assertEquals([
             'queue1' => new QueueConfig(
+                name: 'queue1',
                 passive: true,
                 durable: true,
                 exclusive: true,
                 autoDelete: true,
-                bindingKeys: ['binding_key'],
-                bindingArguments: ['key' => 'value'],
+                bindings: [
+                    'routing_key' => BindingConfig::fromArray([
+                        'routing_key' => 'routing_key',
+                        'arguments' => ['key' => 'value'],
+                    ]),
+                ],
                 arguments: ['key' => 'value'],
             ),
             'queue2' => new QueueConfig(
+                name: 'queue2',
                 passive: true,
                 durable: true,
                 exclusive: true,
                 autoDelete: true,
-                bindingKeys: ['binding_key'],
+                bindings: [
+                    'routing_key' => BindingConfig::fromArray([
+                        'routing_key' => 'routing_key',
+                        'arguments' => ['key' => 'value'],
+                    ]),
+                ],
             ),
         ], $connectionConfig->queues);
     }
@@ -191,8 +203,7 @@ class DsnParserTest extends TestCase
                     'durable' => true,
                     'exclusive' => true,
                     'auto_delete' => true,
-                    'binding_keys' => ['binding_key'],
-                    'binding_arguments' => ['key' => 'value'],
+                    'bindings' => ['routing_key' => ['arguments' => ['key' => 'value']]],
                     'arguments' => ['key' => 'value'],
                 ],
                 'queue2' => [
@@ -200,7 +211,7 @@ class DsnParserTest extends TestCase
                     'durable' => true,
                     'exclusive' => true,
                     'auto_delete' => true,
-                    'binding_keys' => ['binding_key'],
+                    'bindings' => ['routing_key' => ['arguments' => ['key' => 'value']]],
                 ],
             ],
         ];

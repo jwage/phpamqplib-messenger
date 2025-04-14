@@ -91,6 +91,7 @@ class AMQPConsumerTest extends TestCase
         $this->connectionConfig = new ConnectionConfig(
             queues: [
                 'test_queue' => new QueueConfig(
+                    name: 'test_queue',
                     prefetchCount: 20,
                     waitTimeout: 2,
                 ),
