@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
-use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPTransportFactory;
@@ -16,8 +15,6 @@ class AMQPTransportFactoryTest extends TestCase
 {
     /** @var ConnectionFactory&MockObject */
     private ConnectionFactory $connectionFactory;
-
-    private RetryFactory $retryFactory;
 
     private AMQPTransportFactory $factory;
 
@@ -43,8 +40,6 @@ class AMQPTransportFactoryTest extends TestCase
 
         $this->connectionFactory = $this->createMock(ConnectionFactory::class);
 
-        $this->retryFactory = new RetryFactory();
-
-        $this->factory = new AMQPTransportFactory($this->connectionFactory, $this->retryFactory);
+        $this->factory = new AMQPTransportFactory($this->connectionFactory);
     }
 }

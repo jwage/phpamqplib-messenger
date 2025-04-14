@@ -6,6 +6,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle;
 
 use Closure;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Messenger\Exception\TransportException;
 use Throwable;
 
 use function assert;
@@ -78,8 +79,7 @@ class Retry
     }
 
     /**
-     * @throws Throwable
-     *
+     * @psalm-suppress MissingThrowsDocblock
      * @psalm-suppress InvalidReturnType
      * @psalm-suppress UnusedVariable
      */
@@ -105,7 +105,7 @@ class Retry
             }
 
             if (! $this->retries) {
-                throw $e;
+                throw new TransportException($e->getMessage(), 0, $e);
             }
 
             $this->logger?->info('Retrying {message}', [

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use InvalidArgumentException;
-use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Override;
 use SensitiveParameter;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
@@ -19,7 +18,6 @@ class AMQPTransportFactory implements TransportFactoryInterface
 {
     public function __construct(
         private ConnectionFactory $connectionFactory,
-        private RetryFactory $retryFactory,
     ) {
     }
 
@@ -40,7 +38,6 @@ class AMQPTransportFactory implements TransportFactoryInterface
         $connection = $this->connectionFactory->fromDsn($dsn, $options);
 
         return new AMQPTransport(
-            retryFactory: $this->retryFactory,
             connection: $connection,
             serializer: $serializer,
         );

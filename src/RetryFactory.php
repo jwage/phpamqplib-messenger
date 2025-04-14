@@ -18,12 +18,12 @@ class RetryFactory
 
     /** @param positive-int|0 $waitTime */
     public function retry(
-        Closure|null $retry = null,
+        Closure|null $run = null,
         int|null $retries = null,
         int|null $waitTime = null,
         bool|null $jitter = null,
     ): Retry {
-        return (new Retry($retry, $retries, $waitTime, $jitter))
+        return (new Retry($run, $retries, $waitTime, $jitter))
             ->setLogger($this->logger)
             ->catch([
                 AMQPChannelClosedException::class,

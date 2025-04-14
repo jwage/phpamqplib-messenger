@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use Override;
-use PhpAmqpLib\Exception\AMQPExceptionInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
@@ -55,19 +54,15 @@ class AMQPSender implements SenderInterface, BatchSenderInterface
             );
         }
 
-        try {
-            $body = $encodedMessage['body'];
-            assert(is_string($body));
+        $body = $encodedMessage['body'];
+        assert(is_string($body));
 
-            $this->connection->publish(
-                body: $body,
-                delayInMs: $delay,
-                batchSize: $batchSize,
-                amqpStamp: $amqpStamp,
-            );
-        } catch (AMQPExceptionInterface $e) {
-            throw new TransportException($e->getMessage(), 0, $e);
-        }
+        $this->connection->publish(
+            body: $body,
+            delayInMs: $delay,
+            batchSize: $batchSize,
+            amqpStamp: $amqpStamp,
+        );
 
         return $envelope;
     }
@@ -79,10 +74,6 @@ class AMQPSender implements SenderInterface, BatchSenderInterface
     #[Override]
     public function flush(): void
     {
-        try {
-            $this->connection->flush();
-        } catch (AMQPExceptionInterface $e) {
-            throw new TransportException($e->getMessage(), 0, $e);
-        }
+        $this->connection->flush();
     }
 }

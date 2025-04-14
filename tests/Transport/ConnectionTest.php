@@ -15,9 +15,11 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PhpAmqpLib\Exception\AMQPConnectionClosedException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Component\Messenger\Exception\TransportException;
 use Traversable;
 
 use function iterator_to_array;
@@ -190,6 +192,34 @@ class ConnectionTest extends TestCase
     public function testGetQueueNames(): void
     {
         self::assertSame(['queue_name'], $this->connection->getQueueNames());
+    }
+
+    public function testWithRetrySuccess(): void
+    {
+        $count = 0;
+
+        $check = $this->connection->withRetry(static function () use (&$count) {
+            $count++;
+
+            if ($count < 3) {
+                throw new AMQPConnectionClosedException();
+            }
+
+            return 'test';
+        }, waitTime: 0)->run();
+
+        self::assertSame(3, $count);
+        self::assertSame('test', $check);
+    }
+
+    public function testWithRetryFailure(): void
+    {
+        self::expectException(TransportException::class);
+        self::expectExceptionMessage('test');
+
+        $this->connection->withRetry(static function (): void {
+            throw new AMQPConnectionClosedException('test');
+        }, waitTime: 0)->run();
     }
 
     protected function setUp(): void
