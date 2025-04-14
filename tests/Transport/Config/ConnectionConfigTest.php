@@ -48,7 +48,7 @@ class ConnectionConfigTest extends TestCase
     }
 
     /** @psalm-suppress InvalidArgument */
-    public function testFromArrayWithInvalidQueueConfig(): void
+    public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
         self::expectExceptionMessage('Invalid option(s) "invalid" passed to the AMQP Messenger transport.');

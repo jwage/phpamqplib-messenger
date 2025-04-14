@@ -15,10 +15,9 @@ use Symfony\Component\Messenger\Transport\Receiver\QueueReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\SetupableTransportInterface;
-use Symfony\Component\Messenger\Transport\TransportInterface;
 use Throwable;
 
-class AMQPTransport implements QueueReceiverInterface, TransportInterface, MessageCountAwareInterface, SetupableTransportInterface, BatchTransportInterface
+class AMQPTransport implements QueueReceiverInterface, MessageCountAwareInterface, SetupableTransportInterface, BatchTransportInterface
 {
     public function __construct(
         private RetryFactory $retryFactory,

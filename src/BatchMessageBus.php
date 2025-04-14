@@ -15,7 +15,7 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
 
 use function array_filter;
 
-class BatchMessageBus implements MessageBusInterface, BatchMessageBusInterface
+class BatchMessageBus implements BatchMessageBusInterface
 {
     /** @var array<BatchTransportInterface>|null */
     private array|null $batchTransports = null;
@@ -64,17 +64,16 @@ class BatchMessageBus implements MessageBusInterface, BatchMessageBusInterface
         }
 
         $this->dispatchBatch($batch, $batchSize);
-        $this->flush();
     }
 
     /** @throws ExceptionInterface */
     #[Override]
-    public function dispatchInBatch(object $message, int $batchSize): void
+    public function dispatchInBatch(object $message, int $batchSize): Envelope
     {
         $envelope = Envelope::wrap($message)
             ->with(new AMQPBatchStamp($batchSize));
 
-        $this->dispatch($envelope);
+        return $this->dispatch($envelope);
     }
 
     #[Override]
@@ -97,6 +96,8 @@ class BatchMessageBus implements MessageBusInterface, BatchMessageBusInterface
         foreach ($batch as $message) {
             $this->dispatchInBatch($message, $batchSize);
         }
+
+        $this->flush();
     }
 
     /** @return array<BatchTransportInterface> */
