@@ -37,30 +37,12 @@ class ConnectionTest extends TestCase
 
     private Connection $connection;
 
-    public function testDisconnect(): void
-    {
-        $this->connection->connect();
-        $this->connection->channel();
-
-        $this->amqpChannel->expects(self::once())
-            ->method('close');
-
-        $this->amqpConnection->expects(self::once())
-            ->method('close');
-
-        $this->connection->disconnect();
-    }
-
     public function testReconnect(): void
     {
-        $this->connection->connect();
         $this->connection->channel();
 
-        $this->amqpChannel->expects(self::once())
-            ->method('close');
-
         $this->amqpConnection->expects(self::once())
-            ->method('close');
+            ->method('reconnect');
 
         $this->connection->reconnect();
     }

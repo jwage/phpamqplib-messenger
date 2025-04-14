@@ -12,7 +12,6 @@ use Traversable;
 
 use function assert;
 use function count;
-use function iterator_to_array;
 
 class TransportFunctionalTest extends KernelTestCase
 {
@@ -76,21 +75,5 @@ class TransportFunctionalTest extends KernelTestCase
         }
 
         return $collectedEnvelopes;
-    }
-
-    private function getEnvelope(): Envelope|null
-    {
-        /** @var Traversable<Envelope> $iterable */
-        $iterable = $this->transport->get();
-
-        $envelopes = iterator_to_array($iterable);
-
-        $envelope = $envelopes[0] ?? null;
-
-        if ($envelope !== null) {
-            $this->transport->ack($envelope);
-        }
-
-        return $envelope;
     }
 }
