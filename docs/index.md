@@ -99,12 +99,12 @@ framework:
                             durable: true
                             exclusive: false
                             auto_delete: false
-                            binding_keys: []
-                            binding_arguments: []
-                            arguments:
-                                x-message-ttl: 10000
-                                x-max-length: 1000
-                                x-max-priority: 10
+                            bindings:
+                                routing_key1:
+                                    arguments: []
+                                routing_key2:
+                                    arguments: []
+                            arguments: []
 
                     # Delay configuration
                     delay:

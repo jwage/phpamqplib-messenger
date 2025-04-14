@@ -86,8 +86,10 @@ class DsnParser
          *         durable?: bool,
          *         exclusive?: bool,
          *         auto_delete?: bool,
-         *         binding_keys?: array<string>,
-         *         binding_arguments?: array<string, mixed>,
+         *         bindings?: array<int|string, array{
+         *             routing_key?: string,
+         *             arguments?: array<string, mixed>,
+         *         }>,
          *         arguments?: array<string, mixed>,
          *     }|null>
          * } $connectionConfig
@@ -130,8 +132,10 @@ class DsnParser
      *     durable?: bool,
      *     exclusive?: bool,
      *     auto_delete?: bool,
-     *     binding_keys?: array<string>,
-     *     binding_arguments?: array<string, mixed>,
+     *     bindings?: array<int|string, array{
+     *         routing_key?: string,
+     *         arguments?: array<string, mixed>,
+     *     }>,
      *     arguments?: array<string, mixed>
      * }|null> $queues
      *
@@ -140,8 +144,10 @@ class DsnParser
      *     durable?: bool,
      *     exclusive?: bool,
      *     auto_delete?: bool,
-     *     binding_keys?: array<string>,
-     *     binding_arguments?: array<string, mixed>,
+     *     bindings?: array<int|string, array{
+     *         routing_key?: string,
+     *         arguments?: array<string, mixed>,
+     *     }>,
      *     arguments?: array<string, mixed>
      * }>
      */

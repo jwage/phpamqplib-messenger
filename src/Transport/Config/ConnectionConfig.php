@@ -10,9 +10,9 @@ use SensitiveParameter;
 
 use function array_diff;
 use function array_keys;
-use function array_map;
 use function count;
 use function implode;
+use function is_string;
 use function sprintf;
 
 readonly class ConnectionConfig
@@ -86,7 +86,7 @@ readonly class ConnectionConfig
     /** @var array<string, QueueConfig> */
     public array $queues;
 
-    /** @param array<string, QueueConfig> $queues */
+    /** @param array<int|string, QueueConfig> $queues */
     public function __construct(
         bool|null $autoSetup = null,
         string|null $host = null,
@@ -130,7 +130,7 @@ readonly class ConnectionConfig
         $this->waitTimeout       = $waitTimeout ?? self::DEFAULT_WAIT_TIMEOUT;
         $this->exchange          = $exchange ?? new ExchangeConfig();
         $this->delay             = $delay ?? new DelayConfig();
-        $this->queues            = $queues ?? [];
+        $this->queues            = self::indexByQueueName($queues ?? []);
     }
 
     /**
@@ -174,15 +174,18 @@ readonly class ConnectionConfig
      *         },
      *         queue_name_pattern?: string,
      *     },
-     *     queues?: array<string, array{
+     *     queues?: array<int|string, array{
+     *         name?: string,
      *         prefetch_count?: int|mixed,
      *         wait_timeout?: int|float|mixed,
      *         passive?: bool|mixed,
      *         durable?: bool|mixed,
      *         exclusive?: bool|mixed,
      *         auto_delete?: bool|mixed,
-     *         binding_keys?: array<string>,
-     *         binding_arguments?: array<string, mixed>,
+     *         bindings?: array<int|string, array{
+     *             routing_key?: string,
+     *             arguments?: array<string, mixed>,
+     *         }|null>,
      *         arguments?: array<string, mixed>,
      *     }|null>,
      * } $connectionConfig
@@ -198,6 +201,30 @@ readonly class ConnectionConfig
 
         $waitTimeout = isset($connectionConfig['wait_timeout'])
             ? (float) $connectionConfig['wait_timeout'] : null;
+
+        $queues = $connectionConfig['queues'] ?? [];
+
+        $queueConfigs = [];
+
+        foreach ($queues as $queueName => $queue) {
+            $queue ??= [];
+
+            if (! isset($queue['name']) && is_string($queueName)) {
+                $queue['name'] = $queueName;
+            }
+
+            if ($prefetchCount !== null && ! isset($queue['prefetch_count'])) {
+                $queue['prefetch_count'] = $prefetchCount;
+            }
+
+            if ($waitTimeout !== null && ! isset($queue['wait_timeout'])) {
+                $queue['wait_timeout'] = $waitTimeout;
+            }
+
+            $queueName = $queue['name'] ?? '';
+
+            $queueConfigs[$queueName] = QueueConfig::fromArray($queue);
+        }
 
         return new self(
             autoSetup: $connectionConfig['auto_setup'] ?? null,
@@ -220,17 +247,7 @@ readonly class ConnectionConfig
             waitTimeout: $waitTimeout,
             exchange: isset($connectionConfig['exchange']) ? ExchangeConfig::fromArray($connectionConfig['exchange']) : null,
             delay: isset($connectionConfig['delay']) ? DelayConfig::fromArray($connectionConfig['delay']) : null,
-            queues: array_map(static function (array|null $queue) use ($prefetchCount, $waitTimeout) {
-                if ($prefetchCount !== null && ! isset($queue['prefetch_count'])) {
-                    $queue['prefetch_count'] = $prefetchCount;
-                }
-
-                if ($waitTimeout !== null && ! isset($queue['wait_timeout'])) {
-                    $queue['wait_timeout'] = $waitTimeout;
-                }
-
-                return QueueConfig::fromArray($queue ?? []);
-            }, $connectionConfig['queues'] ?? []),
+            queues: $queueConfigs,
         );
     }
 
@@ -260,5 +277,29 @@ readonly class ConnectionConfig
         if (0 < count($invalidOptions = array_diff(array_keys($connectionConfig), self::AVAILABLE_OPTIONS))) {
             throw new InvalidArgumentException(sprintf('Invalid option(s) "%s" passed to the AMQP Messenger transport.', implode('", "', $invalidOptions)));
         }
+    }
+
+    /**
+     * @param array<int|string, QueueConfig> $queues
+     *
+     * @return array<string, QueueConfig>
+     */
+    private static function indexByQueueName(array $queues): array
+    {
+        $indexedQueues = [];
+
+        foreach ($queues as $key => $queue) {
+            if (is_string($key) && $queue->name !== $key) {
+                throw new InvalidArgumentException(sprintf(
+                    'Queue name "%s" does not match array key "%s"',
+                    $queue->name,
+                    $key,
+                ));
+            }
+
+            $indexedQueues[$queue->name] = $queue;
+        }
+
+        return $indexedQueues;
     }
 }

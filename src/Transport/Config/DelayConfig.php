@@ -88,7 +88,7 @@ readonly class DelayConfig
      *
      * @throws InvalidArgumentException
      */
-    public static function validate(array $delayConfig): void
+    private static function validate(array $delayConfig): void
     {
         if (0 < count($invalidDelayOptions = array_diff(array_keys($delayConfig), self::AVAILABLE_OPTIONS))) {
             throw new InvalidArgumentException(sprintf('Invalid delay option(s) "%s" passed to the AMQP Messenger transport.', implode('", "', $invalidDelayOptions)));

@@ -92,7 +92,7 @@ readonly class ExchangeConfig
      *
      * @throws InvalidArgumentException
      */
-    public static function validate(array $exchangeConfig): void
+    private static function validate(array $exchangeConfig): void
     {
         if (0 < count($invalidExchangeOptions = array_diff(array_keys($exchangeConfig), self::AVAILABLE_OPTIONS))) {
             throw new InvalidArgumentException(sprintf('Invalid exchange option(s) "%s" passed to the AMQP Messenger transport.', implode('", "', $invalidExchangeOptions)));

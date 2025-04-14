@@ -23,6 +23,30 @@ class ConnectionConfigTest extends TestCase
         self::assertDefaultConnectionConfig(ConnectionConfig::fromArray([]));
     }
 
+    public function testQueuesGetIndexedByQueueName(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            queues: [
+                'queue1' => new QueueConfig(name: 'queue1'),
+                'queue2' => new QueueConfig(name: 'queue2'),
+            ],
+        );
+
+        self::assertSame(['queue1', 'queue2'], $connectionConfig->getQueueNames());
+        self::assertEquals(new QueueConfig(name: 'queue1'), $connectionConfig->getQueueConfig('queue1'));
+        self::assertEquals(new QueueConfig(name: 'queue2'), $connectionConfig->getQueueConfig('queue2'));
+    }
+
+    public function testQueuesKeyMustMatchQueueName(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Queue name "queue_name" does not match array key "queue_name2"');
+
+        new ConnectionConfig(
+            queues: ['queue_name2' => new QueueConfig(name: 'queue_name')],
+        );
+    }
+
     /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidQueueConfig(): void
     {
@@ -66,12 +90,12 @@ class ConnectionConfigTest extends TestCase
             ],
             'queues' => [
                 'queue1' => [
-                    'prefetch_count' => 15,
-                    'wait_timeout' => 2.0,
+                    'prefetch_count' => 20,
+                    'wait_timeout' => 3.0,
                 ],
                 'queue2' => [
-                    'prefetch_count' => 15,
-                    'wait_timeout' => 2.0,
+                    'prefetch_count' => 30,
+                    'wait_timeout' => 4.0,
                 ],
             ],
         ]);
@@ -93,26 +117,97 @@ class ConnectionConfigTest extends TestCase
         self::assertFalse($connectionConfig->keepalive);
         self::assertSame(15, $connectionConfig->prefetchCount);
         self::assertSame(2.0, $connectionConfig->waitTimeout);
+
         self::assertEquals(new ExchangeConfig(
             name: 'custom_exchange',
             type: 'fanout',
             durable: false,
             autoDelete: true,
         ), $connectionConfig->exchange);
+
         self::assertEquals(new DelayConfig(
             exchange: new ExchangeConfig(
                 name: 'delay_exchange',
                 type: 'direct',
             ),
         ), $connectionConfig->delay);
+
+        self::assertEquals([
+            'queue1' => new QueueConfig(
+                name: 'queue1',
+                prefetchCount: 20,
+                waitTimeout: 3.0,
+            ),
+            'queue2' => new QueueConfig(
+                name: 'queue2',
+                prefetchCount: 30,
+                waitTimeout: 4.0,
+            ),
+        ], $connectionConfig->queues);
+
         self::assertSame(['queue1', 'queue2'], $connectionConfig->getQueueNames());
+    }
+
+    public function testFromArrayUsesQueueArrayKeyAsQueueName(): void
+    {
+        $connectionConfig = ConnectionConfig::fromArray([
+            'queues' => ['queue_name' => null],
+        ]);
+
+        self::assertEquals([
+            'queue_name' => new QueueConfig(
+                name: 'queue_name',
+            ),
+        ], $connectionConfig->queues);
+    }
+
+    public function testFromArrayWithoutQueueNameAsArrayKey(): void
+    {
+        $connectionConfig = ConnectionConfig::fromArray([
+            'queues' => [
+                ['name' => 'queue1'],
+                ['name' => 'queue2'],
+            ],
+        ]);
+
+        self::assertEquals([
+            'queue1' => new QueueConfig(
+                name: 'queue1',
+            ),
+            'queue2' => new QueueConfig(
+                name: 'queue2',
+            ),
+        ], $connectionConfig->queues);
+    }
+
+    public function testFromArrayWithEmptyQueue(): void
+    {
+        $connectionConfig = ConnectionConfig::fromArray([
+            'queues' => ['queue_name' => null],
+        ]);
+
+        self::assertEquals([
+            'queue_name' => new QueueConfig(
+                name: 'queue_name',
+            ),
+        ], $connectionConfig->queues);
+    }
+
+    public function testFromArrayWithNoQueueName(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Queue name is required');
+
+        ConnectionConfig::fromArray([
+            'queues' => [[]],
+        ]);
     }
 
     public function testGetQueueNames(): void
     {
         $connectionConfig = new ConnectionConfig(queues: [
-            'queue1' => new QueueConfig(),
-            'queue2' => new QueueConfig(),
+            'queue1' => new QueueConfig(name: 'queue1'),
+            'queue2' => new QueueConfig(name: 'queue2'),
         ]);
 
         self::assertSame(['queue1', 'queue2'], $connectionConfig->getQueueNames());
@@ -120,8 +215,8 @@ class ConnectionConfigTest extends TestCase
 
     public function testGetQueueConfig(): void
     {
-        $queueConfig1 = new QueueConfig();
-        $queueConfig2 = new QueueConfig();
+        $queueConfig1 = new QueueConfig(name: 'queue1');
+        $queueConfig2 = new QueueConfig(name: 'queue2');
 
         $connectionConfig = new ConnectionConfig(queues: [
             'queue1' => $queueConfig1,

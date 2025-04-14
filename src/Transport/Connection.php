@@ -229,24 +229,24 @@ class Connection
             );
         }
 
-        foreach ($this->connectionConfig->queues as $queueName => $queueOptions) {
+        foreach ($this->connectionConfig->queues as $queueName => $queueConfig) {
             $this->declareQueue($queueName);
 
             if (! $this->connectionConfig->exchange->name) {
                 continue;
             }
 
-            $bindingKeys = $queueOptions->bindingKeys
-                ? $queueOptions->bindingKeys
+            $bindings = $queueConfig->bindings
+                ? $queueConfig->bindings
                 : [null];
 
-            foreach ($bindingKeys as $bindingKey) {
+            foreach ($bindings as $bindingConfig) {
                 $this->channel()->queue_bind(
                     queue: $queueName,
                     exchange: $this->connectionConfig->exchange->name,
-                    routing_key: $bindingKey ?? '',
+                    routing_key: $bindingConfig?->routingKey ?? '',
                     nowait: true,
-                    arguments: new AMQPTable($queueOptions->bindingArguments),
+                    arguments: new AMQPTable($bindingConfig?->arguments ?? []),
                 );
             }
         }
