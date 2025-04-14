@@ -61,7 +61,7 @@ class AMQPConsumer
                 $channel->wait(
                     allowed_methods: null,
                     non_blocking: false,
-                    timeout: 1,
+                    timeout: $queueConfig->waitTimeout,
                 );
             } catch (AMQPExceptionInterface) {
                 // When we get the timeout from wait(), do nothing

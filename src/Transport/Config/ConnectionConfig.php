@@ -19,6 +19,8 @@ readonly class ConnectionConfig
 {
     public const int DEFAULT_PREFETCH_COUNT = 5;
 
+    public const int DEFAULT_WAIT_TIMEOUT = 1;
+
     private const array AVAILABLE_OPTIONS = [
         'auto_setup',
         'host',
@@ -37,6 +39,7 @@ readonly class ConnectionConfig
         'heartbeat',
         'keepalive',
         'prefetch_count',
+        'wait_timeout',
         'exchange',
         'delay',
         'queues',
@@ -74,6 +77,8 @@ readonly class ConnectionConfig
 
     public int $prefetchCount;
 
+    public int|float|null $waitTimeout;
+
     public ExchangeConfig $exchange;
 
     public DelayConfig $delay;
@@ -101,6 +106,7 @@ readonly class ConnectionConfig
         int|null $heartbeat = null,
         bool|null $keepalive = null,
         int|null $prefetchCount = null,
+        int|float|null $waitTimeout = null,
         ExchangeConfig|null $exchange = null,
         DelayConfig|null $delay = null,
         array|null $queues = null,
@@ -121,6 +127,7 @@ readonly class ConnectionConfig
         $this->heartbeat         = $heartbeat ?? 0;
         $this->keepalive         = $keepalive ?? true;
         $this->prefetchCount     = $prefetchCount ?? self::DEFAULT_PREFETCH_COUNT;
+        $this->waitTimeout       = $waitTimeout ?? self::DEFAULT_WAIT_TIMEOUT;
         $this->exchange          = $exchange ?? new ExchangeConfig();
         $this->delay             = $delay ?? new DelayConfig();
         $this->queues            = $queues ?? [];
@@ -145,6 +152,7 @@ readonly class ConnectionConfig
      *     heartbeat?: int|mixed,
      *     keepalive?: bool|mixed,
      *     prefetch_count?: int|mixed,
+     *     wait_timeout?: int|float|mixed,
      *     exchange?: array{
      *         name?: string,
      *         default_publish_routing_key?: string,
@@ -168,6 +176,7 @@ readonly class ConnectionConfig
      *     },
      *     queues?: array<string, array{
      *         prefetch_count?: int|mixed,
+     *         wait_timeout?: int|float|mixed,
      *         passive?: bool|mixed,
      *         durable?: bool|mixed,
      *         exclusive?: bool|mixed,
@@ -187,6 +196,9 @@ readonly class ConnectionConfig
         $prefetchCount = isset($connectionConfig['prefetch_count'])
             ? (int) $connectionConfig['prefetch_count'] : null;
 
+        $waitTimeout = isset($connectionConfig['wait_timeout'])
+            ? (float) $connectionConfig['wait_timeout'] : null;
+
         return new self(
             autoSetup: $connectionConfig['auto_setup'] ?? null,
             host: $connectionConfig['host'] ?? null,
@@ -205,11 +217,16 @@ readonly class ConnectionConfig
             heartbeat: isset($connectionConfig['heartbeat']) ? (int) $connectionConfig['heartbeat'] : null,
             keepalive: isset($connectionConfig['keepalive']) ? (bool) $connectionConfig['keepalive'] : null,
             prefetchCount: $prefetchCount,
+            waitTimeout: $waitTimeout,
             exchange: isset($connectionConfig['exchange']) ? ExchangeConfig::fromArray($connectionConfig['exchange']) : null,
             delay: isset($connectionConfig['delay']) ? DelayConfig::fromArray($connectionConfig['delay']) : null,
-            queues: array_map(static function (array|null $queue) use ($prefetchCount) {
+            queues: array_map(static function (array|null $queue) use ($prefetchCount, $waitTimeout) {
                 if ($prefetchCount !== null && ! isset($queue['prefetch_count'])) {
                     $queue['prefetch_count'] = $prefetchCount;
+                }
+
+                if ($waitTimeout !== null && ! isset($queue['wait_timeout'])) {
+                    $queue['wait_timeout'] = $waitTimeout;
                 }
 
                 return QueueConfig::fromArray($queue ?? []);

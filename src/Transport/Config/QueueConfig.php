@@ -16,6 +16,7 @@ final readonly class QueueConfig
 {
     private const array AVAILABLE_OPTIONS = [
         'prefetch_count',
+        'wait_timeout',
         'passive',
         'durable',
         'exclusive',
@@ -26,6 +27,8 @@ final readonly class QueueConfig
     ];
 
     public int $prefetchCount;
+
+    public int|float|null $waitTimeout;
 
     public bool $passive;
 
@@ -51,6 +54,7 @@ final readonly class QueueConfig
      */
     public function __construct(
         int|null $prefetchCount = null,
+        int|float|null $waitTimeout = null,
         bool|null $passive = null,
         bool|null $durable = null,
         bool|null $exclusive = null,
@@ -60,6 +64,7 @@ final readonly class QueueConfig
         array|null $arguments = null,
     ) {
         $this->prefetchCount    = $prefetchCount ?? ConnectionConfig::DEFAULT_PREFETCH_COUNT;
+        $this->waitTimeout      = $waitTimeout ?? ConnectionConfig::DEFAULT_WAIT_TIMEOUT;
         $this->passive          = $passive ?? false;
         $this->durable          = $durable ?? true;
         $this->exclusive        = $exclusive ?? false;
@@ -72,6 +77,7 @@ final readonly class QueueConfig
     /**
      * @param array{
      *     prefetch_count?: int|mixed,
+     *     wait_timeout?: int|float|mixed,
      *     passive?: bool|mixed,
      *     durable?: bool|mixed,
      *     exclusive?: bool|mixed,
@@ -89,6 +95,7 @@ final readonly class QueueConfig
 
         return new self(
             prefetchCount: isset($queueConfig['prefetch_count']) ? (int) $queueConfig['prefetch_count'] : null,
+            waitTimeout: isset($queueConfig['wait_timeout']) ? (float) $queueConfig['wait_timeout'] : null,
             passive: isset($queueConfig['passive']) ? (bool) $queueConfig['passive'] : null,
             durable: isset($queueConfig['durable']) ? (bool) $queueConfig['durable'] : null,
             exclusive: isset($queueConfig['exclusive']) ? (bool) $queueConfig['exclusive'] : null,
