@@ -23,10 +23,7 @@ class AMQPConsumerTest extends TestCase
     /** @var MockObject&Connection */
     private Connection $connection;
 
-    /** @var MockObject&ConnectionConfig */
     private ConnectionConfig $connectionConfig;
-
-    private QueueConfig $queueConfig;
 
     private AMQPConsumer $consumer;
 
@@ -46,7 +43,7 @@ class AMQPConsumerTest extends TestCase
             ->method('basic_qos')
             ->with(
                 prefetch_size: 0,
-                prefetch_count: 5,
+                prefetch_count: 20,
                 a_global: false,
             );
 
@@ -67,7 +64,7 @@ class AMQPConsumerTest extends TestCase
             ->with(
                 allowed_methods: null,
                 non_blocking: false,
-                timeout: 1,
+                timeout: 2,
             );
 
         /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
@@ -91,13 +88,14 @@ class AMQPConsumerTest extends TestCase
 
         $this->connection = $this->createMock(Connection::class);
 
-        $this->connectionConfig = $this->createMock(ConnectionConfig::class);
-
-        $this->queueConfig = new QueueConfig();
-
-        $this->connectionConfig->expects(self::any())
-            ->method('getQueueConfig')
-            ->willReturn($this->queueConfig);
+        $this->connectionConfig = new ConnectionConfig(
+            queues: [
+                'test_queue' => new QueueConfig(
+                    prefetchCount: 20,
+                    waitTimeout: 2,
+                ),
+            ],
+        );
 
         $this->consumer = new AMQPConsumer($this->connection, $this->connectionConfig);
     }
