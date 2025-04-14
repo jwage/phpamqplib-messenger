@@ -27,7 +27,12 @@ class TransportFunctionalTest extends KernelTestCase
 
         $messages = [$message1, $message2, $message3];
 
+        $connection = $this->transport->getConnection();
+
         $this->bus->dispatchBatches($messages, 2);
+
+        // test we can recover from a connection failure
+        $connection->reconnect();
 
         $envelopes = $this->getEnvelopes(3);
 

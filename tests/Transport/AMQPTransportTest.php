@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
-use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPReceiver;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPSender;
@@ -17,8 +16,6 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class AMQPTransportTest extends TestCase
 {
-    private RetryFactory $retryFactory;
-
     /** @var Connection&MockObject */
     private Connection $connection;
 
@@ -32,6 +29,11 @@ class AMQPTransportTest extends TestCase
     private SerializerInterface $serializer;
 
     private AMQPTransport $transport;
+
+    public function testGetConnection(): void
+    {
+        self::assertSame($this->connection, $this->transport->getConnection());
+    }
 
     public function testGet(): void
     {
@@ -102,8 +104,6 @@ class AMQPTransportTest extends TestCase
     {
         parent::setUp();
 
-        $this->retryFactory = new RetryFactory();
-
         $this->connection = $this->createMock(Connection::class);
 
         $this->receiver = $this->createMock(AMQPReceiver::class);
@@ -113,7 +113,6 @@ class AMQPTransportTest extends TestCase
         $this->serializer = $this->createMock(SerializerInterface::class);
 
         $this->transport = new AMQPTransport(
-            retryFactory: $this->retryFactory,
             connection: $this->connection,
             receiver: $this->receiver,
             sender: $this->sender,

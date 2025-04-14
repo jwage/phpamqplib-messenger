@@ -6,9 +6,11 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPReceivedStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPReceiver;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -124,12 +126,17 @@ class AMQPReceiverTest extends TestCase
 
         $this->retryFactory = new RetryFactory($this->logger);
 
-        $this->connection = $this->createMock(Connection::class);
+        $amqpConnectionFactory = new AMQPConnectionFactory();
+        $connectionConfig      = new ConnectionConfig();
+
+        $this->connection = $this->getMockBuilder(Connection::class)
+            ->onlyMethods(['getQueueNames', 'get', 'countMessagesInQueues'])
+            ->setConstructorArgs([$this->retryFactory, $amqpConnectionFactory, $connectionConfig])
+            ->getMock();
 
         $this->serializer = $this->createMock(SerializerInterface::class);
 
         $this->receiver = new AMQPReceiver(
-            $this->retryFactory,
             $this->connection,
             $this->serializer,
         );

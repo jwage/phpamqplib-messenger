@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use InvalidArgumentException;
-use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Override;
-use PhpAmqpLib\Exception\AMQPExceptionInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
@@ -20,12 +18,16 @@ use Throwable;
 class AMQPTransport implements QueueReceiverInterface, MessageCountAwareInterface, SetupableTransportInterface, BatchTransportInterface
 {
     public function __construct(
-        private RetryFactory $retryFactory,
         private Connection $connection,
         private AMQPReceiver|null $receiver = null,
         private AMQPSender|null $sender = null,
         private SerializerInterface|null $serializer = null,
     ) {
+    }
+
+    public function getConnection(): Connection
+    {
+        return $this->connection;
     }
 
     /** @inheritDoc */
@@ -90,7 +92,7 @@ class AMQPTransport implements QueueReceiverInterface, MessageCountAwareInterfac
     }
 
     /**
-     * @throws AMQPExceptionInterface
+     * @throws TransportException
      * @throws InvalidArgumentException
      */
     #[Override]
@@ -107,7 +109,6 @@ class AMQPTransport implements QueueReceiverInterface, MessageCountAwareInterfac
     private function getReceiver(): AMQPReceiver
     {
         return $this->receiver ??= new AMQPReceiver(
-            $this->retryFactory,
             $this->connection,
             $this->getSerializer(),
         );

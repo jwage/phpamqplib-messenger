@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
-use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use LogicException;
 use Override;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
@@ -20,7 +19,6 @@ use Throwable;
 class AMQPReceiver implements QueueReceiverInterface, MessageCountAwareInterface
 {
     public function __construct(
-        private RetryFactory $retryFactory,
         private Connection $connection,
         private SerializerInterface $serializer,
     ) {
@@ -58,13 +56,9 @@ class AMQPReceiver implements QueueReceiverInterface, MessageCountAwareInterface
     {
         $amqpEnvelope = $this->findAMQPReceivedStamp($envelope)->getAMQPEnvelope();
 
-        try {
-            $this->retryFactory->retry(static function () use ($amqpEnvelope): void {
-                $amqpEnvelope->ack();
-            })->run();
-        } catch (AMQPExceptionInterface $e) {
-            throw new TransportException($e->getMessage(), 0, $e);
-        }
+        $this->connection->withRetry(static function () use ($amqpEnvelope): void {
+            $amqpEnvelope->ack();
+        })->run();
     }
 
     /**
@@ -77,13 +71,9 @@ class AMQPReceiver implements QueueReceiverInterface, MessageCountAwareInterface
     {
         $amqpEnvelope = $this->findAMQPReceivedStamp($envelope)->getAMQPEnvelope();
 
-        try {
-            $this->retryFactory->retry(static function () use ($amqpEnvelope): void {
-                $amqpEnvelope->nack();
-            })->run();
-        } catch (AMQPExceptionInterface $e) {
-            throw new TransportException($e->getMessage(), 0, $e);
-        }
+        $this->connection->withRetry(static function () use ($amqpEnvelope): void {
+            $amqpEnvelope->nack();
+        })->run();
     }
 
     /** @throws TransportException */
@@ -106,18 +96,10 @@ class AMQPReceiver implements QueueReceiverInterface, MessageCountAwareInterface
      */
     private function getEnvelopes(string $queueName): iterable
     {
-        try {
-            /** @var iterable<AMQPEnvelope> $amqpEnvelopes */
-            $amqpEnvelopes = $this->retryFactory->retry(
-                function () use ($queueName): iterable {
-                    yield from $this->connection->get($queueName);
-                },
-            )->beforeRetry(function (): void {
-                $this->connection->reconnect();
-            })->run();
-        } catch (AMQPExceptionInterface $e) {
-            throw new TransportException($e->getMessage(), 0, $e);
-        }
+        /** @var iterable<AMQPEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $this->connection->withRetry(function () use ($queueName): iterable {
+            yield from $this->connection->get($queueName);
+        })->run();
 
         foreach ($amqpEnvelopes as $amqpEnvelope) {
             $body = $amqpEnvelope->getBody();

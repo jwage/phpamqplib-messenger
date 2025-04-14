@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
 use PhpAmqpLib\Message\AMQPMessage;
+use Symfony\Component\Messenger\Exception\TransportException;
 
 use function array_shift;
 
@@ -28,6 +29,7 @@ class AMQPConsumer
      * @return iterable<AMQPEnvelope>
      *
      * @throws AMQPExceptionInterface
+     * @throws TransportException
      * @throws InvalidArgumentException
      */
     public function get(string $queueName): iterable
