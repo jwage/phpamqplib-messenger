@@ -15,7 +15,6 @@ use PhpAmqpLib\Wire\AMQPTable;
 
 use function array_map;
 use function array_sum;
-use function assert;
 
 class Connection
 {
@@ -42,38 +41,21 @@ class Connection
 
     public function __destruct()
     {
-        try {
-            $this->disconnect();
-        } catch (AMQPExceptionInterface) {
-        }
+        $this->connection = null;
+        $this->channel    = null;
+        $this->consumer   = null;
     }
 
     public function isConnected(): bool
     {
-        return $this->connection !== null;
-    }
-
-    /** @throws AMQPExceptionInterface */
-    public function connect(): void
-    {
-        $this->connection = $this->amqpConnectionFactory->create($this->connectionConfig);
-    }
-
-    public function disconnect(): void
-    {
-        $this->channel?->close();
-        $this->connection?->close();
-
-        $this->channel    = null;
-        $this->connection = null;
-        $this->consumer   = null;
+        return $this->connection !== null && $this->connection->isConnected();
     }
 
     /** @throws AMQPExceptionInterface */
     public function reconnect(): void
     {
-        $this->disconnect();
-        $this->connect();
+        $this->connection?->reconnect();
+        $this->channel = null;
     }
 
     /**
@@ -329,11 +311,9 @@ class Connection
     /** @throws AMQPExceptionInterface */
     private function connection(): AMQPStreamConnection
     {
-        if (! $this->isConnected()) {
-            $this->connect();
+        if ($this->connection === null) {
+            $this->connection = $this->amqpConnectionFactory->create($this->connectionConfig);
         }
-
-        assert($this->connection instanceof AMQPStreamConnection);
 
         return $this->connection;
     }
