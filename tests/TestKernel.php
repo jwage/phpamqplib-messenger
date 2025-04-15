@@ -53,6 +53,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
                             'dsn' => '%env(MESSENGER_TRANSPORT_PHPAMQPLIB_DSN)%',
                             'options' => [
                                 'prefetch_count' => 10,
+                                'wait_timeout' => 0.10, // lower wait_timeout for tests
                                 'exchange' => ['name' => 'test_phpamqplib_exchange'],
                                 'queues' => [
                                     'test_phpamqplib_queue' => ['prefetch_count' => 2],

@@ -59,7 +59,8 @@ class Connection
     public function reconnect(): void
     {
         $this->connection?->reconnect();
-        $this->channel = null;
+        $this->channel  = null;
+        $this->consumer = null;
     }
 
     /**

@@ -94,7 +94,11 @@ readonly class ConnectionConfig
     /** @var array<string, QueueConfig> */
     public array $queues;
 
-    /** @param array<int|string, QueueConfig> $queues */
+    /**
+     * @param array<int|string, QueueConfig> $queues
+     *
+     * @throws InvalidArgumentException
+     */
     public function __construct(
         bool|null $autoSetup = null,
         string|null $host = null,
@@ -121,6 +125,10 @@ readonly class ConnectionConfig
         DelayConfig|null $delay = null,
         array|null $queues = null,
     ) {
+        if ($waitTimeout === 0 || $waitTimeout === 0.0) {
+            throw new InvalidArgumentException('Connection wait timeout cannot be zero. This will cause the consumer to wait forever and block the messenger worker loop.');
+        }
+
         $this->autoSetup         = $autoSetup ?? true;
         $this->host              = $host ?? 'localhost';
         $this->port              = $port ?? 5672;

@@ -21,6 +21,10 @@ class TransportFunctionalTest extends KernelTestCase
 
     public function testTransport(): void
     {
+        $envelopes = $this->getEnvelopes(0);
+
+        self::assertCount(0, $envelopes);
+
         $message1 = (object) ['test' => 1];
         $message2 = (object) ['test' => 2];
         $message3 = (object) ['test' => 3];
@@ -31,7 +35,7 @@ class TransportFunctionalTest extends KernelTestCase
 
         $this->bus->dispatchBatches($messages, 2);
 
-        // test we can recover from a connection failure
+        // test we can recover from a reconnect inbetween dispatching and consuming
         $connection->reconnect();
 
         $envelopes = $this->getEnvelopes(3);
