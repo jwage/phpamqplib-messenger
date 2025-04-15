@@ -73,6 +73,7 @@ framework:
                     read_timeout: 3.0
                     write_timeout: 3.0
                     channel_rpc_timeout: 3.0
+                    wait_timeout: 1.0
 
                     # Heartbeat settings
                     heartbeat: 60
@@ -80,6 +81,10 @@ framework:
 
                     # Prefetch settings
                     prefetch_count: 10
+
+                    # Confirm settings
+                    confirm_enabled: true
+                    confirm_timeout: 3.0
 
                     # Exchange configuration
                     exchange:

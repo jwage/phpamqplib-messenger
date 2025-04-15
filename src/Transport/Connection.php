@@ -78,7 +78,10 @@ class Connection
         if ($this->channel === null) {
             $channel = $this->withRetry(function (): AMQPChannel {
                 $channel = $this->connection()->channel();
-                $channel->confirm_select();
+
+                if ($this->connectionConfig->confirmEnabled) {
+                    $channel->confirm_select();
+                }
 
                 return $channel;
             })->run();
@@ -169,10 +172,12 @@ class Connection
                 );
             })->run();
 
-            try {
-                $this->channel()->wait_for_pending_acks(timeout: 3);
-            } catch (AMQPExceptionInterface $e) {
-                throw new TransportException($e->getMessage(), 0, $e);
+            if ($this->connectionConfig->confirmEnabled) {
+                try {
+                    $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                } catch (AMQPExceptionInterface $e) {
+                    throw new TransportException($e->getMessage(), 0, $e);
+                }
             }
         }
     }
@@ -184,10 +189,12 @@ class Connection
             $this->channel()->publish_batch();
         })->run();
 
-        try {
-            $this->channel()->wait_for_pending_acks(3);
-        } catch (AMQPExceptionInterface $e) {
-            throw new TransportException($e->getMessage(), 0, $e);
+        if ($this->connectionConfig->confirmEnabled) {
+            try {
+                $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+            } catch (AMQPExceptionInterface $e) {
+                throw new TransportException($e->getMessage(), 0, $e);
+            }
         }
 
         $this->batchCount = 0;
