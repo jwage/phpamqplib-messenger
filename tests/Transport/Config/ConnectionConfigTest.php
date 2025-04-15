@@ -285,7 +285,7 @@ class ConnectionConfigTest extends TestCase
         self::assertSame(3.0, $connectionConfig->channelRPCTimeout);
         self::assertSame(0, $connectionConfig->heartbeat);
         self::assertTrue($connectionConfig->keepalive);
-        self::assertSame(5, $connectionConfig->prefetchCount);
+        self::assertSame(1, $connectionConfig->prefetchCount);
         self::assertSame(1, $connectionConfig->waitTimeout);
         self::assertEquals(new ExchangeConfig(), $connectionConfig->exchange);
         self::assertEquals(new DelayConfig(), $connectionConfig->delay);
