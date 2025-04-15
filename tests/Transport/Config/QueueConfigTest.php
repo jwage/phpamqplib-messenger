@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 
 class QueueConfigTest extends TestCase
@@ -122,6 +123,16 @@ class QueueConfigTest extends TestCase
         self::assertSame('queue_name', $queueConfig->name);
         self::assertSame('routing_key', $queueConfig->bindings['routing_key']->routingKey);
         self::assertSame([], $queueConfig->bindings['routing_key']->arguments);
+    }
+
+    #[TestWith([0])]
+    #[TestWith([0.0])]
+    public function testWaitTimeoutCannotBeZero(int|float $waitTimeout): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Queue "queue_name" wait timeout cannot be zero. This will cause the consumer to wait forever and block the messenger worker loop.');
+
+        new QueueConfig(name: 'queue_name', waitTimeout: $waitTimeout);
     }
 
     private static function assertDefaultQueueConfig(QueueConfig $queueConfig): void

@@ -82,6 +82,72 @@ class AMQPConsumerTest extends TestCase
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
     }
 
+    public function testConsumeWithWaitTimeoutSetToNull(): void
+    {
+        $connectionConfig = ConnectionConfig::fromArray([
+            'queues' => [
+                'test_queue' => [
+                    'prefetch_count' => 20,
+                    'wait_timeout' => null,
+                ],
+            ],
+        ]);
+
+        $consumer = $this->getTestConsumer($connectionConfig);
+
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $this->connection->expects(self::any())
+            ->method('channel')
+            ->willReturn($channel);
+
+        $this->connection->expects(self::any())
+            ->method('getQueueNames')
+            ->willReturn(['test_queue']);
+
+        $channel->expects(self::once())
+            ->method('basic_qos')
+            ->with(
+                prefetch_size: 0,
+                prefetch_count: 20,
+                a_global: false,
+            );
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->with(
+                queue: 'test_queue',
+                consumer_tag: '',
+                no_local: false,
+                no_ack: false,
+                exclusive: false,
+                nowait: false,
+                callback: self::isInstanceOf(Closure::class),
+            );
+
+        $channel->expects(self::once())
+            ->method('wait')
+            ->with(
+                allowed_methods: null,
+                non_blocking: false,
+                timeout: 1,
+            );
+
+        /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->get('test_queue');
+
+        self::assertCount(0, iterator_to_array($amqpEnvelopes));
+
+        $message = $this->createMock(AMQPMessage::class);
+
+        $consumer->callback($message);
+
+        /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->get('test_queue');
+
+        self::assertCount(1, iterator_to_array($amqpEnvelopes));
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -98,6 +164,11 @@ class AMQPConsumerTest extends TestCase
             ],
         );
 
-        $this->consumer = new AMQPConsumer($this->connection, $this->connectionConfig);
+        $this->consumer = $this->getTestConsumer();
+    }
+
+    private function getTestConsumer(ConnectionConfig|null $connectionConfig = null): AMQPConsumer
+    {
+        return new AMQPConsumer($this->connection, $connectionConfig ?? $this->connectionConfig);
     }
 }

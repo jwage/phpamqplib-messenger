@@ -68,6 +68,10 @@ final readonly class QueueConfig
             throw new InvalidArgumentException('Queue name is required');
         }
 
+        if ($waitTimeout === 0 || $waitTimeout === 0.0) {
+            throw new InvalidArgumentException(sprintf('Queue "%s" wait timeout cannot be zero. This will cause the consumer to wait forever and block the messenger worker loop.', $name));
+        }
+
         $this->name          = $name;
         $this->prefetchCount = $prefetchCount ?? ConnectionConfig::DEFAULT_PREFETCH_COUNT;
         $this->waitTimeout   = $waitTimeout ?? ConnectionConfig::DEFAULT_WAIT_TIMEOUT;

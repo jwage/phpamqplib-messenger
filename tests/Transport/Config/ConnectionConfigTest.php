@@ -9,6 +9,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\DelayConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ExchangeConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 
 class ConnectionConfigTest extends TestCase
@@ -270,6 +271,16 @@ class ConnectionConfigTest extends TestCase
 
         self::assertSame(20, $connectionConfig->getQueueConfig('queue1')->prefetchCount);
         self::assertSame(4.0, $connectionConfig->getQueueConfig('queue1')->waitTimeout);
+    }
+
+    #[TestWith([0])]
+    #[TestWith([0.0])]
+    public function testWaitTimeoutCannotBeZero(int|float $waitTimeout): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Connection wait timeout cannot be zero. This will cause the consumer to wait forever and block the messenger worker loop.');
+
+        new ConnectionConfig(waitTimeout: $waitTimeout);
     }
 
     private static function assertDefaultConnectionConfig(ConnectionConfig $connectionConfig): void

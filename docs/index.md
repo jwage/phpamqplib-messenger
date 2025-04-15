@@ -73,18 +73,20 @@ framework:
                     read_timeout: 3.0
                     write_timeout: 3.0
                     channel_rpc_timeout: 3.0
-                    wait_timeout: 1.0
 
                     # Heartbeat settings
                     heartbeat: 60
                     keepalive: true
 
                     # Prefetch settings
-                    prefetch_count: 10
+                    prefetch_count: 1
 
                     # Confirm settings
                     confirm_enabled: true
                     confirm_timeout: 3.0
+
+                    # Consume wait settings
+                    wait_timeout: 1
 
                     # Exchange configuration
                     exchange:
@@ -99,7 +101,8 @@ framework:
                     # Queue configuration
                     queues:
                         orders_messages:
-                            prefetch_count: 5 # overrides the connection prefetch_count: 10
+                            prefetch_count: 5 # overrides the connection prefetch_count: 1
+                            wait_timeout: 2.0 # overrides the connection wait_timeout: 1.0
                             passive: false
                             durable: true
                             exclusive: false
