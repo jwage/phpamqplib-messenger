@@ -32,9 +32,48 @@ class AMQPConnectionFactory
         $config->setHeartbeat($connectionConfig->heartbeat);
         $config->setKeepalive($connectionConfig->keepalive);
 
-        if ($connectionConfig->cacert !== null) {
+        if ($connectionConfig->ssl !== null) {
             $config->setIsSecure(true);
-            $config->setSslCaCert($connectionConfig->cacert);
+
+            if ($connectionConfig->ssl->cafile !== null) {
+                $config->setSslCaCert($connectionConfig->ssl->cafile);
+            }
+
+            if ($connectionConfig->ssl->capath !== null) {
+                $config->setSslCaPath($connectionConfig->ssl->capath);
+            }
+
+            if ($connectionConfig->ssl->localCert !== null) {
+                $config->setSslCert($connectionConfig->ssl->localCert);
+            }
+
+            if ($connectionConfig->ssl->localPk !== null) {
+                $config->setSslKey($connectionConfig->ssl->localPk);
+            }
+
+            if ($connectionConfig->ssl->verifyPeer !== null) {
+                $config->setSslVerify($connectionConfig->ssl->verifyPeer);
+            }
+
+            if ($connectionConfig->ssl->verifyPeerName !== null) {
+                $config->setSslVerifyName($connectionConfig->ssl->verifyPeerName);
+            }
+
+            if ($connectionConfig->ssl->passphrase !== null) {
+                $config->setSslPassPhrase($connectionConfig->ssl->passphrase);
+            }
+
+            if ($connectionConfig->ssl->ciphers !== null) {
+                $config->setSslCiphers($connectionConfig->ssl->ciphers);
+            }
+
+            if ($connectionConfig->ssl->securityLevel !== null) {
+                $config->setSslSecurityLevel($connectionConfig->ssl->securityLevel);
+            }
+
+            if ($connectionConfig->ssl->cryptoMethod !== null) {
+                $config->setSslCryptoMethod($connectionConfig->ssl->cryptoMethod);
+            }
         }
 
         $connection = BaseAMQPConnectionFactory::create($config);
