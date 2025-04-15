@@ -21,6 +21,8 @@ readonly class ConnectionConfig
 
     public const int DEFAULT_WAIT_TIMEOUT = 1;
 
+    public const int DEFAULT_CONFIRM_TIMEOUT = 3;
+
     private const array AVAILABLE_OPTIONS = [
         'auto_setup',
         'host',
@@ -40,6 +42,8 @@ readonly class ConnectionConfig
         'keepalive',
         'prefetch_count',
         'wait_timeout',
+        'confirm_enabled',
+        'confirm_timeout',
         'exchange',
         'delay',
         'queues',
@@ -79,6 +83,10 @@ readonly class ConnectionConfig
 
     public int|float|null $waitTimeout;
 
+    public bool $confirmEnabled;
+
+    public int|float $confirmTimeout;
+
     public ExchangeConfig $exchange;
 
     public DelayConfig $delay;
@@ -107,6 +115,8 @@ readonly class ConnectionConfig
         bool|null $keepalive = null,
         int|null $prefetchCount = null,
         int|float|null $waitTimeout = null,
+        bool|null $confirmEnabled = null,
+        int|float|null $confirmTimeout = null,
         ExchangeConfig|null $exchange = null,
         DelayConfig|null $delay = null,
         array|null $queues = null,
@@ -128,6 +138,8 @@ readonly class ConnectionConfig
         $this->keepalive         = $keepalive ?? true;
         $this->prefetchCount     = $prefetchCount ?? self::DEFAULT_PREFETCH_COUNT;
         $this->waitTimeout       = $waitTimeout ?? self::DEFAULT_WAIT_TIMEOUT;
+        $this->confirmEnabled    = $confirmEnabled ?? true;
+        $this->confirmTimeout    = $confirmTimeout ?? self::DEFAULT_CONFIRM_TIMEOUT;
         $this->exchange          = $exchange ?? new ExchangeConfig();
         $this->delay             = $delay ?? new DelayConfig();
         $this->queues            = self::indexByQueueName($queues ?? []);
@@ -153,6 +165,8 @@ readonly class ConnectionConfig
      *     keepalive?: bool|mixed,
      *     prefetch_count?: int|mixed,
      *     wait_timeout?: int|float|mixed,
+     *     confirm_enabled?: bool|mixed,
+     *     confirm_timeout?: int|float|mixed,
      *     exchange?: array{
      *         name?: string,
      *         default_publish_routing_key?: string,
@@ -202,6 +216,12 @@ readonly class ConnectionConfig
         $waitTimeout = isset($connectionConfig['wait_timeout'])
             ? (float) $connectionConfig['wait_timeout'] : null;
 
+        $confirmEnabled = isset($connectionConfig['confirm_enabled'])
+            ? (bool) $connectionConfig['confirm_enabled'] : null;
+
+        $confirmTimeout = isset($connectionConfig['confirm_timeout'])
+            ? (float) $connectionConfig['confirm_timeout'] : null;
+
         $queues = $connectionConfig['queues'] ?? [];
 
         $queueConfigs = [];
@@ -245,6 +265,8 @@ readonly class ConnectionConfig
             keepalive: isset($connectionConfig['keepalive']) ? (bool) $connectionConfig['keepalive'] : null,
             prefetchCount: $prefetchCount,
             waitTimeout: $waitTimeout,
+            confirmEnabled: $confirmEnabled,
+            confirmTimeout: $confirmTimeout,
             exchange: isset($connectionConfig['exchange']) ? ExchangeConfig::fromArray($connectionConfig['exchange']) : null,
             delay: isset($connectionConfig['delay']) ? DelayConfig::fromArray($connectionConfig['delay']) : null,
             queues: $queueConfigs,

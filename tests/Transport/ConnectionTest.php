@@ -103,8 +103,30 @@ class ConnectionTest extends TestCase
 
     public function testChannel(): void
     {
+        $this->amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($this->amqpChannel);
+
+        $this->amqpChannel->expects(self::once())
+            ->method('confirm_select');
+
         self::assertSame($this->amqpChannel, $this->connection->channel());
         self::assertSame($this->amqpChannel, $this->connection->channel());
+    }
+
+    public function testChannelWithConfirmDisabled(): void
+    {
+        $this->amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($this->amqpChannel);
+
+        $this->amqpChannel->expects(self::never())
+            ->method('confirm_select');
+
+        $connection = $this->getTestConnection(new ConnectionConfig(confirmEnabled: false));
+
+        self::assertSame($this->amqpChannel, $connection->channel());
+        self::assertSame($this->amqpChannel, $connection->channel());
     }
 
     public function testGet(): void
@@ -136,7 +158,43 @@ class ConnectionTest extends TestCase
                 routing_key: '',
             );
 
+        $this->amqpChannel->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->with(timeout: 5);
+
         $this->connection->publish(body: 'test body');
+    }
+
+    public function testPublishWithConfirmDisabled(): void
+    {
+        $body = 'test body';
+
+        $amqpMessage = new AMQPMessage(
+            $body,
+            [
+                'content_type' => 'text/plain',
+                'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
+                'application_headers' => new AMQPTable(['protocol' => 3]),
+            ],
+        );
+
+        $this->amqpChannel->expects(self::once())
+            ->method('basic_publish')
+            ->with(
+                body: $amqpMessage,
+                exchange: 'exchange_name',
+                routing_key: '',
+            );
+
+        $this->amqpChannel->expects(self::never())
+            ->method('wait_for_pending_acks');
+
+        $connection = $this->getTestConnection(new ConnectionConfig(
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            confirmEnabled: false,
+        ));
+
+        $connection->publish(body: 'test body');
     }
 
     public function testPublishWithBatchSizeGreaterThanOne(): void
@@ -174,10 +232,35 @@ class ConnectionTest extends TestCase
 
         $this->amqpChannel->expects(self::once())
             ->method('wait_for_pending_acks')
-            ->with(3);
+            ->with(timeout: 5);
 
         $this->connection->publish(body: $body1, batchSize: 2);
         $this->connection->publish(body: $body2, batchSize: 2);
+    }
+
+    public function testFlush(): void
+    {
+        $this->amqpChannel->expects(self::once())
+            ->method('publish_batch');
+
+        $this->amqpChannel->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->with(timeout: 5);
+
+        $this->connection->flush();
+    }
+
+    public function testFlushWithConfirmDisabled(): void
+    {
+        $connection = $this->getTestConnection(new ConnectionConfig(confirmEnabled: false));
+
+        $this->amqpChannel->expects(self::once())
+            ->method('publish_batch');
+
+        $this->amqpChannel->expects(self::never())
+            ->method('wait_for_pending_acks');
+
+        $connection->flush();
     }
 
     public function testCountMessagesInQueues(): void
@@ -245,10 +328,17 @@ class ConnectionTest extends TestCase
         $this->amqpChannel->expects(self::any())
             ->method('confirm_select');
 
-        $this->connection = new Connection(
+        $this->connection = $this->getTestConnection();
+    }
+
+    private function getTestConnection(ConnectionConfig|null $connectionConfig = null): Connection
+    {
+        return new Connection(
             retryFactory: $this->retryFactory,
             amqpConnectionFactory: $this->amqpConnectionFactory,
-            connectionConfig: new ConnectionConfig(
+            connectionConfig: $connectionConfig ?? new ConnectionConfig(
+                confirmEnabled: true,
+                confirmTimeout: 5.0,
                 exchange: new ExchangeConfig(name: 'exchange_name'),
                 queues: [
                     'queue_name' => new QueueConfig(
