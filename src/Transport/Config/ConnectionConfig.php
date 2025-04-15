@@ -17,7 +17,7 @@ use function sprintf;
 
 readonly class ConnectionConfig
 {
-    public const int DEFAULT_PREFETCH_COUNT = 5;
+    public const int DEFAULT_PREFETCH_COUNT = 1;
 
     public const int DEFAULT_WAIT_TIMEOUT = 1;
 
