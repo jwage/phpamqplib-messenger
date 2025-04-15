@@ -169,9 +169,11 @@ class Connection
                 );
             })->run();
 
-            $this->withRetry(function (): void {
+            try {
                 $this->channel()->wait_for_pending_acks(timeout: 3);
-            })->run();
+            } catch (AMQPExceptionInterface $e) {
+                throw new TransportException($e->getMessage(), 0, $e);
+            }
         }
     }
 
