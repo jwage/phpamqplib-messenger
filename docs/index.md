@@ -65,9 +65,6 @@ framework:
                     password: 'guest'
                     vhost: '/'
 
-                    # SSL/TLS configuration
-                    cacert: '/path/to/ca_certificate.pem'
-
                     # Timeout settings
                     connection_timeout: 3.0
                     read_timeout: 3.0
@@ -87,6 +84,19 @@ framework:
 
                     # Consume wait settings
                     wait_timeout: 1
+
+                    # SSL/TLS configuration
+                    ssl:
+                        cafile: '/path/to/ca_certificate.pem'
+                        capath: '/path/to/ca_certificate_path'
+                        local_cert: '/path/to/local_certificate.pem'
+                        local_pk: '/path/to/local_private_key.pem'
+                        verify_peer: true
+                        verify_peer_name: true
+                        passphrase: 'passphrase'
+                        ciphers: 'TLS_AES_256_GCM_SHA384'
+                        security_level: 2
+                        crypto_method: !php/const:STREAM_CRYPTO_METHOD_ANY_CLIENT
 
                     # Exchange configuration
                     exchange:

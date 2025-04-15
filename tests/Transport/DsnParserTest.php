@@ -11,6 +11,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\DelayConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ExchangeConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\SslConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\DsnParser;
 use PhpAmqpLib\Connection\AMQPConnectionConfig;
 
@@ -24,31 +25,31 @@ class DsnParserTest extends TestCase
     {
         $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://');
 
-        $this->assertSame(true, $connectionConfig->autoSetup);
-        $this->assertSame('localhost', $connectionConfig->host);
-        $this->assertSame(5672, $connectionConfig->port);
-        $this->assertSame('guest', $connectionConfig->user);
-        $this->assertSame('guest', $connectionConfig->password);
-        $this->assertSame('/', $connectionConfig->vhost);
-        $this->assertSame(null, $connectionConfig->cacert);
-        $this->assertSame(false, $connectionConfig->insist);
-        $this->assertSame(AMQPConnectionConfig::AUTH_AMQPPLAIN, $connectionConfig->loginMethod);
-        $this->assertSame('en_US', $connectionConfig->locale);
-        $this->assertSame(3.0, $connectionConfig->connectionTimeout);
-        $this->assertSame(3.0, $connectionConfig->readTimeout);
-        $this->assertSame(3.0, $connectionConfig->writeTimeout);
-        $this->assertSame(3.0, $connectionConfig->channelRPCTimeout);
-        $this->assertSame(0, $connectionConfig->heartbeat);
-        $this->assertSame(true, $connectionConfig->keepalive);
-        $this->assertEquals(new ExchangeConfig(name: 'messages'), $connectionConfig->exchange);
-        $this->assertEquals(new DelayConfig(), $connectionConfig->delay);
-        $this->assertEquals(['messages' => new QueueConfig(name: 'messages')], $connectionConfig->queues);
+        self::assertSame(true, $connectionConfig->autoSetup);
+        self::assertSame('localhost', $connectionConfig->host);
+        self::assertSame(5672, $connectionConfig->port);
+        self::assertSame('guest', $connectionConfig->user);
+        self::assertSame('guest', $connectionConfig->password);
+        self::assertSame('/', $connectionConfig->vhost);
+        self::assertSame(false, $connectionConfig->insist);
+        self::assertSame(AMQPConnectionConfig::AUTH_AMQPPLAIN, $connectionConfig->loginMethod);
+        self::assertSame('en_US', $connectionConfig->locale);
+        self::assertSame(3.0, $connectionConfig->connectionTimeout);
+        self::assertSame(3.0, $connectionConfig->readTimeout);
+        self::assertSame(3.0, $connectionConfig->writeTimeout);
+        self::assertSame(3.0, $connectionConfig->channelRPCTimeout);
+        self::assertSame(0, $connectionConfig->heartbeat);
+        self::assertSame(true, $connectionConfig->keepalive);
+        self::assertNull($connectionConfig->ssl);
+        self::assertEquals(new ExchangeConfig(name: 'messages'), $connectionConfig->exchange);
+        self::assertEquals(new DelayConfig(), $connectionConfig->delay);
+        self::assertEquals(['messages' => new QueueConfig(name: 'messages')], $connectionConfig->queues);
     }
 
-    public function testMissingCaCert(): void
+    public function testMissingSslConfig(): void
     {
         self::expectException(InvalidArgumentException::class);
-        self::expectExceptionMessage('No CA certificate has been provided. Pass the "cacert" parameter in the DSN to use SSL. Alternatively, you can use phpamqplib:// to use without SSL.');
+        self::expectExceptionMessage('No ssl configuration has been provided. Alternatively, you can use phpamqplib:// to use without SSL.');
 
         $this->dsnParser->parseDsn('phpamqplibs://');
     }
@@ -92,7 +93,6 @@ class DsnParserTest extends TestCase
         self::assertSame('username', $connectionConfig->user);
         self::assertSame('password', $connectionConfig->password);
         self::assertSame('vhost', $connectionConfig->vhost);
-        self::assertSame('cacert', $connectionConfig->cacert);
         self::assertSame(true, $connectionConfig->insist);
         self::assertSame('login_method', $connectionConfig->loginMethod);
         self::assertSame('locale', $connectionConfig->locale);
@@ -102,6 +102,10 @@ class DsnParserTest extends TestCase
         self::assertSame(4.0, $connectionConfig->channelRPCTimeout);
         self::assertSame(5, $connectionConfig->heartbeat);
         self::assertSame(true, $connectionConfig->keepalive);
+
+        self::assertEquals(new SslConfig(
+            cafile: 'cacert',
+        ), $connectionConfig->ssl);
 
         self::assertEquals(new ExchangeConfig(
             name: 'exchange_name',
@@ -166,7 +170,6 @@ class DsnParserTest extends TestCase
             'password' => 'password',
             'port' => 1234,
             'vhost' => 'vhost',
-            'cacert' => 'cacert',
             'insist' => true,
             'login_method' => 'login_method',
             'locale' => 'locale',
@@ -176,6 +179,7 @@ class DsnParserTest extends TestCase
             'channel_rpc_timeout' => 4.0,
             'heartbeat' => 5,
             'keepalive' => true,
+            'ssl' => ['cafile' => 'cacert'],
             'exchange' => [
                 'name' => 'exchange_name',
                 'type' => 'exchange_type',

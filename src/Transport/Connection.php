@@ -50,6 +50,11 @@ class Connection
         $this->consumer   = null;
     }
 
+    public function getConfig(): ConnectionConfig
+    {
+        return $this->connectionConfig;
+    }
+
     public function isConnected(): bool
     {
         return $this->connection !== null && $this->connection->isConnected();

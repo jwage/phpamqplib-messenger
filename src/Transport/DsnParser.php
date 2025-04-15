@@ -54,12 +54,37 @@ class DsnParser
 
         /**
          * @var array{
-         *     host: string,
-         *     port: int,
-         *     vhost: string,
-         *     user: string,
-         *     password: string,
-         *     cacert?: string,
+         *     auto_setup?: bool,
+         *     host?: string,
+         *     port?: int|mixed,
+         *     user?: string,
+         *     password?: string,
+         *     vhost?: string,
+         *     insist?: bool|mixed,
+         *     login_method?: string,
+         *     locale?: string,
+         *     connection_timeout?: float|mixed,
+         *     read_timeout?: float|mixed,
+         *     write_timeout?: float|mixed,
+         *     channel_rpc_timeout?: float|mixed,
+         *     heartbeat?: int|mixed,
+         *     keepalive?: bool|mixed,
+         *     prefetch_count?: int|mixed,
+         *     wait_timeout?: int|float|mixed,
+         *     confirm_enabled?: bool|mixed,
+         *     confirm_timeout?: int|float|mixed,
+         *     ssl: array{
+         *         cafile?: string,
+         *         capath?: string,
+         *         local_cert?: string,
+         *         local_pk?: string,
+         *         verify_peer?: bool,
+         *         verify_peer_name?: bool,
+         *         passphrase?: string,
+         *         ciphers?: string,
+         *         security_level?: int,
+         *         crypto_method?: int,
+         *     },
          *     exchange: array{
          *         name: string,
          *         default_publish_routing_key?: string,
@@ -116,11 +141,11 @@ class DsnParser
         }
 
         if (! $useAmqps) {
-            unset($connectionConfig['cacert']);
+            unset($connectionConfig['ssl']);
         }
 
-        if ($useAmqps && ! self::hasCaCertConfigured($connectionConfig)) {
-            throw new InvalidArgumentException('No CA certificate has been provided. Pass the "cacert" parameter in the DSN to use SSL. Alternatively, you can use phpamqplib:// to use without SSL.');
+        if ($useAmqps && ! self::hasSslConfigured($connectionConfig)) {
+            throw new InvalidArgumentException('No ssl configuration has been provided. Alternatively, you can use phpamqplib:// to use without SSL.');
         }
 
         return ConnectionConfig::fromArray($connectionConfig);
@@ -189,8 +214,8 @@ class DsnParser
     }
 
     /** @param array<string, mixed> $connectionConfig */
-    private static function hasCaCertConfigured(array $connectionConfig): bool
+    private static function hasSslConfigured(array $connectionConfig): bool
     {
-        return isset($connectionConfig['cacert']) && $connectionConfig['cacert'] !== '';
+        return isset($connectionConfig['ssl']) && ! empty($connectionConfig['ssl']);
     }
 }
