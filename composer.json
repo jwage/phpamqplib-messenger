@@ -17,8 +17,8 @@
     "require": {
         "php": "^8.3",
         "php-amqplib/php-amqplib": "^3.7",
-        "symfony/framework-bundle": "^6.4 || ^7.0",
-        "symfony/messenger": "^6.4 || ^7.0"
+        "symfony/framework-bundle": "^5.4 || ^6.4 || ^7.0",
+        "symfony/messenger": "^6.3 || ^7.0"
     },
     "require-dev": {
         "doctrine/coding-standard": "^13.0",
