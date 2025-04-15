@@ -55,10 +55,7 @@ class AMQPReceiver implements QueueReceiverInterface, MessageCountAwareInterface
     public function ack(Envelope $envelope): void
     {
         $amqpEnvelope = $this->findAMQPReceivedStamp($envelope)->getAMQPEnvelope();
-
-        $this->connection->withRetry(static function () use ($amqpEnvelope): void {
-            $amqpEnvelope->ack();
-        })->run();
+        $amqpEnvelope->ack();
     }
 
     /**
@@ -70,10 +67,7 @@ class AMQPReceiver implements QueueReceiverInterface, MessageCountAwareInterface
     public function reject(Envelope $envelope): void
     {
         $amqpEnvelope = $this->findAMQPReceivedStamp($envelope)->getAMQPEnvelope();
-
-        $this->connection->withRetry(static function () use ($amqpEnvelope): void {
-            $amqpEnvelope->nack();
-        })->run();
+        $amqpEnvelope->nack();
     }
 
     /** @throws TransportException */
