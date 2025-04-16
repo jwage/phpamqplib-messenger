@@ -54,7 +54,7 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
     #[Override]
     public function ack(Envelope $envelope): void
     {
-        $amqpEnvelope = $this->findAMQPReceivedStamp($envelope)->getAMQPEnvelope();
+        $amqpEnvelope = $this->findAMQPReceivedStamp($envelope)->getAmqpEnvelope();
         $amqpEnvelope->ack();
     }
 
@@ -66,7 +66,7 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
     #[Override]
     public function reject(Envelope $envelope): void
     {
-        $amqpEnvelope = $this->findAMQPReceivedStamp($envelope)->getAMQPEnvelope();
+        $amqpEnvelope = $this->findAMQPReceivedStamp($envelope)->getAmqpEnvelope();
         $amqpEnvelope->nack();
     }
 
@@ -90,7 +90,7 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
      */
     private function getEnvelopes(string $queueName): iterable
     {
-        /** @var iterable<AMQPEnvelope> $amqpEnvelopes */
+        /** @var iterable<AmqpEnvelope> $amqpEnvelopes */
         $amqpEnvelopes = $this->connection->withRetry(function () use ($queueName): iterable {
             yield from $this->connection->get($queueName);
         })->run();

@@ -14,7 +14,7 @@ use function array_shift;
 
 class AmqpConsumer
 {
-    /** @var array<AMQPEnvelope> */
+    /** @var array<AmqpEnvelope> */
     private array $buffer = [];
 
     private bool $isConsuming = false;
@@ -26,7 +26,7 @@ class AmqpConsumer
     }
 
     /**
-     * @return iterable<AMQPEnvelope>
+     * @return iterable<AmqpEnvelope>
      *
      * @throws AMQPExceptionInterface
      * @throws TransportException
