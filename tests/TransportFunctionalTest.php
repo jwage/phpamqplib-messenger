@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use Jwage\PhpAmqpLibMessengerBundle\BatchMessageBusInterface;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPTransport;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Envelope;
 use Traversable;
@@ -17,7 +17,7 @@ class TransportFunctionalTest extends KernelTestCase
 {
     private BatchMessageBusInterface $bus;
 
-    private AMQPTransport $transport;
+    private AmqpTransport $transport;
 
     public function testTransport(): void
     {
@@ -58,7 +58,7 @@ class TransportFunctionalTest extends KernelTestCase
         $this->bus = $container->get(BatchMessageBusInterface::class);
 
         $transport = $container->get('messenger.transport.test_phpamqplib');
-        assert($transport instanceof AMQPTransport);
+        assert($transport instanceof AmqpTransport);
 
         $this->transport = $transport;
     }

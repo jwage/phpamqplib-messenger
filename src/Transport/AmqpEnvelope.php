@@ -12,7 +12,7 @@ use function assert;
 use function is_numeric;
 use function is_string;
 
-class AMQPEnvelope
+class AmqpEnvelope
 {
     public function __construct(
         private AMQPMessage $amqpMessage,

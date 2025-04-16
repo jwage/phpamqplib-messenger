@@ -26,7 +26,7 @@ class Connection
 
     private AMQPChannel|null $channel = null;
 
-    private AMQPConsumer|null $consumer = null;
+    private AmqpConsumer|null $consumer = null;
 
     private int $batchCount = 0;
 
@@ -36,7 +36,7 @@ class Connection
 
     public function __construct(
         private RetryFactory $retryFactory,
-        private AMQPConnectionFactory $amqpConnectionFactory,
+        private AmqpConnectionFactory $amqpConnectionFactory,
         private ConnectionConfig $connectionConfig,
     ) {
         $this->autoSetup      = $connectionConfig->autoSetup;
@@ -112,7 +112,7 @@ class Connection
             $this->setupExchangeAndQueues();
         }
 
-        yield from ($this->consumer ??= new AMQPConsumer($this, $this->connectionConfig))->get($queueName);
+        yield from ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig))->get($queueName);
     }
 
     /**
@@ -125,7 +125,7 @@ class Connection
         string $body,
         int $delayInMs = 0,
         int $batchSize = 1,
-        AMQPStamp|null $amqpStamp = null,
+        AmqpStamp|null $amqpStamp = null,
     ): void {
         if ($this->autoSetup) {
             $this->setupExchangeAndQueues();
@@ -239,7 +239,7 @@ class Connection
             });
     }
 
-    private function getRoutingKeyForMessage(AMQPStamp|null $amqpStamp): string|null
+    private function getRoutingKeyForMessage(AmqpStamp|null $amqpStamp): string|null
     {
         return $amqpStamp?->getRoutingKey() ?? $this->connectionConfig->exchange->defaultPublishRoutingKey;
     }
@@ -387,9 +387,9 @@ class Connection
         return $this->connection;
     }
 
-    private function createAMQPEnvelope(string $body): AMQPEnvelope
+    private function createAMQPEnvelope(string $body): AmqpEnvelope
     {
-        return new AMQPEnvelope(
+        return new AmqpEnvelope(
             new AMQPMessage(
                 $body,
                 [

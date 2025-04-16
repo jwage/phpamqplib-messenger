@@ -6,8 +6,8 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPConnectionFactory;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPEnvelope;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ExchangeConfig;
@@ -29,7 +29,7 @@ class ConnectionTest extends TestCase
     private RetryFactory $retryFactory;
 
     /** @var AMQPConnectionFactory&MockObject */
-    private AMQPConnectionFactory $amqpConnectionFactory;
+    private AmqpConnectionFactory $amqpConnectionFactory;
 
     /** @var AMQPStreamConnection&MockObject */
     private AMQPStreamConnection $amqpConnection;
@@ -311,7 +311,7 @@ class ConnectionTest extends TestCase
 
         $this->retryFactory = new RetryFactory();
 
-        $this->amqpConnectionFactory = $this->createMock(AMQPConnectionFactory::class);
+        $this->amqpConnectionFactory = $this->createMock(AmqpConnectionFactory::class);
 
         $this->amqpConnection = $this->createMock(AMQPStreamConnection::class);
 

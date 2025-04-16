@@ -6,8 +6,8 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Closure;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPConsumer;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPEnvelope;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConsumer;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
@@ -18,14 +18,14 @@ use Traversable;
 
 use function iterator_to_array;
 
-class AMQPConsumerTest extends TestCase
+class AmqpConsumerTest extends TestCase
 {
     /** @var MockObject&Connection */
     private Connection $connection;
 
     private ConnectionConfig $connectionConfig;
 
-    private AMQPConsumer $consumer;
+    private AmqpConsumer $consumer;
 
     public function testConsume(): void
     {
@@ -167,8 +167,8 @@ class AMQPConsumerTest extends TestCase
         $this->consumer = $this->getTestConsumer();
     }
 
-    private function getTestConsumer(ConnectionConfig|null $connectionConfig = null): AMQPConsumer
+    private function getTestConsumer(ConnectionConfig|null $connectionConfig = null): AmqpConsumer
     {
-        return new AMQPConsumer($this->connection, $connectionConfig ?? $this->connectionConfig);
+        return new AmqpConsumer($this->connection, $connectionConfig ?? $this->connectionConfig);
     }
 }

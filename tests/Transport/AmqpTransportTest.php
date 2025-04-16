@@ -5,30 +5,30 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPReceiver;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPSender;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPTransport;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceiver;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpSender;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PHPUnit\Framework\MockObject\MockObject;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
-class AMQPTransportTest extends TestCase
+class AmqpTransportTest extends TestCase
 {
     /** @var Connection&MockObject */
     private Connection $connection;
 
     /** @var AMQPReceiver&MockObject */
-    private AMQPReceiver $receiver;
+    private AmqpReceiver $receiver;
 
     /** @var AMQPSender&MockObject */
-    private AMQPSender $sender;
+    private AmqpSender $sender;
 
     /** @var SerializerInterface&MockObject */
     private SerializerInterface $serializer;
 
-    private AMQPTransport $transport;
+    private AmqpTransport $transport;
 
     public function testGetConnection(): void
     {
@@ -106,13 +106,13 @@ class AMQPTransportTest extends TestCase
 
         $this->connection = $this->createMock(Connection::class);
 
-        $this->receiver = $this->createMock(AMQPReceiver::class);
+        $this->receiver = $this->createMock(AmqpReceiver::class);
 
-        $this->sender = $this->createMock(AMQPSender::class);
+        $this->sender = $this->createMock(AmqpSender::class);
 
         $this->serializer = $this->createMock(SerializerInterface::class);
 
-        $this->transport = new AMQPTransport(
+        $this->transport = new AmqpTransport(
             connection: $this->connection,
             receiver: $this->receiver,
             sender: $this->sender,

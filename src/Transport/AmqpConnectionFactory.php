@@ -11,7 +11,7 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 use function assert;
 
-class AMQPConnectionFactory
+class AmqpConnectionFactory
 {
     public function create(ConnectionConfig $connectionConfig): AMQPStreamConnection
     {

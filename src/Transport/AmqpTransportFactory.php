@@ -14,7 +14,7 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
 use function str_starts_with;
 
 /** @implements TransportFactoryInterface<AMQPTransport> */
-class AMQPTransportFactory implements TransportFactoryInterface
+class AmqpTransportFactory implements TransportFactoryInterface
 {
     public function __construct(
         private ConnectionFactory $connectionFactory,
@@ -37,7 +37,7 @@ class AMQPTransportFactory implements TransportFactoryInterface
 
         $connection = $this->connectionFactory->fromDsn($dsn, $options);
 
-        return new AMQPTransport(
+        return new AmqpTransport(
             connection: $connection,
             serializer: $serializer,
         );

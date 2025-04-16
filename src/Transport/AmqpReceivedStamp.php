@@ -6,15 +6,15 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 
-class AMQPReceivedStamp implements NonSendableStampInterface
+class AmqpReceivedStamp implements NonSendableStampInterface
 {
     public function __construct(
-        private AMQPEnvelope $amqpEnvelope,
+        private AmqpEnvelope $amqpEnvelope,
         private string $queueName,
     ) {
     }
 
-    public function getAMQPEnvelope(): AMQPEnvelope
+    public function getAMQPEnvelope(): AmqpEnvelope
     {
         return $this->amqpEnvelope;
     }
