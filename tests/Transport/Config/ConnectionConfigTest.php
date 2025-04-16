@@ -52,7 +52,7 @@ class ConnectionConfigTest extends TestCase
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
-        self::expectExceptionMessage('Invalid option(s) "invalid" passed to the AMQP Messenger transport.');
+        self::expectExceptionMessage('Invalid option(s) "invalid" passed to the AMQP Messenger transport - known options:');
 
         ConnectionConfig::fromArray(['invalid' => true]);
     }
