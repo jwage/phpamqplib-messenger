@@ -100,7 +100,7 @@ class Connection
     }
 
     /**
-     * @return iterable<AMQPEnvelope>
+     * @return iterable<AmqpEnvelope>
      *
      * @throws AMQPExceptionInterface
      * @throws TransportException

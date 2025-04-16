@@ -14,7 +14,7 @@ class AmqpReceivedStamp implements NonSendableStampInterface
     ) {
     }
 
-    public function getAMQPEnvelope(): AmqpEnvelope
+    public function getAmqpEnvelope(): AmqpEnvelope
     {
         return $this->amqpEnvelope;
     }
