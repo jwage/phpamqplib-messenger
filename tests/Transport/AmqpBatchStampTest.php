@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPBatchStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpBatchStamp;
 
-class AMQPBatchStampTest extends TestCase
+class AmqpBatchStampTest extends TestCase
 {
-    private AMQPBatchStamp $stamp;
+    private AmqpBatchStamp $stamp;
 
     public function testConstruct(): void
     {
@@ -20,6 +20,6 @@ class AMQPBatchStampTest extends TestCase
     {
         parent::setUp();
 
-        $this->stamp = new AMQPBatchStamp(100);
+        $this->stamp = new AmqpBatchStamp(100);
     }
 }

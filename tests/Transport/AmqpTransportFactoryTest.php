@@ -5,18 +5,18 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPTransport;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPTransportFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransportFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConnectionFactory;
 use PHPUnit\Framework\MockObject\MockObject;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
-class AMQPTransportFactoryTest extends TestCase
+class AmqpTransportFactoryTest extends TestCase
 {
     /** @var ConnectionFactory&MockObject */
     private ConnectionFactory $connectionFactory;
 
-    private AMQPTransportFactory $factory;
+    private AmqpTransportFactory $factory;
 
     public function testCreateTransport(): void
     {
@@ -24,7 +24,7 @@ class AMQPTransportFactoryTest extends TestCase
 
         $transport = $this->factory->createTransport('phpamqplib://localhost', [], $serializer);
 
-        self::assertInstanceOf(AMQPTransport::class, $transport);
+        self::assertInstanceOf(AmqpTransport::class, $transport);
     }
 
     public function testSupports(): void
@@ -40,6 +40,6 @@ class AMQPTransportFactoryTest extends TestCase
 
         $this->connectionFactory = $this->createMock(ConnectionFactory::class);
 
-        $this->factory = new AMQPTransportFactory($this->connectionFactory);
+        $this->factory = new AmqpTransportFactory($this->connectionFactory);
     }
 }

@@ -316,7 +316,7 @@ readonly class ConnectionConfig
     private static function validate(array $connectionConfig): void
     {
         if (0 < count($invalidOptions = array_diff(array_keys($connectionConfig), self::AVAILABLE_OPTIONS))) {
-            throw new InvalidArgumentException(sprintf('Invalid option(s) "%s" passed to the AMQP Messenger transport.', implode('", "', $invalidOptions)));
+            throw new InvalidArgumentException(sprintf('Invalid option(s) "%s" passed to the AMQP Messenger transport - known options: "%s".', implode('", "', $invalidOptions), implode('", "', self::AVAILABLE_OPTIONS)));
         }
     }
 

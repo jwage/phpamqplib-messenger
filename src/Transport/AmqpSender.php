@@ -17,7 +17,7 @@ use Throwable;
 use function assert;
 use function is_string;
 
-class AMQPSender implements SenderInterface, BatchSenderInterface
+class AmqpSender implements SenderInterface, BatchSenderInterface
 {
     public function __construct(
         private Connection $connection,
@@ -34,20 +34,20 @@ class AMQPSender implements SenderInterface, BatchSenderInterface
     {
         $encodedMessage = $this->serializer->encode($envelope);
 
-        $batchStamp = $envelope->last(AMQPBatchStamp::class);
+        $batchStamp = $envelope->last(AmqpBatchStamp::class);
         $batchSize  = $batchStamp ? $batchStamp->getBatchSize() : 1;
 
         $delayStamp = $envelope->last(DelayStamp::class);
         $delay      = $delayStamp ? $delayStamp->getDelay() : 0;
 
-        $amqpStamp = $envelope->last(AMQPStamp::class);
-        if ($amqpStamp instanceof AMQPStamp && isset($amqpStamp->getAttributes()['message_id'])) {
+        $amqpStamp = $envelope->last(AmqpStamp::class);
+        if ($amqpStamp instanceof AmqpStamp && isset($amqpStamp->getAttributes()['message_id'])) {
             $envelope = $envelope->with(new TransportMessageIdStamp($amqpStamp->getAttributes()['message_id']));
         }
 
-        $amqpReceivedStamp = $envelope->last(AMQPReceivedStamp::class);
-        if ($amqpReceivedStamp instanceof AMQPReceivedStamp) {
-            $amqpStamp = AMQPStamp::createFromAMQPEnvelope(
+        $amqpReceivedStamp = $envelope->last(AmqpReceivedStamp::class);
+        if ($amqpReceivedStamp instanceof AmqpReceivedStamp) {
+            $amqpStamp = AmqpStamp::createFromAMQPEnvelope(
                 $amqpReceivedStamp->getAMQPEnvelope(),
                 $amqpStamp,
                 $envelope->last(RedeliveryStamp::class) ? $amqpReceivedStamp->getQueueName() : null,

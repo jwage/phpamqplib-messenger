@@ -5,17 +5,17 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPEnvelope;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPReceivedStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
 use PhpAmqpLib\Message\AMQPMessage;
 
-class AMQPReceivedStampTest extends TestCase
+class AmqpReceivedStampTest extends TestCase
 {
     private AMQPMessage $message;
 
-    private AMQPEnvelope $envelope;
+    private AmqpEnvelope $envelope;
 
-    private AMQPReceivedStamp $stamp;
+    private AmqpReceivedStamp $stamp;
 
     public function testGetAMQPEnvelope(): void
     {
@@ -33,8 +33,8 @@ class AMQPReceivedStampTest extends TestCase
 
         $this->message = new AMQPMessage('test message');
 
-        $this->envelope = new AMQPEnvelope($this->message);
+        $this->envelope = new AmqpEnvelope($this->message);
 
-        $this->stamp = new AMQPReceivedStamp($this->envelope, 'queue_name');
+        $this->stamp = new AmqpReceivedStamp($this->envelope, 'queue_name');
     }
 }

@@ -6,10 +6,10 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPConnectionFactory;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPEnvelope;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPReceivedStamp;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPReceiver;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceiver;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Message\AMQPMessage;
@@ -22,7 +22,7 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 use function serialize;
 
-class AMQPReceiverTest extends TestCase
+class AmqpReceiverTest extends TestCase
 {
     /** @var LoggerInterface&MockObject */
     private LoggerInterface $logger;
@@ -35,14 +35,14 @@ class AMQPReceiverTest extends TestCase
     /** @var SerializerInterface&MockObject */
     private SerializerInterface $serializer;
 
-    private AMQPReceiver $receiver;
+    private AmqpReceiver $receiver;
 
     public function testGet(): void
     {
         $message      = new stdClass();
         $envelope     = new Envelope($message);
         $amqpMessage  = new AMQPMessage(serialize($message), ['message_id' => '1']);
-        $amqpEnvelope = new AMQPEnvelope($amqpMessage);
+        $amqpEnvelope = new AmqpEnvelope($amqpMessage);
 
         $this->connection->expects(self::any())
             ->method('getQueueNames')
@@ -74,21 +74,21 @@ class AMQPReceiverTest extends TestCase
         self::assertInstanceOf(TransportMessageIdStamp::class, $transportMessageIdStamp1);
         self::assertSame('1', $transportMessageIdStamp1->getId());
 
-        $amqpReceivedStamp1 = $envelope1->last(AMQPReceivedStamp::class);
+        $amqpReceivedStamp1 = $envelope1->last(AmqpReceivedStamp::class);
 
-        self::assertInstanceOf(AMQPReceivedStamp::class, $amqpReceivedStamp1);
+        self::assertInstanceOf(AmqpReceivedStamp::class, $amqpReceivedStamp1);
         self::assertSame($amqpEnvelope, $amqpReceivedStamp1->getAMQPEnvelope());
         self::assertSame('queue_name', $amqpReceivedStamp1->getQueueName());
     }
 
     public function testAck(): void
     {
-        $amqpEnvelope = $this->createMock(AMQPEnvelope::class);
+        $amqpEnvelope = $this->createMock(AmqpEnvelope::class);
 
         $amqpEnvelope->expects(self::once())
             ->method('ack');
 
-        $stamp = new AMQPReceivedStamp($amqpEnvelope, 'queue_name');
+        $stamp = new AmqpReceivedStamp($amqpEnvelope, 'queue_name');
 
         $envelope = new Envelope(new stdClass(), [$stamp]);
 
@@ -97,12 +97,12 @@ class AMQPReceiverTest extends TestCase
 
     public function testReject(): void
     {
-        $amqpEnvelope = $this->createMock(AMQPEnvelope::class);
+        $amqpEnvelope = $this->createMock(AmqpEnvelope::class);
 
         $amqpEnvelope->expects(self::once())
             ->method('nack');
 
-        $stamp = new AMQPReceivedStamp($amqpEnvelope, 'queue_name');
+        $stamp = new AmqpReceivedStamp($amqpEnvelope, 'queue_name');
 
         $envelope = new Envelope(new stdClass(), [$stamp]);
 
@@ -126,7 +126,7 @@ class AMQPReceiverTest extends TestCase
 
         $this->retryFactory = new RetryFactory($this->logger);
 
-        $amqpConnectionFactory = new AMQPConnectionFactory();
+        $amqpConnectionFactory = new AmqpConnectionFactory();
         $connectionConfig      = new ConnectionConfig();
 
         $this->connection = $this->getMockBuilder(Connection::class)
@@ -136,7 +136,7 @@ class AMQPReceiverTest extends TestCase
 
         $this->serializer = $this->createMock(SerializerInterface::class);
 
-        $this->receiver = new AMQPReceiver(
+        $this->receiver = new AmqpReceiver(
             $this->connection,
             $this->serializer,
         );

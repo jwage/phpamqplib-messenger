@@ -6,7 +6,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 
-class AMQPStamp implements NonSendableStampInterface
+class AmqpStamp implements NonSendableStampInterface
 {
     private bool $isRetryAttempt = false;
 
@@ -19,7 +19,7 @@ class AMQPStamp implements NonSendableStampInterface
 
     /** @psalm-suppress MixedAssignment */
     public static function createFromAMQPEnvelope(
-        AMQPEnvelope $amqpEnvelope,
+        AmqpEnvelope $amqpEnvelope,
         self|null $previousStamp = null,
         string|null $retryRoutingKey = null,
     ): self {

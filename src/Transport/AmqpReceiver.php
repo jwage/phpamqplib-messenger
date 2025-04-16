@@ -16,7 +16,7 @@ use Symfony\Component\Messenger\Transport\Receiver\QueueReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Throwable;
 
-class AMQPReceiver implements QueueReceiverInterface, MessageCountAwareInterface
+class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
 {
     public function __construct(
         private Connection $connection,
@@ -117,14 +117,14 @@ class AMQPReceiver implements QueueReceiverInterface, MessageCountAwareInterface
                     ->with(new TransportMessageIdStamp($messageId));
             }
 
-            yield $envelope->with(new AMQPReceivedStamp($amqpEnvelope, $queueName));
+            yield $envelope->with(new AmqpReceivedStamp($amqpEnvelope, $queueName));
         }
     }
 
     /** @throws LogicException */
-    private function findAMQPReceivedStamp(Envelope $envelope): AMQPReceivedStamp
+    private function findAMQPReceivedStamp(Envelope $envelope): AmqpReceivedStamp
     {
-        $amqpReceivedStamp = $envelope->last(AMQPReceivedStamp::class);
+        $amqpReceivedStamp = $envelope->last(AmqpReceivedStamp::class);
 
         if ($amqpReceivedStamp === null) {
             throw new LogicException('No "AMQPReceivedStamp" stamp found on the Envelope.');

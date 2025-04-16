@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPBatchStamp;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPEnvelope;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPReceivedStamp;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPSender;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpBatchStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpSender;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -18,7 +18,7 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
-class AMQPSenderTest extends TestCase
+class AmqpSenderTest extends TestCase
 {
     /** @var Connection&MockObject */
     private Connection $connection;
@@ -26,17 +26,17 @@ class AMQPSenderTest extends TestCase
     /** @var SerializerInterface&MockObject */
     private SerializerInterface $serializer;
 
-    private AMQPSender $sender;
+    private AmqpSender $sender;
 
     public function testSend(): void
     {
-        $amqpEnvelope = new AMQPEnvelope(new AMQPMessage('test'));
+        $amqpEnvelope = new AmqpEnvelope(new AMQPMessage('test'));
 
-        $amqpBatchStamp = new AMQPBatchStamp(1);
+        $amqpBatchStamp = new AmqpBatchStamp(1);
 
         $delayStamp = new DelayStamp(1000);
 
-        $amqpStamp = new AMQPStamp(null, [
+        $amqpStamp = new AmqpStamp(null, [
             'message_id' => '123',
             'headers' => [],
             'content_type' => null,
@@ -53,7 +53,7 @@ class AMQPSenderTest extends TestCase
             'type' => null,
         ]);
 
-        $amqpReceivedStamp = new AMQPReceivedStamp($amqpEnvelope, 'queue_name');
+        $amqpReceivedStamp = new AmqpReceivedStamp($amqpEnvelope, 'queue_name');
 
         $message  = new stdClass();
         $envelope = new Envelope($message, [
@@ -90,7 +90,7 @@ class AMQPSenderTest extends TestCase
 
         $this->serializer = $this->createMock(SerializerInterface::class);
 
-        $this->sender = new AMQPSender(
+        $this->sender = new AmqpSender(
             $this->connection,
             $this->serializer,
         );

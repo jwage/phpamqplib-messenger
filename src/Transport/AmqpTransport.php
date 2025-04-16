@@ -15,12 +15,12 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\SetupableTransportInterface;
 use Throwable;
 
-class AMQPTransport implements QueueReceiverInterface, MessageCountAwareInterface, SetupableTransportInterface, BatchTransportInterface
+class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterface, SetupableTransportInterface, BatchTransportInterface
 {
     public function __construct(
         private Connection $connection,
-        private AMQPReceiver|null $receiver = null,
-        private AMQPSender|null $sender = null,
+        private AmqpReceiver|null $receiver = null,
+        private AmqpSender|null $sender = null,
         private SerializerInterface|null $serializer = null,
     ) {
     }
@@ -106,17 +106,17 @@ class AMQPTransport implements QueueReceiverInterface, MessageCountAwareInterfac
         return $this->serializer ??= new PhpSerializer();
     }
 
-    private function getReceiver(): AMQPReceiver
+    private function getReceiver(): AmqpReceiver
     {
-        return $this->receiver ??= new AMQPReceiver(
+        return $this->receiver ??= new AmqpReceiver(
             $this->connection,
             $this->getSerializer(),
         );
     }
 
-    private function getSender(): AMQPSender
+    private function getSender(): AmqpSender
     {
-        return $this->sender ??= new AMQPSender(
+        return $this->sender ??= new AmqpSender(
             $this->connection,
             $this->getSerializer(),
         );

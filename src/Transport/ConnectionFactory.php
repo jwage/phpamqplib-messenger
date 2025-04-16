@@ -13,7 +13,7 @@ class ConnectionFactory
     public function __construct(
         private DsnParser $dsnParser,
         private RetryFactory $retryFactory,
-        private AMQPConnectionFactory $amqpConnectionFactory,
+        private AmqpConnectionFactory $amqpConnectionFactory,
     ) {
     }
 

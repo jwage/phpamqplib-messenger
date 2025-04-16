@@ -5,19 +5,19 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPEnvelope;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use PhpAmqpLib\Message\AMQPMessage;
 
-class AMQPStampTest extends TestCase
+class AmqpStampTest extends TestCase
 {
-    private AMQPStamp $stamp;
+    private AmqpStamp $stamp;
 
     public function testCreateFromAMQPEnvelope(): void
     {
-        $amqpEnvelope = new AMQPEnvelope(new AMQPMessage('test'));
+        $amqpEnvelope = new AmqpEnvelope(new AMQPMessage('test'));
 
-        $stamp = AMQPStamp::createFromAMQPEnvelope(amqpEnvelope: $amqpEnvelope, retryRoutingKey: 'test');
+        $stamp = AmqpStamp::createFromAMQPEnvelope(amqpEnvelope: $amqpEnvelope, retryRoutingKey: 'test');
 
         self::assertSame('test', $stamp->getRoutingKey());
 
@@ -42,9 +42,9 @@ class AMQPStampTest extends TestCase
 
     public function testCreateFromAMQPEnvelopeWithoutRetryRoutingKey(): void
     {
-        $amqpEnvelope = new AMQPEnvelope(new AMQPMessage('test'));
+        $amqpEnvelope = new AmqpEnvelope(new AMQPMessage('test'));
 
-        $stamp = AMQPStamp::createFromAMQPEnvelope(amqpEnvelope: $amqpEnvelope);
+        $stamp = AmqpStamp::createFromAMQPEnvelope(amqpEnvelope: $amqpEnvelope);
 
         self::assertNull($stamp->getRoutingKey());
         self::assertFalse($stamp->isRetryAttempt());
@@ -69,6 +69,6 @@ class AMQPStampTest extends TestCase
     {
         parent::setUp();
 
-        $this->stamp = new AMQPStamp('test', ['test' => true]);
+        $this->stamp = new AmqpStamp('test', ['test' => true]);
     }
 }

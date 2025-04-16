@@ -6,7 +6,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPConnectionFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\SslConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\DsnParser;
@@ -17,7 +17,7 @@ class ConnectionFactoryTest extends TestCase
 
     private RetryFactory $retryFactory;
 
-    private AMQPConnectionFactory $amqpConnectionFactory;
+    private AmqpConnectionFactory $amqpConnectionFactory;
 
     private ConnectionFactory $connectionFactory;
 
@@ -47,7 +47,7 @@ class ConnectionFactoryTest extends TestCase
 
         $this->dsnParser             = new DsnParser();
         $this->retryFactory          = new RetryFactory();
-        $this->amqpConnectionFactory = new AMQPConnectionFactory();
+        $this->amqpConnectionFactory = new AmqpConnectionFactory();
 
         $this->connectionFactory = new ConnectionFactory(
             $this->dsnParser,

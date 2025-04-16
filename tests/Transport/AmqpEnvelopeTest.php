@@ -5,18 +5,18 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPEnvelope;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use OutOfBoundsException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use PHPUnit\Framework\MockObject\MockObject;
 
-class AMQPEnvelopeTest extends TestCase
+class AmqpEnvelopeTest extends TestCase
 {
     /** @var MockObject&AMQPMessage */
     private AMQPMessage $message;
 
-    private AMQPEnvelope $envelope;
+    private AmqpEnvelope $envelope;
 
     public function testGetAMQPMessage(): void
     {
@@ -229,7 +229,7 @@ class AMQPEnvelopeTest extends TestCase
             ],
         );
 
-        $envelope = new AMQPEnvelope($message);
+        $envelope = new AmqpEnvelope($message);
 
         self::assertSame('test body', $envelope->getBody());
         self::assertSame('text/plain', $envelope->getContentType());
@@ -243,6 +243,6 @@ class AMQPEnvelopeTest extends TestCase
 
         $this->message = $this->createMock(AMQPMessage::class);
 
-        $this->envelope = new AMQPEnvelope($this->message);
+        $this->envelope = new AmqpEnvelope($this->message);
     }
 }

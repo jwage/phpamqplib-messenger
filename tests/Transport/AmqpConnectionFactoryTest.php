@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPConnectionFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\SslConfig;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 
-class AMQPConnectionFactoryTest extends TestCase
+class AmqpConnectionFactoryTest extends TestCase
 {
-    private AMQPConnectionFactory $amqpConnectionFactory;
+    private AmqpConnectionFactory $amqpConnectionFactory;
 
     public function testCreate(): void
     {
@@ -46,6 +46,6 @@ class AMQPConnectionFactoryTest extends TestCase
     {
         parent::setUp();
 
-        $this->amqpConnectionFactory = new AMQPConnectionFactory();
+        $this->amqpConnectionFactory = new AmqpConnectionFactory();
     }
 }

@@ -6,7 +6,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use Symfony\Component\Messenger\Stamp\StampInterface;
 
-class AMQPBatchStamp implements StampInterface
+class AmqpBatchStamp implements StampInterface
 {
     public function __construct(
         private int $batchSize = 100,

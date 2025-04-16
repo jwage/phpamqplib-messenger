@@ -12,7 +12,7 @@ use Symfony\Component\Messenger\Exception\TransportException;
 
 use function array_shift;
 
-class AMQPConsumer
+class AmqpConsumer
 {
     /** @var array<AMQPEnvelope> */
     private array $buffer = [];
@@ -81,6 +81,6 @@ class AMQPConsumer
 
     public function callback(AMQPMessage $amqpMessage): void
     {
-        $this->buffer[] = new AMQPEnvelope($amqpMessage);
+        $this->buffer[] = new AmqpEnvelope($amqpMessage);
     }
 }

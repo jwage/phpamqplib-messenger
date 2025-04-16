@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle;
 
 use InvalidArgumentException;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AMQPBatchStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpBatchStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\BatchTransportInterface;
 use Override;
 use Symfony\Component\Messenger\Envelope;
@@ -71,7 +71,7 @@ class BatchMessageBus implements BatchMessageBusInterface
     public function dispatchInBatch(object $message, int $batchSize): Envelope
     {
         $envelope = Envelope::wrap($message)
-            ->with(new AMQPBatchStamp($batchSize));
+            ->with(new AmqpBatchStamp($batchSize));
 
         return $this->dispatch($envelope);
     }
