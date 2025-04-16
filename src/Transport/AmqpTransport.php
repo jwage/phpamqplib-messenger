@@ -30,7 +30,11 @@ class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterfac
         return $this->connection;
     }
 
-    /** @inheritDoc */
+    /**
+     * @return iterable<Envelope>
+     *
+     * @psalm-suppress ImplementedReturnTypeMismatch
+     */
     #[Override]
     public function get(): iterable
     {
