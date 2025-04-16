@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
+namespace Jwage\PhpAmqpLibMessengerBundle\Stamp;
 
 use Symfony\Component\Messenger\Stamp\StampInterface;
 
-class AmqpBatchStamp implements StampInterface
+class Deferable implements StampInterface
 {
     public function __construct(
-        private int $batchSize = 100,
+        private int $batchSize,
     ) {
     }
 

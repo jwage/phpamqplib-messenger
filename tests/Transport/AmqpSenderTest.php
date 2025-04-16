@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
+use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferable;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpBatchStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpSender;
@@ -32,7 +32,7 @@ class AmqpSenderTest extends TestCase
     {
         $amqpEnvelope = new AmqpEnvelope(new AMQPMessage('test'));
 
-        $amqpBatchStamp = new AmqpBatchStamp(1);
+        $deferableStamp = new Deferable(1);
 
         $delayStamp = new DelayStamp(1000);
 
@@ -57,7 +57,7 @@ class AmqpSenderTest extends TestCase
 
         $message  = new stdClass();
         $envelope = new Envelope($message, [
-            $amqpBatchStamp,
+            $deferableStamp,
             $delayStamp,
             $amqpStamp,
             $amqpReceivedStamp,
