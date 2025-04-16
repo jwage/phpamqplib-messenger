@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
-use Jwage\PhpAmqpLibMessengerBundle\BatchMessageBus;
 use Jwage\PhpAmqpLibMessengerBundle\PhpAmqpLibMessengerBundle;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
@@ -30,7 +29,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
     public function process(ContainerBuilder $container): void
     {
-        $container->getDefinition(BatchMessageBus::class)
+        $container->getDefinition('bus1.batch')
             ->setPublic(true);
     }
 
@@ -48,6 +47,11 @@ class TestKernel extends Kernel implements CompilerPassInterface
                 'handle_all_throwables' => true,
                 'php_errors' => ['log' => true],
                 'messenger' => [
+                    'default_bus' => 'bus1',
+                    'buses' => [
+                        'bus1' => [],
+                        'bus2' => [],
+                    ],
                     'transports' => [
                         'test_phpamqplib' => [
                             'dsn' => '%env(MESSENGER_TRANSPORT_PHPAMQPLIB_DSN)%',
