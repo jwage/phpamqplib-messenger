@@ -45,7 +45,6 @@ class TestKernel extends Kernel implements CompilerPassInterface
             $container->loadFromExtension('framework', [
                 'test' => true,
                 'http_method_override' => false,
-                'handle_all_throwables' => true,
                 'php_errors' => ['log' => true],
                 'messenger' => [
                     'transports' => [

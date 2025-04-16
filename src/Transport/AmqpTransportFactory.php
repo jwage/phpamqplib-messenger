@@ -13,7 +13,10 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
 
 use function str_starts_with;
 
-/** @implements TransportFactoryInterface<AMQPTransport> */
+/**
+ * @implements TransportFactoryInterface<AMQPTransport>
+ * @psalm-suppress TooManyTemplateParams
+ */
 class AmqpTransportFactory implements TransportFactoryInterface
 {
     public function __construct(

@@ -24,7 +24,11 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
     ) {
     }
 
-    /** @return iterable<Envelope> */
+    /**
+     * @return iterable<Envelope>
+     *
+     * @psalm-suppress ImplementedReturnTypeMismatch
+     */
     #[Override]
     public function get(): iterable
     {
