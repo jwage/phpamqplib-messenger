@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          cacheDirectory=".phpunit.cache"
          executionOrder="depends,defects"
          requireCoverageMetadata="false"
@@ -28,5 +28,6 @@
         <env name="APP_ENV" value="test"/>
         <env name="KERNEL_CLASS" value="Jwage\PhpAmqpLibMessengerBundle\Tests\TestKernel"/>
         <env name="SYMFONY_DEPRECATIONS_HELPER" value="weak"/>
+        <server name="SHELL_VERBOSITY" value="-1" />
     </php>
 </phpunit>
