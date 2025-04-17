@@ -14,8 +14,7 @@ use Symfony\Component\Messenger\Stamp\DelayStamp;
 
 class BatchMessageBusTest extends TestCase
 {
-    /** @var MessageBusInterface&MockObject */
-    private MessageBusInterface $wrappedBus;
+    private WrappedBus $wrappedBus;
 
     private BatchMessageBus $batchMessageBus;
 
@@ -32,29 +31,26 @@ class BatchMessageBusTest extends TestCase
         $envelope = new Envelope($message);
         $stamps   = [new DelayStamp(1000)];
 
-        $this->wrappedBus->expects(self::once())
-            ->method('dispatch')
-            ->with($message, $stamps)
-            ->willReturn($envelope);
+        $this->wrappedBus->dispatch($message, $stamps);
 
-        self::assertSame($envelope, $this->batchMessageBus->dispatch($message, $stamps));
+        $last = $this->wrappedBus->getLastDispatched();
+        self::assertEquals(
+            new Envelope($message, $stamps),
+            $last
+        );
     }
 
     /** @psalm-suppress UndefinedMagicMethod */
     public function testCall(): void
     {
-        $this->wrappedBus->expects(self::once())
-            ->method('someMethod')
-            ->willReturn('result');
-
-        self::assertSame('result', $this->batchMessageBus->someMethod('arg1', 'arg2'));
+        self::assertSame('result', $this->batchMessageBus->someMethod('arg2', 'arg2'));
     }
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->wrappedBus = $this->createMock(WrappedBus::class);
+        $this->wrappedBus = new WrappedBus();
 
         $this->batchMessageBus = new BatchMessageBus($this->wrappedBus);
     }
