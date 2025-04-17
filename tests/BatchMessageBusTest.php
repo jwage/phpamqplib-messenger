@@ -33,7 +33,7 @@ class BatchMessageBusTest extends TestCase
 
         $this->wrappedBus->dispatch($message, $stamps);
 
-        $last = $this->wrappedBus->getLastDispatched();
+        $last = $this->wrappedBus->popEnvelope();
         self::assertEquals(
             new Envelope($message, $stamps),
             $last

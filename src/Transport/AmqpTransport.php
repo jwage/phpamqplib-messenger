@@ -78,7 +78,7 @@ class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterfac
     public function send(Envelope $envelope): Envelope
     {
         if ($envelope->last(Deferrable::class) !== null) {
-            $envelope = $envelope->with(new Deferred($this));
+            $envelope = $envelope->with(new Deferred());
         }
 
         return $this->getSender()->send($envelope);

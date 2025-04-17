@@ -17,13 +17,15 @@ class WrappedBus implements MessageBusInterface
     #[Override]
     public function dispatch(object $message, array $stamps = []): Envelope
     {
-        $envelope = (new Envelope($message))->with(...$stamps);
-        $this->dispatched[] = $envelope;
-        return $envelope;
+        if (!$message instanceof Envelope) {
+            $message = (new Envelope($message))->with(...$stamps);
+        }
+        $this->dispatched[] = $message;
+        return $message;
 
     }
 
-    public function getLastDispatched(): Envelope
+    public function popEnvelope(): Envelope
     {
         if (empty($this->dispatched)) {
             throw new RuntimeException('No envelopes in dispatched stack');

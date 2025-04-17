@@ -15,7 +15,8 @@ use Psr\Log\LoggerInterface;
 return static function (ContainerConfigurator $container): void {
     $services = $container->services();
 
-    $services->set(AmqpFlushMiddlware::class);
+    $services->set(AmqpFlushMiddlware::class)
+        ->arg(0, service('messenger.senders_locator'));
     $services->set(AmqpTransportFactory::class)
         ->args([
             inline_service(ConnectionFactory::class)
