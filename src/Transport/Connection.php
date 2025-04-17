@@ -17,6 +17,7 @@ use PhpAmqpLib\Wire\AMQPTable;
 use Symfony\Component\Messenger\Exception\TransportException;
 
 use function array_map;
+use function array_merge;
 use function array_sum;
 use function assert;
 
@@ -123,6 +124,7 @@ class Connection
      */
     public function publish(
         string $body,
+        array $headers = [],
         int $delayInMs = 0,
         int $batchSize = 1,
         AmqpStamp|null $amqpStamp = null,
@@ -131,7 +133,12 @@ class Connection
             $this->setupExchangeAndQueues();
         }
 
-        $amqpEnvelope = $this->createAMQPEnvelope($body);
+        /** @var array<string, mixed> $attributeHeaders */
+        $attributeHeaders = $amqpStamp?->getAttributes()['headers'] ?? [];
+
+        $headers = array_merge($attributeHeaders, $headers);
+
+        $amqpEnvelope = $this->createAMQPEnvelope($body, $headers);
 
         $isDelayed      = $delayInMs > 0;
         $isRetryAttempt = $amqpStamp && $amqpStamp->isRetryAttempt();
@@ -387,7 +394,8 @@ class Connection
         return $this->connection;
     }
 
-    private function createAMQPEnvelope(string $body): AmqpEnvelope
+    /** @param array<string, mixed> $headers */
+    private function createAMQPEnvelope(string $body, array $headers): AmqpEnvelope
     {
         return new AmqpEnvelope(
             new AMQPMessage(
@@ -395,7 +403,7 @@ class Connection
                 [
                     'content_type' => 'text/plain',
                     'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
-                    'application_headers' => new AMQPTable(['protocol' => 3]),
+                    'application_headers' => new AMQPTable(['protocol' => 3, ...$headers]),
                 ],
             ),
         );

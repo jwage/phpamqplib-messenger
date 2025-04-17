@@ -42,11 +42,23 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
         $delay      = $delayStamp ? $delayStamp->getDelay() : 0;
 
         $amqpStamp = $envelope->last(AmqpStamp::class);
+
+        if (isset($encodedMessage['headers']['Content-Type'])) {
+            $contentType = $encodedMessage['headers']['Content-Type'];
+            assert(is_string($contentType));
+            unset($encodedMessage['headers']['Content-Type']);
+
+            if (! $amqpStamp || ! isset($amqpStamp->getAttributes()['content_type'])) {
+                $amqpStamp = AmqpStamp::createWithAttributes(['content_type' => $contentType], $amqpStamp);
+            }
+        }
+
         if ($amqpStamp instanceof AmqpStamp && isset($amqpStamp->getAttributes()['message_id'])) {
             $envelope = $envelope->with(new TransportMessageIdStamp($amqpStamp->getAttributes()['message_id']));
         }
 
         $amqpReceivedStamp = $envelope->last(AmqpReceivedStamp::class);
+
         if ($amqpReceivedStamp instanceof AmqpReceivedStamp) {
             $amqpStamp = AmqpStamp::createFromAMQPEnvelope(
                 $amqpReceivedStamp->getAMQPEnvelope(),
@@ -58,8 +70,12 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
         $body = $encodedMessage['body'];
         assert(is_string($body));
 
+        /** @var array<string, mixed> $headers */
+        $headers = $encodedMessage['headers'] ?? [];
+
         $this->connection->publish(
             body: $body,
+            headers: $headers,
             delayInMs: $delay,
             batchSize: $batchSize,
             amqpStamp: $amqpStamp,

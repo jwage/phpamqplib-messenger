@@ -12,6 +12,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpSender;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Message\AMQPMessage;
+use PhpAmqpLib\Wire\AMQPTable;
 use PHPUnit\Framework\MockObject\MockObject;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
@@ -30,7 +31,9 @@ class AmqpSenderTest extends TestCase
 
     public function testSend(): void
     {
-        $amqpEnvelope = new AmqpEnvelope(new AMQPMessage('test'));
+        $amqpEnvelope = new AmqpEnvelope(new AMQPMessage('test', [
+            'application_headers' => new AMQPTable(['header1' => 'value1', 'header2' => 'value2']),
+        ]));
 
         $deferrableStamp = new Deferrable(1);
 
@@ -66,12 +69,13 @@ class AmqpSenderTest extends TestCase
         $this->serializer->expects(self::once())
             ->method('encode')
             ->with($envelope)
-            ->willReturn(['body' => 'body', 'headers' => []]);
+            ->willReturn(['body' => 'body', 'headers' => ['header1' => 'value1', 'header2' => 'value2']]);
 
         $this->connection->expects(self::once())
             ->method('publish')
             ->with(
                 body: 'body',
+                headers: ['header1' => 'value1', 'header2' => 'value2'],
                 delayInMs: 1000,
                 batchSize: 1,
                 amqpStamp: $amqpStamp,

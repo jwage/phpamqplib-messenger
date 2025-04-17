@@ -50,6 +50,24 @@ class AmqpStampTest extends TestCase
         self::assertFalse($stamp->isRetryAttempt());
     }
 
+    public function testCreateWithAttributes(): void
+    {
+        $stamp = AmqpStamp::createWithAttributes(['test' => true]);
+
+        self::assertSame(['test' => true], $stamp->getAttributes());
+    }
+
+    public function testCreateWithAttributesAndPreviousStamp(): void
+    {
+        $stamp = AmqpStamp::createWithAttributes(
+            ['test1' => true, 'test2' => false],
+            new AmqpStamp('routing_key', ['test1' => true, 'test2' => false]),
+        );
+
+        self::assertSame('routing_key', $stamp->getRoutingKey());
+        self::assertSame(['test1' => true, 'test2' => false], $stamp->getAttributes());
+    }
+
     public function testGetRoutingKey(): void
     {
         self::assertSame('test', $this->stamp->getRoutingKey());
