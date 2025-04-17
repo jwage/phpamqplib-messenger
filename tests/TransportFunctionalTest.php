@@ -52,6 +52,13 @@ class TransportFunctionalTest extends KernelTestCase
         $transport = $container->get('messenger.transport.test_phpamqplib');
         assert($transport instanceof AmqpTransport);
 
+        // "purge" the queues
+        foreach ($transport->getConnection()->getQueueNames() as $queue) {
+            foreach ($transport->getConnection()->get($queue) as $message) {
+                $message->ack();
+            }
+        }
+
         $this->transport = $transport;
     }
 
