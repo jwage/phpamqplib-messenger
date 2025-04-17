@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Symfony\Component\DependencyInjection\Loader\Configurator;
 
+use Jwage\PhpAmqpLibMessengerBundle\Middleware\AmqpFlushMiddlware;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransportFactory;
@@ -14,6 +15,7 @@ use Psr\Log\LoggerInterface;
 return static function (ContainerConfigurator $container): void {
     $services = $container->services();
 
+    $services->set(AmqpFlushMiddlware::class);
     $services->set(AmqpTransportFactory::class)
         ->args([
             inline_service(ConnectionFactory::class)

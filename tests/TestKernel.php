@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
+use Jwage\PhpAmqpLibMessengerBundle\Middleware\AmqpFlushMiddlware;
 use Jwage\PhpAmqpLibMessengerBundle\PhpAmqpLibMessengerBundle;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
@@ -48,7 +49,11 @@ class TestKernel extends Kernel implements CompilerPassInterface
                 'messenger' => [
                     'default_bus' => 'bus1',
                     'buses' => [
-                        'bus1' => [],
+                        'bus1' => [
+                            'middleware' => [
+                                AmqpFlushMiddlware::class => [],
+                            ],
+                        ],
                         'bus2' => [],
                     ],
                     'transports' => [
