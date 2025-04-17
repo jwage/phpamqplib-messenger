@@ -7,7 +7,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Stamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\BatchTransportInterface;
 use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 
-class Defered implements NonSendableStampInterface
+class Deferred implements NonSendableStampInterface
 {
     public function __construct(
         private BatchTransportInterface $transport,
