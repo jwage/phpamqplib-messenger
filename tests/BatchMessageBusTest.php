@@ -6,10 +6,8 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use Jwage\PhpAmqpLibMessengerBundle\Batch;
 use Jwage\PhpAmqpLibMessengerBundle\BatchMessageBus;
-use PHPUnit\Framework\MockObject\MockObject;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
-use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 
 class BatchMessageBusTest extends TestCase
@@ -36,7 +34,7 @@ class BatchMessageBusTest extends TestCase
         $last = $this->wrappedBus->popEnvelope();
         self::assertEquals(
             new Envelope($message, $stamps),
-            $last
+            $last,
         );
     }
 

@@ -9,20 +9,26 @@ use RuntimeException;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 
+use function array_pop;
+
 class WrappedBus implements MessageBusInterface
 {
+    /**
+     * @var Envelope
+     */
     public array $dispatched = [];
 
     /** @inheritDoc */
     #[Override]
     public function dispatch(object $message, array $stamps = []): Envelope
     {
-        if (!$message instanceof Envelope) {
+        if (! $message instanceof Envelope) {
             $message = (new Envelope($message))->with(...$stamps);
         }
-        $this->dispatched[] = $message;
-        return $message;
 
+        $this->dispatched[] = $message;
+
+        return $message;
     }
 
     public function popEnvelope(): Envelope

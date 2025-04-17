@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Jwage\PhpAmqpLibMessengerBundle\Middleware;
 
 use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferred;
@@ -18,23 +20,24 @@ final class AmqpFlushMiddlware implements MiddlewareInterface
 
     public function __construct(
         private SendersLocatorInterface $sendersLocator,
-    )
-    {
+    ) {
     }
+
     public function handle(Envelope $envelope, StackInterface $stack): Envelope
     {
         if ($envelope->getMessage() instanceof Flush) {
             foreach ($this->transportsToFlush as $envelope) {
                 foreach ($this->sendersLocator->getSenders($envelope) as $transport) {
-                    if (!$transport instanceof BatchTransportInterface) {
+                    if (! $transport instanceof BatchTransportInterface) {
                         continue;
                     }
+
                     $transport->flush();
                 }
             }
+
             return $envelope;
         }
-
 
         $envelope = $stack->next()->handle($envelope, $stack);
 
