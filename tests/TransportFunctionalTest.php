@@ -25,18 +25,10 @@ class TransportFunctionalTest extends KernelTestCase
 
         self::assertCount(0, $envelopes);
 
-        $message1 = (object) ['test' => 1];
-        $message2 = (object) ['test' => 2];
-        $message3 = (object) ['test' => 3];
-
-        $messages = [$message1, $message2, $message3];
-
-        $connection = $this->transport->getConnection();
-
-        $this->bus->dispatchBatches($messages, 2);
+        $this->dispatchMessages();
 
         // test we can recover from a reconnect inbetween dispatching and consuming
-        $connection->reconnect();
+        $this->transport->getConnection()->reconnect();
 
         $envelopes = $this->getEnvelopes(3);
 
@@ -61,6 +53,23 @@ class TransportFunctionalTest extends KernelTestCase
         assert($transport instanceof AmqpTransport);
 
         $this->transport = $transport;
+    }
+
+    private function dispatchMessages(): void
+    {
+        $message1 = (object) ['test' => 1];
+        $message2 = (object) ['test' => 2];
+        $message3 = (object) ['test' => 3];
+
+        $messages = [$message1, $message2, $message3];
+
+        $batch = $this->bus->getBatch(2);
+
+        foreach ($messages as $message) {
+            $batch->dispatch($message);
+        }
+
+        $batch->flush();
     }
 
     /** @return array<Envelope> */

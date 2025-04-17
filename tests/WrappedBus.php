@@ -2,23 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Jwage\PhpAmqpLibMessengerBundle;
+namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use Override;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 
-class BatchMessageBus implements BatchMessageBusInterface
+class WrappedBus implements MessageBusInterface
 {
     public function __construct(
         private MessageBusInterface $wrappedBus,
     ) {
-    }
-
-    #[Override]
-    public function getBatch(int $batchSize): Batch
-    {
-        return new Batch($this->wrappedBus, $batchSize);
     }
 
     /** @inheritDoc */
@@ -28,9 +22,8 @@ class BatchMessageBus implements BatchMessageBusInterface
         return $this->wrappedBus->dispatch($message, $stamps);
     }
 
-    /** @param array<mixed> $arguments */
-    public function __call(string $method, array $arguments): mixed
+    public function someMethod(string $arg1, string $arg2): string
     {
-        return $this->wrappedBus->{$method}(...$arguments);
+        return 'result';
     }
 }

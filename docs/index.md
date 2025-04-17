@@ -145,45 +145,27 @@ phpamqplib://guest:guest@localhost?heartbeat=60&read_timeout=5.0
 
 ## Batch Dispatching
 
-The bundle supports batch dispatching of messages. You can inject the `Jwage\PhpAmqpLibMessengerBundle\BatchMessageInterface` service, which wraps the default message bus in your application and provides new methods for dispatching messages in batches:
-
-- `dispatchBatches(iterable $messages, int $batchSize = 100): void`
-- `dispatchInBatch(object $message, int $batchSize): void`
-- `flush(): void`
-
-If you have an iterable list of messages, you can use the `dispatchBatches` method to dispatch the messages in batches:
+The bundle supports batch dispatching of messages. You can inject the `Jwage\PhpAmqpLibMessengerBundle\BatchMessageBusInterface` service, which wraps your message bus and provides a new method named `getBatch()` for dispatching messages in batches:
 
 ```php
-$batchSize = 2;
+class SomeService
+{
+    public function __construct(
+        private BatchMessageBusInterface $batchMessageBus,
+    ) {
+    }
 
-// can be an array or any iterable
-$messages = [...];
+    public function someMethod(): void
+    {
+        $iterable = ...;
 
-$batchMessageBus->dispatchBatches($messages, $batchSize);
-```
+        $batch = $this->batchMessageBus->getBatch(10);
 
-You can also use the `dispatchInBatch` method if you want more low level control over the batching process. Be sure to call the `flush()` method afterwards to handle when you have an uneven number of messages in the last batch:
+        foreach ($iterable as $message) {
+            $batch->dispatch($message);
+        }
 
-```php
-$batchSize = 10;
-
-foreach ($messages as $message) {
-    $batchMessageBus->dispatchInBatch($message, $batchSize);
+        $batch->flush();
+    }
 }
-
-$batchMessageBus->flush();
-```
-
-The batch dispatching is controlled with the `AMQPBatchStamp` stamp. The above methods are shortcuts for the following:
-
-```php
-$batchSize = 10;
-
-foreach ($messages as $message) {
-    $envelope = Envelope::wrap($message, [new AMQPBatchStamp($batchSize)]);
-
-    $batchMessageBus->dispatch($envelope);
-}
-
-$batchMessageBus->flush();
 ```
