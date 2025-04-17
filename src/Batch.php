@@ -5,17 +5,13 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle;
 
 use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferrable;
-use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferred;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\BatchTransportInterface;
+use Jwage\PhpAmqpLibMessengerBundle\Stamp\Flush;
 use Override;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 class Batch implements MessageBusInterface
 {
-    /** @var array<BatchTransportInterface> */
-    private array $transportsToFlush = [];
-
     public function __construct(
         private MessageBusInterface $wrappedBus,
         private int $batchSize,
@@ -34,20 +30,12 @@ class Batch implements MessageBusInterface
         $envelope = Envelope::wrap($message)
             ->with(new Deferrable($this->batchSize));
 
-        $envelope = $this->wrappedBus->dispatch($envelope);
-
-        if (($stamp = $envelope->last(Deferred::class)) !== null) {
-            $this->transportsToFlush[] = $stamp->getTransport();
-        }
-
-        return $envelope;
+        return $this->wrappedBus->dispatch($envelope);
     }
 
     public function flush(): void
     {
-        foreach ($this->transportsToFlush as $transport) {
-            $transport->flush();
-        }
+        $this->wrappedBus->dispatch(new Flush());
     }
 
     /** @param array<mixed> $arguments */
