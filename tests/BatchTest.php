@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use Jwage\PhpAmqpLibMessengerBundle\Batch;
-use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferable;
-use Jwage\PhpAmqpLibMessengerBundle\Stamp\Defered;
+use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferrable;
+use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferred;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\BatchTransportInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use stdClass;
@@ -32,12 +32,12 @@ class BatchTest extends TestCase
         $message2 = new stdClass();
 
         $envelope1 = Envelope::wrap($message1)
-            ->with(new Deferable(10))
-            ->with(new Defered($this->transport1));
+            ->with(new Deferrable(10))
+            ->with(new Deferred($this->transport1));
 
         $envelope2 = Envelope::wrap($message2)
-            ->with(new Deferable(10))
-            ->with(new Defered($this->transport2));
+            ->with(new Deferrable(10))
+            ->with(new Deferred($this->transport2));
 
         $this->wrappedBus->expects(self::exactly(2))
             ->method('dispatch')

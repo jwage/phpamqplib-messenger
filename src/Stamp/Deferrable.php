@@ -6,7 +6,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Stamp;
 
 use Symfony\Component\Messenger\Stamp\StampInterface;
 
-class Deferable implements StampInterface
+class Deferrable implements StampInterface
 {
     public function __construct(
         private int $batchSize,
