@@ -94,10 +94,7 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
      */
     private function getEnvelopes(string $queueName): iterable
     {
-        /** @var iterable<AmqpEnvelope> $amqpEnvelopes */
-        $amqpEnvelopes = $this->connection->withRetry(function () use ($queueName): iterable {
-            yield from $this->connection->get($queueName);
-        })->run();
+        $amqpEnvelopes = $this->connection->get($queueName);
 
         foreach ($amqpEnvelopes as $amqpEnvelope) {
             $body = $amqpEnvelope->getBody();
