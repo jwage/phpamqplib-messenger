@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use Jwage\PhpAmqpLibMessengerBundle\BatchMessageBusInterface;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Envelope;
@@ -35,8 +37,16 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertCount(3, $envelopes);
 
         self::assertEquals(1, $envelopes[0]->getMessage()->test);
+        self::assertEquals(1, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
+        self::assertEquals(2, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
+
         self::assertEquals(2, $envelopes[1]->getMessage()->test);
+        self::assertEquals(1, $envelopes[1]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
+        self::assertEquals(2, $envelopes[1]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
+
         self::assertEquals(3, $envelopes[2]->getMessage()->test);
+        self::assertEquals(1, $envelopes[2]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
+        self::assertEquals(2, $envelopes[2]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
     }
 
     protected function setUp(): void
@@ -57,9 +67,9 @@ class TransportFunctionalTest extends KernelTestCase
 
     private function dispatchMessages(): void
     {
-        $message1 = (object) ['test' => 1];
-        $message2 = (object) ['test' => 2];
-        $message3 = (object) ['test' => 3];
+        $message1 = Envelope::wrap((object) ['test' => 1])->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
+        $message2 = Envelope::wrap((object) ['test' => 2])->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
+        $message3 = Envelope::wrap((object) ['test' => 3])->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
 
         $messages = [$message1, $message2, $message3];
 

@@ -139,14 +139,15 @@ class ConnectionTest extends TestCase
 
     public function testPublish(): void
     {
-        $body = 'test body';
+        $body    = 'test body';
+        $headers = ['header1' => 'value1', 'header2' => 'value2'];
 
         $amqpMessage = new AMQPMessage(
             $body,
             [
                 'content_type' => 'text/plain',
                 'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
-                'application_headers' => new AMQPTable(['protocol' => 3]),
+                'application_headers' => new AMQPTable(['protocol' => 3, ...$headers]),
             ],
         );
 
@@ -162,7 +163,7 @@ class ConnectionTest extends TestCase
             ->method('wait_for_pending_acks')
             ->with(timeout: 5);
 
-        $this->connection->publish(body: 'test body');
+        $this->connection->publish(body: 'test body', headers: $headers);
     }
 
     public function testPublishWithConfirmDisabled(): void

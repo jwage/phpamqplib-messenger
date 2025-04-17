@@ -6,6 +6,8 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 
+use function array_merge;
+
 class AmqpStamp implements NonSendableStampInterface
 {
     private bool $isRetryAttempt = false;
@@ -48,6 +50,15 @@ class AmqpStamp implements NonSendableStampInterface
         }
 
         return $stamp;
+    }
+
+    /** @param array<string, mixed> $attributes */
+    public static function createWithAttributes(array $attributes, self|null $previousStamp = null): self
+    {
+        return new self(
+            routingKey: $previousStamp?->routingKey,
+            attributes: array_merge($previousStamp?->attributes ?? [], $attributes),
+        );
     }
 
     public function getRoutingKey(): string|null
