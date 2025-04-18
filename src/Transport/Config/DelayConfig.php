@@ -18,17 +18,25 @@ readonly class DelayConfig
 {
     private const array AVAILABLE_OPTIONS = [
         'exchange',
+        'enabled',
+        'auto_setup',
         'queue_name_pattern',
         'arguments',
     ];
 
     public ExchangeConfig $exchange;
 
+    public bool $enabled;
+
+    public bool $autoSetup;
+
     public string $queueNamePattern;
 
     /** @param array<string, mixed> $arguments */
     public function __construct(
         ExchangeConfig|null $exchange = null,
+        bool|null $enabled = null,
+        bool|null $autoSetup = null,
         string|null $queueNamePattern = null,
         public array $arguments = [],
     ) {
@@ -37,6 +45,8 @@ readonly class DelayConfig
             type: AMQPExchangeType::DIRECT,
         );
 
+        $this->enabled          = $enabled ?? true;
+        $this->autoSetup        = $autoSetup ?? true;
         $this->queueNamePattern = $queueNamePattern ?? 'delay_%exchange_name%_%routing_key%_%delay%';
     }
 
@@ -51,6 +61,8 @@ readonly class DelayConfig
      *         auto_delete?: bool|mixed,
      *         arguments?: array<string, mixed>,
      *     },
+     *     enabled?: bool|mixed,
+     *     auto_setup?: bool|mixed,
      *     queue_name_pattern?: string,
      *     arguments?: array<string, mixed>,
      * } $delayConfig
@@ -63,6 +75,8 @@ readonly class DelayConfig
 
         return new self(
             exchange: isset($delayConfig['exchange']) ? ExchangeConfig::fromArray($delayConfig['exchange']) : null,
+            enabled: isset($delayConfig['enabled']) ? (bool) $delayConfig['enabled'] : null,
+            autoSetup: isset($delayConfig['auto_setup']) ? (bool) $delayConfig['auto_setup'] : null,
             queueNamePattern: $delayConfig['queue_name_pattern'] ?? null,
             arguments: $delayConfig['arguments'] ?? [],
         );

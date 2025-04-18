@@ -10,6 +10,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\DelayConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ExchangeConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
@@ -99,6 +100,31 @@ class ConnectionTest extends TestCase
             );
 
         $this->connection->setup();
+    }
+
+    public function testSetupWithDelayDisabled(): void
+    {
+        $connection = $this->getTestConnection(new ConnectionConfig(
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            delay: new DelayConfig(enabled: false),
+        ));
+
+        $this->amqpChannel->expects(self::once())
+            ->method('exchange_declare')
+            ->with(...self::withConsecutive(
+                [
+                    'exchange_name',
+                    'fanout',
+                    false,
+                    true,
+                    false,
+                    false,
+                    true,
+                    new AMQPTable([]),
+                ],
+            ));
+
+        $connection->setup();
     }
 
     public function testChannel(): void
