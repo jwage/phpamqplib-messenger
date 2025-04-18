@@ -11,9 +11,11 @@ use Override;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 
+use function spl_object_id;
+
 class Batch implements MessageBusInterface
 {
-    /** @var array<BatchTransportInterface> */
+    /** @var array<array-key,BatchTransportInterface> */
     private array $transportsToFlush = [];
 
     public function __construct(
@@ -37,7 +39,8 @@ class Batch implements MessageBusInterface
         $envelope = $this->wrappedBus->dispatch($envelope);
 
         if (($stamp = $envelope->last(DeferredStamp::class)) !== null) {
-            $this->transportsToFlush[] = $stamp->getTransport();
+            $transport                                          = $stamp->getTransport();
+            $this->transportsToFlush[spl_object_id($transport)] = $transport;
         }
 
         return $envelope;
