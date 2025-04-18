@@ -203,15 +203,13 @@ class Connection
     {
         $this->withRetry(function (): void {
             $this->channel()->publish_batch();
-        })->run();
 
-        if ($this->connectionConfig->confirmEnabled) {
-            try {
-                $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
-            } catch (AMQPExceptionInterface $e) {
-                throw new TransportException($e->getMessage(), 0, $e);
+            if (! $this->connectionConfig->confirmEnabled) {
+                return;
             }
-        }
+
+            $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+        })->run();
 
         $this->batchCount = 0;
     }
