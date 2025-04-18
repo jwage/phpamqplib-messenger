@@ -31,13 +31,8 @@ class BatchTest extends TestCase
         $message1 = new stdClass();
         $message2 = new stdClass();
 
-        $envelope1 = Envelope::wrap($message1)
-            ->with(new DeferrableStamp(10))
-            ->with(new DeferredStamp($this->transport1));
-
-        $envelope2 = Envelope::wrap($message2)
-            ->with(new DeferrableStamp(10))
-            ->with(new DeferredStamp($this->transport2));
+        $envelope1 = $this->createEnvelope($message1, transport: $this->transport1);
+        $envelope2 = $this->createEnvelope($message2, transport: $this->transport2);
 
         $this->wrappedBus->expects(self::exactly(2))
             ->method('dispatch')
@@ -52,6 +47,54 @@ class BatchTest extends TestCase
 
         $this->batch->dispatch($message1);
         $this->batch->dispatch($message2);
+
+        $this->batch->flush();
+    }
+
+    public function testFlushTransportOncePerBatch(): void
+    {
+        $message1 = new stdClass();
+
+        $envelope1 = $this->createEnvelope($message1);
+        $envelope2 = $this->createEnvelope($message1);
+        $envelope3 = $this->createEnvelope($message1);
+
+        $this->wrappedBus->expects(self::exactly(3))
+            ->method('dispatch')
+            ->with($this->isInstanceOf(Envelope::class))
+            ->willReturnOnConsecutiveCalls($envelope1, $envelope2, $envelope3);
+
+        $this->transport1->expects(self::once())
+            ->method('flush');
+
+        $this->batch->dispatch($message1);
+        $this->batch->dispatch($message1);
+        $this->batch->dispatch($message1);
+
+        $this->batch->flush();
+    }
+
+    public function testFlushEachTransportOnce(): void
+    {
+        $message1 = new stdClass();
+
+        $envelope1 = $this->createEnvelope($message1, transport: $this->transport1);
+        $envelope2 = $this->createEnvelope($message1, transport: $this->transport1);
+        $envelope3 = $this->createEnvelope($message1, transport: $this->transport2);
+
+        $this->wrappedBus->expects(self::exactly(3))
+            ->method('dispatch')
+            ->with($this->isInstanceOf(Envelope::class))
+            ->willReturnOnConsecutiveCalls($envelope1, $envelope2, $envelope3);
+
+        $this->transport1->expects(self::exactly(1))
+            ->method('flush');
+        $this->transport1->expects(self::exactly(1))
+            ->method('flush');
+
+        $this->batch->dispatch($message1);
+        $this->batch->dispatch($message1);
+        $this->batch->dispatch($message1);
 
         $this->batch->flush();
     }
@@ -77,5 +120,12 @@ class BatchTest extends TestCase
         $this->transport2 = $this->createMock(BatchTransportInterface::class);
 
         $this->batch = new Batch($this->wrappedBus, 10);
+    }
+
+    private function createEnvelope(stdClass $message, int $batchSize = 10, BatchTransportInterface|null $transport = null): Envelope
+    {
+        return Envelope::wrap($message)
+            ->with(new DeferrableStamp($batchSize))
+            ->with(new DeferredStamp($transport ?? $this->transport1));
     }
 }
