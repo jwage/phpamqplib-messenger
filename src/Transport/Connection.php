@@ -101,19 +101,24 @@ class Connection
     }
 
     /**
-     * @return iterable<AmqpEnvelope>
+     * @return array<AmqpEnvelope>
      *
      * @throws AMQPExceptionInterface
      * @throws TransportException
      * @throws InvalidArgumentException
      */
-    public function get(string $queueName): iterable
+    public function get(string $queueName): array
     {
         if ($this->autoSetup) {
             $this->setupExchangeAndQueues();
         }
 
-        yield from ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig))->get($queueName);
+        /** @var array<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $this->withRetry(function () use ($queueName): array {
+            return ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig))->get($queueName);
+        })->run();
+
+        return $amqpEnvelopes;
     }
 
     /**
@@ -183,15 +188,13 @@ class Connection
                     exchange: $exchangeName,
                     routing_key: $publishRoutingKey ?? '',
                 );
-            })->run();
 
-            if ($this->connectionConfig->confirmEnabled) {
-                try {
-                    $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
-                } catch (AMQPExceptionInterface $e) {
-                    throw new TransportException($e->getMessage(), 0, $e);
+                if (! $this->connectionConfig->confirmEnabled) {
+                    return;
                 }
-            }
+
+                $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+            })->run();
         }
     }
 
