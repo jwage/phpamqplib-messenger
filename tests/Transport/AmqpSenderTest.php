@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
-use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferrable;
+use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferrableStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
@@ -35,7 +35,7 @@ class AmqpSenderTest extends TestCase
             'application_headers' => new AMQPTable(['header1' => 'value1', 'header2' => 'value2']),
         ]));
 
-        $deferrableStamp = new Deferrable(1);
+        $deferrableStamp = new DeferrableStamp(1);
 
         $delayStamp = new DelayStamp(1000);
 

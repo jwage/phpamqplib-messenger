@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle;
 
-use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferrable;
-use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferred;
+use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferrableStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferredStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\BatchTransportInterface;
 use Override;
 use Symfony\Component\Messenger\Envelope;
@@ -32,11 +32,11 @@ class Batch implements MessageBusInterface
     public function dispatch(object $message, array $stamps = []): Envelope
     {
         $envelope = Envelope::wrap($message)
-            ->with(new Deferrable($this->batchSize));
+            ->with(new DeferrableStamp($this->batchSize));
 
         $envelope = $this->wrappedBus->dispatch($envelope);
 
-        if (($stamp = $envelope->last(Deferred::class)) !== null) {
+        if (($stamp = $envelope->last(DeferredStamp::class)) !== null) {
             $this->transportsToFlush[] = $stamp->getTransport();
         }
 

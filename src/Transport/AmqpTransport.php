@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use InvalidArgumentException;
-use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferrable;
-use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferred;
+use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferrableStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferredStamp;
 use Override;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\TransportException;
@@ -77,8 +77,8 @@ class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterfac
     #[Override]
     public function send(Envelope $envelope): Envelope
     {
-        if ($envelope->last(Deferrable::class) !== null) {
-            $envelope = $envelope->with(new Deferred($this));
+        if ($envelope->last(DeferrableStamp::class) !== null) {
+            $envelope = $envelope->with(new DeferredStamp($this));
         }
 
         return $this->getSender()->send($envelope);
