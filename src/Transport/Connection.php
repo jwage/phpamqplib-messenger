@@ -9,9 +9,11 @@ use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
+use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use Symfony\Component\Messenger\Exception\TransportException;
@@ -41,7 +43,7 @@ class Connection
         private ConnectionConfig $connectionConfig,
     ) {
         $this->autoSetup      = $connectionConfig->autoSetup;
-        $this->autoSetupDelay = $connectionConfig->autoSetup;
+        $this->autoSetupDelay = $connectionConfig->delay->enabled && $connectionConfig->delay->autoSetup;
     }
 
     public function __destruct()
@@ -109,9 +111,7 @@ class Connection
      */
     public function get(string $queueName): array
     {
-        if ($this->autoSetup) {
-            $this->setupExchangeAndQueues();
-        }
+        $this->setupExchangeAndQueues();
 
         /** @var array<AmqpEnvelope> $amqpEnvelopes */
         $amqpEnvelopes = $this->withRetry(function () use ($queueName): array {
@@ -134,9 +134,7 @@ class Connection
         int $batchSize = 1,
         AmqpStamp|null $amqpStamp = null,
     ): void {
-        if ($this->autoSetup) {
-            $this->setupExchangeAndQueues();
-        }
+        $this->setupExchangeAndQueues();
 
         /** @var array<string, mixed> $attributeHeaders */
         $attributeHeaders = $amqpStamp?->getAttributes()['headers'] ?? [];
@@ -264,44 +262,63 @@ class Connection
      */
     private function setupExchangeAndQueues(): void
     {
+        if (! $this->autoSetup) {
+            return;
+        }
+
         try {
             if ($this->connectionConfig->exchange->name) {
-                $this->channel()->exchange_declare(
-                    exchange: $this->connectionConfig->exchange->name,
-                    type: $this->connectionConfig->exchange->type,
-                    passive: $this->connectionConfig->exchange->passive,
-                    durable: $this->connectionConfig->exchange->durable,
-                    auto_delete: $this->connectionConfig->exchange->autoDelete,
-                    nowait: true,
-                    arguments: new AMQPTable($this->connectionConfig->exchange->arguments),
-                );
+                $this->setupExchange();
             }
 
-            foreach ($this->connectionConfig->queues as $queueName => $queueConfig) {
-                $this->declareQueue($queueName);
-
-                if (! $this->connectionConfig->exchange->name) {
-                    continue;
-                }
-
-                $bindings = $queueConfig->bindings
-                    ? $queueConfig->bindings
-                    : [null];
-
-                foreach ($bindings as $bindingConfig) {
-                    $this->channel()->queue_bind(
-                        queue: $queueName,
-                        exchange: $this->connectionConfig->exchange->name,
-                        routing_key: $bindingConfig?->routingKey ?? '',
-                        nowait: true,
-                        arguments: new AMQPTable($bindingConfig?->arguments ?? []),
-                    );
-                }
+            foreach ($this->connectionConfig->queues as $queueConfig) {
+                $this->setupQueue($queueConfig);
             }
 
             $this->autoSetup = false;
         } catch (AMQPExceptionInterface $e) {
             throw new TransportException($e->getMessage(), 0, $e);
+        }
+    }
+
+    /**
+     * @throws AMQPTimeoutException
+     * @throws TransportException
+     */
+    private function setupExchange(): void
+    {
+        $this->channel()->exchange_declare(
+            exchange: $this->connectionConfig->exchange->name,
+            type: $this->connectionConfig->exchange->type,
+            passive: $this->connectionConfig->exchange->passive,
+            durable: $this->connectionConfig->exchange->durable,
+            auto_delete: $this->connectionConfig->exchange->autoDelete,
+            nowait: true,
+            arguments: new AMQPTable($this->connectionConfig->exchange->arguments),
+        );
+    }
+
+    /** @throws InvalidArgumentException */
+    private function setupQueue(QueueConfig $queueConfig): void
+    {
+        $this->declareQueue($queueConfig->name);
+
+        if (! $this->connectionConfig->exchange->name) {
+            return;
+        }
+
+        $bindings = $queueConfig->bindings
+            ? $queueConfig->bindings
+            : [null];
+
+        foreach ($bindings as $bindingConfig) {
+            $this->channel()->queue_bind(
+                queue: $queueConfig->name,
+                exchange: $this->connectionConfig->exchange->name,
+                routing_key: $bindingConfig?->routingKey ?? '',
+                nowait: true,
+                arguments: new AMQPTable($bindingConfig?->arguments ?? []),
+            );
         }
     }
 
@@ -329,16 +346,17 @@ class Connection
         string|null $routingKey,
         bool $isRetryAttempt,
     ): void {
-        if ($this->autoSetupDelay) {
-            $this->setupDelayExchange();
-        }
-
+        $this->setupDelayExchange();
         $this->setupDelayQueue($delay, $routingKey, $isRetryAttempt);
     }
 
     /** @throws TransportException */
     private function setupDelayExchange(): void
     {
+        if (! $this->autoSetupDelay || ! $this->connectionConfig->delay->enabled) {
+            return;
+        }
+
         try {
             $this->channel()->exchange_declare(
                 exchange: $this->connectionConfig->delay->exchange->name,
@@ -359,6 +377,10 @@ class Connection
     /** @throws TransportException */
     private function setupDelayQueue(int $delay, string|null $routingKey, bool $isRetryAttempt): void
     {
+        if (! $this->connectionConfig->delay->enabled) {
+            return;
+        }
+
         try {
             $delayQueueName = $this->connectionConfig->delay
                 ->getQueueName($delay, $routingKey, $isRetryAttempt);

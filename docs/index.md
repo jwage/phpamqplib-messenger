@@ -134,6 +134,8 @@ framework:
                             durable: true
                             auto_delete: false
                             arguments: []
+                        enabled: true
+                        auto_setup: true
                         queue_name_pattern: 'delay_%exchange_name%_%routing_key%_%delay%'
 ```
 
