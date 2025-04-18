@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
-use Jwage\PhpAmqpLibMessengerBundle\Stamp\Deferrable;
+use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferrableStamp;
 use Override;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\TransportException;
@@ -35,7 +35,7 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
     {
         $encodedMessage = $this->serializer->encode($envelope);
 
-        $deferrable = $envelope->last(Deferrable::class);
+        $deferrable = $envelope->last(DeferrableStamp::class);
         $batchSize  = $deferrable ? $deferrable->getBatchSize() : 1;
 
         $delayStamp = $envelope->last(DelayStamp::class);
