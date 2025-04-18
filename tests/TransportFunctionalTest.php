@@ -8,6 +8,7 @@ use Jwage\PhpAmqpLibMessengerBundle\BatchMessageBusInterface;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
+use PhpAmqpLib\Exception\AMQPProtocolChannelException;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Envelope;
 use Traversable;
@@ -61,6 +62,7 @@ class TransportFunctionalTest extends KernelTestCase
 
         $transport = $container->get('messenger.transport.test_phpamqplib');
         assert($transport instanceof AmqpTransport);
+        $this->purgeQueues($transport);
 
         $this->transport = $transport;
     }
@@ -103,5 +105,22 @@ class TransportFunctionalTest extends KernelTestCase
         }
 
         return $collectedEnvelopes;
+    }
+
+    private function purgeQueues(AmqpTransport $transport): void
+    {
+        $channel = $transport->getConnection()->channel();
+        foreach ($transport->getConnection()->getQueueNames() as $queue) {
+            try {
+                $message = $channel->basic_get($queue);
+            } catch (AMQPProtocolChannelException) {
+                // channel probably doesn't exist
+                continue;
+            }
+
+            while ($message !== null) {
+                $message->ack();
+            }
+        }
     }
 }
