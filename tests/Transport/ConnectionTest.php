@@ -158,7 +158,7 @@ class ConnectionTest extends TestCase
     public function testGet(): void
     {
         /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
-        $amqpEnvelopes = $this->connection->get('queue_name');
+        $amqpEnvelopes = $this->connection->consume('queue_name');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
     }

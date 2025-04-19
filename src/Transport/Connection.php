@@ -103,22 +103,17 @@ class Connection
     }
 
     /**
-     * @return array<AmqpEnvelope>
+     * @return iterable<AmqpEnvelope>
      *
      * @throws AMQPExceptionInterface
      * @throws TransportException
      * @throws InvalidArgumentException
      */
-    public function get(string $queueName): array
+    public function consume(string $queueName): iterable
     {
         $this->setupExchangeAndQueues();
 
-        /** @var array<AmqpEnvelope> $amqpEnvelopes */
-        $amqpEnvelopes = $this->withRetry(function () use ($queueName): array {
-            return ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig))->get($queueName);
-        })->run();
-
-        return $amqpEnvelopes;
+        return ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig))->consume($queueName);
     }
 
     /**

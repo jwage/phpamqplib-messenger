@@ -26,13 +26,13 @@ class AmqpConsumer
     }
 
     /**
-     * @return array<AmqpEnvelope>
+     * @return iterable<AmqpEnvelope>
      *
      * @throws AMQPExceptionInterface
      * @throws TransportException
      * @throws InvalidArgumentException
      */
-    public function get(string $queueName): array
+    public function consume(string $queueName): iterable
     {
         $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
 
@@ -40,7 +40,13 @@ class AmqpConsumer
             $this->startConsumer($queueConfig);
         }
 
-        if ($this->buffer === []) {
+        while ($this->connection->channel()->is_consuming()) {
+            $buffer = $this->buffer;
+
+            $this->buffer = [];
+
+            yield from $buffer;
+
             try {
                 $this->connection->channel()->wait(
                     allowed_methods: null,
@@ -48,15 +54,9 @@ class AmqpConsumer
                     timeout: $queueConfig->waitTimeout,
                 );
             } catch (AMQPTimeoutException) {
-                // When we get the timeout from wait(), do nothing and allow the consumer to continue
+                break;
             }
         }
-
-        $buffer = $this->buffer;
-
-        $this->buffer = [];
-
-        return $buffer;
     }
 
     public function callback(AMQPMessage $amqpMessage): void
