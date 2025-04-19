@@ -12,6 +12,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Channel\AMQPChannel;
+use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
 use Traversable;
@@ -59,16 +60,21 @@ class AmqpConsumerTest extends TestCase
                 callback: self::isInstanceOf(Closure::class),
             );
 
-        $channel->expects(self::once())
+        $channel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::exactly(2))
             ->method('wait')
             ->with(
                 allowed_methods: null,
                 non_blocking: false,
                 timeout: 2,
-            );
+            )
+            ->will($this->throwException(new AMQPTimeoutException()));
 
         /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
-        $amqpEnvelopes = $this->consumer->get('test_queue');
+        $amqpEnvelopes = $this->consumer->consume('test_queue');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
 
@@ -77,7 +83,7 @@ class AmqpConsumerTest extends TestCase
         $this->consumer->callback($message);
 
         /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
-        $amqpEnvelopes = $this->consumer->get('test_queue');
+        $amqpEnvelopes = $this->consumer->consume('test_queue');
 
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
     }
@@ -125,16 +131,21 @@ class AmqpConsumerTest extends TestCase
                 callback: self::isInstanceOf(Closure::class),
             );
 
-        $channel->expects(self::once())
+        $channel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::exactly(2))
             ->method('wait')
             ->with(
                 allowed_methods: null,
                 non_blocking: false,
                 timeout: 1,
-            );
+            )
+            ->will($this->throwException(new AMQPTimeoutException()));
 
         /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
-        $amqpEnvelopes = $consumer->get('test_queue');
+        $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
 
@@ -143,7 +154,7 @@ class AmqpConsumerTest extends TestCase
         $consumer->callback($message);
 
         /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
-        $amqpEnvelopes = $consumer->get('test_queue');
+        $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
     }

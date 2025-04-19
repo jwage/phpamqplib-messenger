@@ -49,7 +49,7 @@ class AmqpReceiverTest extends TestCase
             ->willReturn(['queue_name']);
 
         $this->connection->expects(self::once())
-            ->method('get')
+            ->method('consume')
             ->willReturn([$amqpEnvelope]);
 
         $this->serializer->expects(self::once())
@@ -130,7 +130,7 @@ class AmqpReceiverTest extends TestCase
         $connectionConfig      = new ConnectionConfig();
 
         $this->connection = $this->getMockBuilder(Connection::class)
-            ->onlyMethods(['getQueueNames', 'get', 'countMessagesInQueues'])
+            ->onlyMethods(['getQueueNames', 'consume', 'countMessagesInQueues'])
             ->setConstructorArgs([$this->retryFactory, $amqpConnectionFactory, $connectionConfig])
             ->getMock();
 
