@@ -52,7 +52,7 @@ In summary, `php-amqplib` provides a more robust and flexible solution for conne
 
 ## Acknowledgements
 
-We would like to express our sincere gratitude to @videlalvaro, the author of the `php-amqplib` library, for his invaluable contributions to the development of this project. We also acknowledge @Microsoft for supporting his efforts, as he utilized company time to help make `php-amqplib` a robust and reliable solution for connecting to RabbitMQ in PHP applications.
+We would like to express our sincere gratitude to [@videlalvaro](https://github.com/videlalvaro), the author of the [php-amqplib](https://github.com/php-amqplib/php-amqplib) library, for his invaluable contributions to the development of this project. We also acknowledge Microsoft for supporting his efforts, as he utilized company time to help make this Symfony bundle a robust and reliable solution for connecting to RabbitMQ in Symfony applications.
 
 ## License
 
