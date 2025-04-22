@@ -102,6 +102,74 @@ class ConnectionTest extends TestCase
         $this->connection->setup();
     }
 
+    public function testSetupWithAutoSetupDisabled(): void
+    {
+        $connection = $this->getTestConnection(new ConnectionConfig(
+            autoSetup: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            queues: [
+                'queue_name' => new QueueConfig(
+                    name: 'queue_name',
+                    bindings: [
+                        'routing_key' => new BindingConfig(
+                            routingKey: 'routing_key',
+                            arguments: ['arg1' => 'value1', 'arg2' => 'value2'],
+                        ),
+                    ],
+                ),
+            ],
+        ));
+
+        $this->amqpChannel->expects(self::exactly(2))
+            ->method('exchange_declare')
+            ->with(...self::withConsecutive(
+                [
+                    'exchange_name',
+                    'fanout',
+                    false,
+                    true,
+                    false,
+                    false,
+                    true,
+                    new AMQPTable([]),
+                ],
+                [
+                    'delays',
+                    'direct',
+                    false,
+                    true,
+                    false,
+                    false,
+                    true,
+                    new AMQPTable([]),
+                ],
+            ));
+
+        $this->amqpChannel->expects(self::once())
+            ->method('queue_declare')
+            ->with(
+                queue: 'queue_name',
+                passive: false,
+                durable: true,
+                exclusive: false,
+                auto_delete: false,
+                nowait: true,
+                arguments: new AMQPTable([]),
+            );
+
+        $this->amqpChannel->expects(self::once())
+            ->method('queue_bind')
+            ->with(
+                queue: 'queue_name',
+                exchange: 'exchange_name',
+                routing_key: 'routing_key',
+                nowait: true,
+                arguments: new AMQPTable(['arg1' => 'value1', 'arg2' => 'value2']),
+            );
+
+        $connection->setup();
+    }
+
     public function testSetupWithDelayDisabled(): void
     {
         $connection = $this->getTestConnection(new ConnectionConfig(
