@@ -283,6 +283,14 @@ class ConnectionConfigTest extends TestCase
         new ConnectionConfig(waitTimeout: $waitTimeout);
     }
 
+    public function testTransactionsAndConfirmsCannotBeEnabledAtTheSameTime(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Transactions and confirms cannot be enabled at the same time. You must choose one.');
+
+        new ConnectionConfig(transactionsEnabled: true, confirmEnabled: true);
+    }
+
     private static function assertDefaultConnectionConfig(ConnectionConfig $connectionConfig): void
     {
         self::assertTrue($connectionConfig->autoSetup);

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use Jwage\PhpAmqpLibMessengerBundle\PhpAmqpLibMessengerBundle;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\ConfirmMessage;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\TransactionMessage;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Component\Config\Loader\LoaderInterface;
@@ -52,19 +54,37 @@ class TestKernel extends Kernel implements CompilerPassInterface
                         'bus2' => [],
                     ],
                     'transports' => [
-                        'test_phpamqplib' => [
+                        'with_confirms' => [
                             'dsn' => '%env(MESSENGER_TRANSPORT_PHPAMQPLIB_DSN)%',
                             'options' => [
+                                'transactions_enabled' => false,
+                                'confirm_enabled' => true,
                                 'prefetch_count' => 10,
                                 'wait_timeout' => 0.10, // lower wait_timeout for tests
-                                'exchange' => ['name' => 'test_phpamqplib_exchange'],
+                                'exchange' => ['name' => 'test_confirms_exchange'],
                                 'queues' => [
-                                    'test_phpamqplib_queue' => ['prefetch_count' => 2],
+                                    'test_confirms_queue' => ['prefetch_count' => 2],
+                                ],
+                            ],
+                        ],
+                        'with_transactions' => [
+                            'dsn' => '%env(MESSENGER_TRANSPORT_PHPAMQPLIB_DSN)%',
+                            'options' => [
+                                'transactions_enabled' => true,
+                                'confirm_enabled' => false,
+                                'prefetch_count' => 10,
+                                'wait_timeout' => 0.10, // lower wait_timeout for tests
+                                'exchange' => ['name' => 'test_transactions_exchange'],
+                                'queues' => [
+                                    'test_transactions_queue' => ['prefetch_count' => 2],
                                 ],
                             ],
                         ],
                     ],
-                    'routing' => ['stdClass' => 'test_phpamqplib'],
+                    'routing' => [
+                        ConfirmMessage::class => 'with_confirms',
+                        TransactionMessage::class => 'with_transactions',
+                    ],
                 ],
             ]);
         });
