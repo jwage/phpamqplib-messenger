@@ -185,17 +185,31 @@ class Connection
             }
         } else {
             $this->withRetry(function () use ($amqpEnvelope, $exchangeName, $publishRoutingKey): void {
-                $this->channel()->basic_publish(
-                    msg: $amqpEnvelope->getAMQPMessage(),
-                    exchange: $exchangeName,
-                    routing_key: $publishRoutingKey ?? '',
-                );
-
-                if (! $this->connectionConfig->confirmEnabled) {
-                    return;
+                if ($this->connectionConfig->transactionsEnabled) {
+                    $this->channel()->tx_select();
                 }
 
-                $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                try {
+                    $this->channel()->basic_publish(
+                        msg: $amqpEnvelope->getAMQPMessage(),
+                        exchange: $exchangeName,
+                        routing_key: $publishRoutingKey ?? '',
+                    );
+                } catch (AMQPExceptionInterface $e) {
+                    if ($this->connectionConfig->transactionsEnabled) {
+                        $this->channel()->tx_rollback();
+                    }
+
+                    throw $e;
+                }
+
+                if ($this->connectionConfig->transactionsEnabled) {
+                    $this->channel()->tx_commit();
+                }
+
+                if ($this->connectionConfig->confirmEnabled) {
+                    $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                }
             })->run();
         }
     }
@@ -204,13 +218,27 @@ class Connection
     public function flush(): void
     {
         $this->withRetry(function (): void {
-            $this->channel()->publish_batch();
-
-            if (! $this->connectionConfig->confirmEnabled) {
-                return;
+            if ($this->connectionConfig->transactionsEnabled) {
+                $this->channel()->tx_select();
             }
 
-            $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+            try {
+                $this->channel()->publish_batch();
+            } catch (AMQPExceptionInterface $e) {
+                if ($this->connectionConfig->transactionsEnabled) {
+                    $this->channel()->tx_rollback();
+                }
+
+                throw $e;
+            }
+
+            if ($this->connectionConfig->transactionsEnabled) {
+                $this->channel()->tx_commit();
+            }
+
+            if ($this->connectionConfig->confirmEnabled) {
+                $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+            }
         })->run();
 
         $this->batchCount = 0;

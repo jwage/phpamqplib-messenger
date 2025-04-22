@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use Jwage\PhpAmqpLibMessengerBundle\BatchMessageBusInterface;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\ConfirmMessage;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\TransactionMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
@@ -19,32 +21,74 @@ class TransportFunctionalTest extends KernelTestCase
 {
     private BatchMessageBusInterface $bus;
 
-    private AmqpTransport $transport;
+    private AmqpTransport $confirmsTransport;
 
-    public function testTransport(): void
+    private AmqpTransport $transactionsTransport;
+
+    public function testTransportWithConfirms(): void
     {
-        $envelopes = $this->getEnvelopes(0);
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 0);
 
         self::assertCount(0, $envelopes);
 
-        $this->dispatchMessages();
+        $message1 = Envelope::wrap(new ConfirmMessage(1))->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
+        $message2 = Envelope::wrap(new ConfirmMessage(2))->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
+        $message3 = Envelope::wrap(new ConfirmMessage(3))->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
+
+        $messages = [$message1, $message2, $message3];
+
+        $this->dispatchMessages($messages);
 
         // test we can recover from a reconnect inbetween dispatching and consuming
-        $this->transport->getConnection()->reconnect();
+        $this->confirmsTransport->getConnection()->reconnect();
 
-        $envelopes = $this->getEnvelopes(3);
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 3);
 
         self::assertCount(3, $envelopes);
 
-        self::assertEquals(1, $envelopes[0]->getMessage()->test);
+        self::assertEquals(1, $envelopes[0]->getMessage()->count);
         self::assertEquals(1, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
         self::assertEquals(2, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
 
-        self::assertEquals(2, $envelopes[1]->getMessage()->test);
+        self::assertEquals(2, $envelopes[1]->getMessage()->count);
         self::assertEquals(1, $envelopes[1]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
         self::assertEquals(2, $envelopes[1]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
 
-        self::assertEquals(3, $envelopes[2]->getMessage()->test);
+        self::assertEquals(3, $envelopes[2]->getMessage()->count);
+        self::assertEquals(1, $envelopes[2]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
+        self::assertEquals(2, $envelopes[2]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
+    }
+
+    public function testTransportWithTransactions(): void
+    {
+        $envelopes = $this->getEnvelopes($this->transactionsTransport, 0);
+
+        self::assertCount(0, $envelopes);
+
+        $message1 = Envelope::wrap(new TransactionMessage(1))->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
+        $message2 = Envelope::wrap(new TransactionMessage(2))->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
+        $message3 = Envelope::wrap(new TransactionMessage(3))->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
+
+        $messages = [$message1, $message2, $message3];
+
+        $this->dispatchMessages($messages);
+
+        // test we can recover from a reconnect inbetween dispatching and consuming
+        $this->transactionsTransport->getConnection()->reconnect();
+
+        $envelopes = $this->getEnvelopes($this->transactionsTransport, 3);
+
+        self::assertCount(3, $envelopes);
+
+        self::assertEquals(1, $envelopes[0]->getMessage()->count);
+        self::assertEquals(1, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
+        self::assertEquals(2, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
+
+        self::assertEquals(2, $envelopes[1]->getMessage()->count);
+        self::assertEquals(1, $envelopes[1]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
+        self::assertEquals(2, $envelopes[1]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
+
+        self::assertEquals(3, $envelopes[2]->getMessage()->count);
         self::assertEquals(1, $envelopes[2]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
         self::assertEquals(2, $envelopes[2]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
     }
@@ -59,20 +103,20 @@ class TransportFunctionalTest extends KernelTestCase
 
         $this->bus = $container->get(BatchMessageBusInterface::class);
 
-        $transport = $container->get('messenger.transport.test_phpamqplib');
-        assert($transport instanceof AmqpTransport);
+        $confirmsTransport = $container->get('messenger.transport.with_confirms');
+        assert($confirmsTransport instanceof AmqpTransport);
 
-        $this->transport = $transport;
+        $this->confirmsTransport = $confirmsTransport;
+
+        $transactionsTransport = $container->get('messenger.transport.with_transactions');
+        assert($transactionsTransport instanceof AmqpTransport);
+
+        $this->transactionsTransport = $transactionsTransport;
     }
 
-    private function dispatchMessages(): void
+    /** @param array<object> $messages */
+    private function dispatchMessages(array $messages): void
     {
-        $message1 = Envelope::wrap((object) ['test' => 1])->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
-        $message2 = Envelope::wrap((object) ['test' => 2])->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
-        $message3 = Envelope::wrap((object) ['test' => 3])->with(new AmqpStamp(attributes: ['headers' => ['test1' => 1, 'test2' => 2]]));
-
-        $messages = [$message1, $message2, $message3];
-
         $batch = $this->bus->getBatch(2);
 
         foreach ($messages as $message) {
@@ -83,18 +127,18 @@ class TransportFunctionalTest extends KernelTestCase
     }
 
     /** @return array<Envelope> */
-    private function getEnvelopes(int $count): array
+    private function getEnvelopes(AMQPTransport $transport, int $count): array
     {
         $collectedEnvelopes = [];
 
         while (true) {
             /** @var Traversable<Envelope> $envelopes */
-            $envelopes = $this->transport->get();
+            $envelopes = $transport->get();
 
             foreach ($envelopes as $envelope) {
                 $collectedEnvelopes[] = $envelope;
 
-                $this->transport->ack($envelope);
+                $transport->ack($envelope);
             }
 
             if (count($collectedEnvelopes) === $count) {

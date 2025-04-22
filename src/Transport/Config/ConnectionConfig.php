@@ -43,6 +43,7 @@ readonly class ConnectionConfig
         'wait_timeout',
         'confirm_enabled',
         'confirm_timeout',
+        'transactions_enabled',
         'ssl',
         'exchange',
         'delay',
@@ -87,6 +88,8 @@ readonly class ConnectionConfig
 
     public int|float $confirmTimeout;
 
+    public bool $transactionsEnabled;
+
     public ExchangeConfig $exchange;
 
     public DelayConfig $delay;
@@ -120,6 +123,7 @@ readonly class ConnectionConfig
         int|float|null $waitTimeout = null,
         bool|null $confirmEnabled = null,
         int|float|null $confirmTimeout = null,
+        bool|null $transactionsEnabled = null,
         public SslConfig|null $ssl = null,
         ExchangeConfig|null $exchange = null,
         DelayConfig|null $delay = null,
@@ -129,28 +133,33 @@ readonly class ConnectionConfig
             throw new InvalidArgumentException('Connection wait timeout cannot be zero. This will cause the consumer to wait forever and block the messenger worker loop.');
         }
 
-        $this->autoSetup         = $autoSetup ?? true;
-        $this->host              = $host ?? 'localhost';
-        $this->port              = $port ?? 5672;
-        $this->user              = $user ?? 'guest';
-        $this->password          = $password ?? 'guest';
-        $this->vhost             = $vhost ?? '/';
-        $this->insist            = $insist ?? false;
-        $this->loginMethod       = $loginMethod ?? AMQPConnectionConfig::AUTH_AMQPPLAIN;
-        $this->locale            = $locale ?? 'en_US';
-        $this->connectionTimeout = $connectionTimeout ?? 3.0;
-        $this->readTimeout       = $readTimeout ?? 3.0;
-        $this->writeTimeout      = $writeTimeout ?? 3.0;
-        $this->channelRPCTimeout = $channelRPCTimeout ?? 3.0;
-        $this->heartbeat         = $heartbeat ?? 0;
-        $this->keepalive         = $keepalive ?? true;
-        $this->prefetchCount     = $prefetchCount ?? self::DEFAULT_PREFETCH_COUNT;
-        $this->waitTimeout       = $waitTimeout ?? self::DEFAULT_WAIT_TIMEOUT;
-        $this->confirmEnabled    = $confirmEnabled ?? true;
-        $this->confirmTimeout    = $confirmTimeout ?? self::DEFAULT_CONFIRM_TIMEOUT;
-        $this->exchange          = $exchange ?? new ExchangeConfig();
-        $this->delay             = $delay ?? new DelayConfig();
-        $this->queues            = self::indexByQueueName($queues ?? []);
+        if ($transactionsEnabled && $confirmEnabled) {
+            throw new InvalidArgumentException('Transactions and confirms cannot be enabled at the same time. You must choose one.');
+        }
+
+        $this->autoSetup           = $autoSetup ?? true;
+        $this->host                = $host ?? 'localhost';
+        $this->port                = $port ?? 5672;
+        $this->user                = $user ?? 'guest';
+        $this->password            = $password ?? 'guest';
+        $this->vhost               = $vhost ?? '/';
+        $this->insist              = $insist ?? false;
+        $this->loginMethod         = $loginMethod ?? AMQPConnectionConfig::AUTH_AMQPPLAIN;
+        $this->locale              = $locale ?? 'en_US';
+        $this->connectionTimeout   = $connectionTimeout ?? 3.0;
+        $this->readTimeout         = $readTimeout ?? 3.0;
+        $this->writeTimeout        = $writeTimeout ?? 3.0;
+        $this->channelRPCTimeout   = $channelRPCTimeout ?? 3.0;
+        $this->heartbeat           = $heartbeat ?? 0;
+        $this->keepalive           = $keepalive ?? true;
+        $this->prefetchCount       = $prefetchCount ?? self::DEFAULT_PREFETCH_COUNT;
+        $this->waitTimeout         = $waitTimeout ?? self::DEFAULT_WAIT_TIMEOUT;
+        $this->confirmEnabled      = $confirmEnabled ?? true;
+        $this->confirmTimeout      = $confirmTimeout ?? self::DEFAULT_CONFIRM_TIMEOUT;
+        $this->transactionsEnabled = $transactionsEnabled ?? false;
+        $this->exchange            = $exchange ?? new ExchangeConfig();
+        $this->delay               = $delay ?? new DelayConfig();
+        $this->queues              = self::indexByQueueName($queues ?? []);
     }
 
     /**
@@ -174,6 +183,7 @@ readonly class ConnectionConfig
      *     wait_timeout?: int|float|mixed,
      *     confirm_enabled?: bool|mixed,
      *     confirm_timeout?: int|float|mixed,
+     *     transactions_enabled?: bool|mixed,
      *     ssl?: array{
      *         cafile?: string|null,
      *         capath?: string|null,
@@ -235,12 +245,6 @@ readonly class ConnectionConfig
         $waitTimeout = isset($connectionConfig['wait_timeout'])
             ? (float) $connectionConfig['wait_timeout'] : null;
 
-        $confirmEnabled = isset($connectionConfig['confirm_enabled'])
-            ? (bool) $connectionConfig['confirm_enabled'] : null;
-
-        $confirmTimeout = isset($connectionConfig['confirm_timeout'])
-            ? (float) $connectionConfig['confirm_timeout'] : null;
-
         $queues = $connectionConfig['queues'] ?? [];
 
         $queueConfigs = [];
@@ -283,8 +287,9 @@ readonly class ConnectionConfig
             keepalive: isset($connectionConfig['keepalive']) ? (bool) $connectionConfig['keepalive'] : null,
             prefetchCount: $prefetchCount,
             waitTimeout: $waitTimeout,
-            confirmEnabled: $confirmEnabled,
-            confirmTimeout: $confirmTimeout,
+            confirmEnabled: isset($connectionConfig['confirm_enabled']) ? (bool) $connectionConfig['confirm_enabled'] : null,
+            confirmTimeout: isset($connectionConfig['confirm_timeout']) ? (float) $connectionConfig['confirm_timeout'] : null,
+            transactionsEnabled: isset($connectionConfig['transactions_enabled']) ? (bool) $connectionConfig['transactions_enabled'] : null,
             ssl: isset($connectionConfig['ssl']) ? SslConfig::fromArray($connectionConfig['ssl']) : null,
             exchange: isset($connectionConfig['exchange']) ? ExchangeConfig::fromArray($connectionConfig['exchange']) : null,
             delay: isset($connectionConfig['delay']) ? DelayConfig::fromArray($connectionConfig['delay']) : null,
