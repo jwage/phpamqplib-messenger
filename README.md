@@ -50,6 +50,10 @@ There are several reasons why you might prefer to use the `php-amqplib/php-amqpl
 
 In summary, `php-amqplib` provides a more robust and flexible solution for connecting to RabbitMQ in Symfony Messenger, making it the preferred choice for many developers.
 
+## Acknowledgements
+
+We would like to express our sincere gratitude to @videlalvaro, the author of the `php-amqplib` library, for his invaluable contributions to the development of this project. We also acknowledge @Microsoft for supporting his efforts, as he utilized company time to help make `php-amqplib` a robust and reliable solution for connecting to RabbitMQ in PHP applications.
+
 ## License
 
 This bundle is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

@@ -58,12 +58,19 @@ framework:
             orders:
                 dsn: 'phpamqplib://localhost:5672/%2f'
                 options:
+                    # Automatically setup the exchange and queues
+                    # If disabled, you must manually setup the exchange and queues with messenger:setup-transports
+                    auto_setup: true
+
                     # Connection options
                     host: 'localhost'
                     port: 5672
                     user: 'guest'
                     password: 'guest'
                     vhost: '/'
+                    insist: true
+                    login_method: 'AMQPLAIN'
+                    locale: 'en_US'
 
                     # Timeout settings
                     connection_timeout: 3.0
@@ -78,12 +85,12 @@ framework:
                     # Prefetch settings
                     prefetch_count: 1
 
+                    # Consume wait settings
+                    wait_timeout: 1
+
                     # Confirm settings
                     confirm_enabled: true
                     confirm_timeout: 3.0
-
-                    # Consume wait settings
-                    wait_timeout: 1
 
                     # SSL/TLS configuration
                     ssl:
