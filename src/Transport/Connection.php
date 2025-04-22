@@ -78,7 +78,10 @@ class Connection
     public function setup(): void
     {
         $this->setupExchangeAndQueues();
-        $this->setupDelayExchange();
+
+        if ($this->connectionConfig->delay->enabled) {
+            $this->setupDelayExchange();
+        }
     }
 
     /** @throws TransportException */
@@ -111,7 +114,9 @@ class Connection
      */
     public function consume(string $queueName): iterable
     {
-        $this->setupExchangeAndQueues();
+        if ($this->autoSetup) {
+            $this->setupExchangeAndQueues();
+        }
 
         return ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig))->consume($queueName);
     }
@@ -129,7 +134,9 @@ class Connection
         int $batchSize = 1,
         AmqpStamp|null $amqpStamp = null,
     ): void {
-        $this->setupExchangeAndQueues();
+        if ($this->autoSetup) {
+            $this->setupExchangeAndQueues();
+        }
 
         /** @var array<string, mixed> $attributeHeaders */
         $attributeHeaders = $amqpStamp?->getAttributes()['headers'] ?? [];
@@ -149,11 +156,13 @@ class Connection
                 $isRetryAttempt,
             );
 
-            $this->setupDelayExchangeAndQueue(
-                $delayInMs,
-                $routingKey,
-                $isRetryAttempt,
-            );
+            if ($this->connectionConfig->delay->enabled) {
+                $this->setupDelayExchangeAndQueue(
+                    $delayInMs,
+                    $routingKey,
+                    $isRetryAttempt,
+                );
+            }
         } else {
             $publishRoutingKey = $routingKey;
         }
@@ -257,10 +266,6 @@ class Connection
      */
     private function setupExchangeAndQueues(): void
     {
-        if (! $this->autoSetup) {
-            return;
-        }
-
         try {
             if ($this->connectionConfig->exchange->name) {
                 $this->setupExchange();
@@ -341,17 +346,16 @@ class Connection
         string|null $routingKey,
         bool $isRetryAttempt,
     ): void {
-        $this->setupDelayExchange();
+        if ($this->autoSetupDelay) {
+            $this->setupDelayExchange();
+        }
+
         $this->setupDelayQueue($delay, $routingKey, $isRetryAttempt);
     }
 
     /** @throws TransportException */
     private function setupDelayExchange(): void
     {
-        if (! $this->autoSetupDelay || ! $this->connectionConfig->delay->enabled) {
-            return;
-        }
-
         try {
             $this->channel()->exchange_declare(
                 exchange: $this->connectionConfig->delay->exchange->name,
@@ -372,10 +376,6 @@ class Connection
     /** @throws TransportException */
     private function setupDelayQueue(int $delay, string|null $routingKey, bool $isRetryAttempt): void
     {
-        if (! $this->connectionConfig->delay->enabled) {
-            return;
-        }
-
         try {
             $delayQueueName = $this->connectionConfig->delay
                 ->getQueueName($delay, $routingKey, $isRetryAttempt);
