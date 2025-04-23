@@ -48,7 +48,11 @@ class Connection
 
     public function __destruct()
     {
-        $this->consumer?->stop();
+        try {
+            $this->consumer?->stop();
+        } catch (TransportException) {
+        }
+
         $this->connection = null;
         $this->channel    = null;
         $this->consumer   = null;
