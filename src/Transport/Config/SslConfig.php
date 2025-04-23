@@ -6,12 +6,6 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport\Config;
 
 use InvalidArgumentException;
 
-use function array_diff;
-use function array_keys;
-use function count;
-use function implode;
-use function sprintf;
-
 final readonly class SslConfig
 {
     private const array AVAILABLE_OPTIONS = [
@@ -62,16 +56,16 @@ final readonly class SslConfig
         self::validate($sslConfig);
 
         return new self(
-            $sslConfig['cafile'] ?? null,
-            $sslConfig['capath'] ?? null,
-            $sslConfig['local_cert'] ?? null,
-            $sslConfig['local_pk'] ?? null,
-            $sslConfig['verify_peer'] ?? null,
-            $sslConfig['verify_peer_name'] ?? null,
-            $sslConfig['passphrase'] ?? null,
-            $sslConfig['ciphers'] ?? null,
-            $sslConfig['security_level'] ?? null,
-            $sslConfig['crypto_method'] ?? null,
+            cafile: ConfigHelper::getString($sslConfig, 'cafile'),
+            capath: ConfigHelper::getString($sslConfig, 'capath'),
+            localCert: ConfigHelper::getString($sslConfig, 'local_cert'),
+            localPk: ConfigHelper::getString($sslConfig, 'local_pk'),
+            verifyPeer: ConfigHelper::getBool($sslConfig, 'verify_peer'),
+            verifyPeerName: ConfigHelper::getBool($sslConfig, 'verify_peer_name'),
+            passphrase: ConfigHelper::getString($sslConfig, 'passphrase'),
+            ciphers: ConfigHelper::getString($sslConfig, 'ciphers'),
+            securityLevel: ConfigHelper::getInt($sslConfig, 'security_level'),
+            cryptoMethod: ConfigHelper::getInt($sslConfig, 'crypto_method'),
         );
     }
 
@@ -82,8 +76,6 @@ final readonly class SslConfig
      */
     private static function validate(array $sslConfig): void
     {
-        if (0 < count($invalidOptions = array_diff(array_keys($sslConfig), self::AVAILABLE_OPTIONS))) {
-            throw new InvalidArgumentException(sprintf('Invalid ssl option(s) "%s" passed to the AMQP Messenger transport.', implode('", "', $invalidOptions)));
-        }
+        ConfigHelper::validate('ssl', $sslConfig, self::AVAILABLE_OPTIONS);
     }
 }

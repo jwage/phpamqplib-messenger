@@ -7,11 +7,6 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport\Config;
 use InvalidArgumentException;
 use PhpAmqpLib\Exchange\AMQPExchangeType;
 
-use function array_diff;
-use function array_keys;
-use function count;
-use function implode;
-use function sprintf;
 use function str_replace;
 
 readonly class DelayConfig
@@ -32,13 +27,16 @@ readonly class DelayConfig
 
     public string $queueNamePattern;
 
+    /** @var array<string, mixed> */
+    public array $arguments;
+
     /** @param array<string, mixed> $arguments */
     public function __construct(
         ExchangeConfig|null $exchange = null,
         bool|null $enabled = null,
         bool|null $autoSetup = null,
         string|null $queueNamePattern = null,
-        public array $arguments = [],
+        array|null $arguments = [],
     ) {
         $this->exchange = $exchange ?? new ExchangeConfig(
             name: 'delays',
@@ -48,6 +46,7 @@ readonly class DelayConfig
         $this->enabled          = $enabled ?? true;
         $this->autoSetup        = $autoSetup ?? true;
         $this->queueNamePattern = $queueNamePattern ?? 'delay_%exchange_name%_%routing_key%_%delay%';
+        $this->arguments        = $arguments ?? [];
     }
 
     /**
@@ -75,10 +74,10 @@ readonly class DelayConfig
 
         return new self(
             exchange: isset($delayConfig['exchange']) ? ExchangeConfig::fromArray($delayConfig['exchange']) : null,
-            enabled: isset($delayConfig['enabled']) ? (bool) $delayConfig['enabled'] : null,
-            autoSetup: isset($delayConfig['auto_setup']) ? (bool) $delayConfig['auto_setup'] : null,
-            queueNamePattern: $delayConfig['queue_name_pattern'] ?? null,
-            arguments: $delayConfig['arguments'] ?? [],
+            enabled: ConfigHelper::getBool($delayConfig, 'enabled'),
+            autoSetup: ConfigHelper::getBool($delayConfig, 'auto_setup'),
+            queueNamePattern: ConfigHelper::getString($delayConfig, 'queue_name_pattern'),
+            arguments: ConfigHelper::getArray($delayConfig, 'arguments'),
         );
     }
 
@@ -104,8 +103,6 @@ readonly class DelayConfig
      */
     private static function validate(array $delayConfig): void
     {
-        if (0 < count($invalidDelayOptions = array_diff(array_keys($delayConfig), self::AVAILABLE_OPTIONS))) {
-            throw new InvalidArgumentException(sprintf('Invalid delay option(s) "%s" passed to the AMQP Messenger transport.', implode('", "', $invalidDelayOptions)));
-        }
+        ConfigHelper::validate('delay', $delayConfig, self::AVAILABLE_OPTIONS);
     }
 }

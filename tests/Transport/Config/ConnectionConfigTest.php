@@ -11,6 +11,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ExchangeConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 
 class ConnectionConfigTest extends TestCase
 {
@@ -52,7 +53,7 @@ class ConnectionConfigTest extends TestCase
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
-        self::expectExceptionMessage('Invalid option(s) "invalid" passed to the AMQP Messenger transport - known options:');
+        self::expectExceptionMessage('Invalid connection option(s) "invalid" passed to the AMQP Messenger transport - known options:');
 
         ConnectionConfig::fromArray(['invalid' => true]);
     }
@@ -206,6 +207,14 @@ class ConnectionConfigTest extends TestCase
         ConnectionConfig::fromArray([
             'queues' => [[]],
         ]);
+    }
+
+    public function testFromArrayWithInvalidTypes(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Invalid type "object" for key "prefetch_count" (expected integer)');
+
+        ConnectionConfig::fromArray(['prefetch_count' => new stdClass()]);
     }
 
     public function testGetQueueNames(): void

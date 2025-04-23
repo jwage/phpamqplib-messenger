@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ExchangeConfig;
 use PhpAmqpLib\Exchange\AMQPExchangeType;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 
 class ExchangeConfigTest extends TestCase
 {
@@ -49,8 +50,17 @@ class ExchangeConfigTest extends TestCase
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
-        self::expectExceptionMessage('Invalid exchange option(s) "invalid" passed to the AMQP Messenger transport.');
+        self::expectExceptionMessage('Invalid exchange option(s) "invalid" passed to the AMQP Messenger transport - known options: "name", "type", "default_publish_routing_key", "passive", "durable", "auto_delete", "arguments".');
 
         ExchangeConfig::fromArray(['invalid' => true]);
+    }
+
+    /** @psalm-suppress InvalidArgument */
+    public function testFromArrayWithInvalidTypes(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Invalid type "object" for key "name" (expected string)');
+
+        ExchangeConfig::fromArray(['name' => new stdClass()]);
     }
 }

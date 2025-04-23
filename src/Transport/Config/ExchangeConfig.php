@@ -7,12 +7,6 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport\Config;
 use InvalidArgumentException;
 use PhpAmqpLib\Exchange\AMQPExchangeType;
 
-use function array_diff;
-use function array_keys;
-use function count;
-use function implode;
-use function sprintf;
-
 readonly class ExchangeConfig
 {
     private const array AVAILABLE_OPTIONS = [
@@ -77,13 +71,13 @@ readonly class ExchangeConfig
         self::validate($exchangeConfig);
 
         return new self(
-            name: $exchangeConfig['name'] ?? null,
-            type: $exchangeConfig['type'] ?? null,
-            defaultPublishRoutingKey: $exchangeConfig['default_publish_routing_key'] ?? null,
-            passive: isset($exchangeConfig['passive']) ? (bool) $exchangeConfig['passive'] : null,
-            durable: isset($exchangeConfig['durable']) ? (bool) $exchangeConfig['durable'] : null,
-            autoDelete: isset($exchangeConfig['auto_delete']) ? (bool) $exchangeConfig['auto_delete'] : null,
-            arguments: $exchangeConfig['arguments'] ?? null,
+            name: ConfigHelper::getString($exchangeConfig, 'name'),
+            type: ConfigHelper::getString($exchangeConfig, 'type'),
+            defaultPublishRoutingKey: ConfigHelper::getString($exchangeConfig, 'default_publish_routing_key'),
+            passive: ConfigHelper::getBool($exchangeConfig, 'passive'),
+            durable: ConfigHelper::getBool($exchangeConfig, 'durable'),
+            autoDelete: ConfigHelper::getBool($exchangeConfig, 'auto_delete'),
+            arguments: ConfigHelper::getArray($exchangeConfig, 'arguments'),
         );
     }
 
@@ -94,8 +88,6 @@ readonly class ExchangeConfig
      */
     private static function validate(array $exchangeConfig): void
     {
-        if (0 < count($invalidExchangeOptions = array_diff(array_keys($exchangeConfig), self::AVAILABLE_OPTIONS))) {
-            throw new InvalidArgumentException(sprintf('Invalid exchange option(s) "%s" passed to the AMQP Messenger transport.', implode('", "', $invalidExchangeOptions)));
-        }
+        ConfigHelper::validate('exchange', $exchangeConfig, self::AVAILABLE_OPTIONS);
     }
 }

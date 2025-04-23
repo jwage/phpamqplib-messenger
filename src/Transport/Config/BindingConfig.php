@@ -6,12 +6,6 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport\Config;
 
 use InvalidArgumentException;
 
-use function array_diff;
-use function array_keys;
-use function count;
-use function implode;
-use function sprintf;
-
 readonly class BindingConfig
 {
     private const array AVAILABLE_OPTIONS = [
@@ -54,8 +48,8 @@ readonly class BindingConfig
         self::validate($bindingConfig);
 
         return new self(
-            routingKey: $bindingConfig['routing_key'] ?? '',
-            arguments: $bindingConfig['arguments'] ?? [],
+            routingKey: ConfigHelper::getString($bindingConfig, 'routing_key'),
+            arguments: ConfigHelper::getArray($bindingConfig, 'arguments'),
         );
     }
 
@@ -66,8 +60,6 @@ readonly class BindingConfig
      */
     private static function validate(array $bindingConfig): void
     {
-        if (0 < count($invalidBindingOptions = array_diff(array_keys($bindingConfig), self::AVAILABLE_OPTIONS))) {
-            throw new InvalidArgumentException(sprintf('Invalid binding option(s) "%s" passed to the AMQP Messenger transport.', implode('", "', $invalidBindingOptions)));
-        }
+        ConfigHelper::validate('binding', $bindingConfig, self::AVAILABLE_OPTIONS);
     }
 }

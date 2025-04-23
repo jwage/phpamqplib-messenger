@@ -79,6 +79,21 @@ class DsnParserTest extends TestCase
         self::assertConnectionConfig($connectionConfig);
     }
 
+    public function testParseDsnWithBooleanAutoSetup(): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://guest:guest@127.0.0.1:5672/vhost?auto_setup=true');
+
+        self::assertSame(true, $connectionConfig->autoSetup);
+    }
+
+    public function testParseDsnWithInvalidAutoSetupValue(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Invalid type "string" for key "auto_setup" (expected boolean)');
+
+        $this->dsnParser->parseDsn('phpamqplib://guest:guest@127.0.0.1:5672/vhost?auto_setup=not_a_bool');
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
