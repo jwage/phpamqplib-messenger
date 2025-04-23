@@ -40,6 +40,16 @@ class ConnectionTest extends TestCase
 
     private Connection $connection;
 
+    public function testClose(): void
+    {
+        $this->amqpConnection->expects(self::once())
+            ->method('close');
+
+        $this->connection->channel();
+
+        $this->connection->close();
+    }
+
     public function testReconnect(): void
     {
         $this->connection->channel();

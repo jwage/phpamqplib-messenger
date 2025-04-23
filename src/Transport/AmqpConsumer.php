@@ -17,7 +17,7 @@ class AmqpConsumer
     /** @var array<AmqpEnvelope> */
     private array $buffer = [];
 
-    private bool $isConsuming = false;
+    private string|null $consumerTag = null;
 
     public function __construct(
         private Connection $connection,
@@ -36,8 +36,8 @@ class AmqpConsumer
     {
         $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
 
-        if ($this->isConsuming === false) {
-            $this->startConsumer($queueConfig);
+        if ($this->consumerTag === null) {
+            $this->start($queueConfig);
         }
 
         while ($this->connection->channel()->is_consuming()) {
@@ -64,12 +64,26 @@ class AmqpConsumer
         $this->buffer[] = new AmqpEnvelope($amqpMessage);
     }
 
+    /** @throws TransportException */
+    public function stop(): void
+    {
+        if ($this->consumerTag !== null) {
+            try {
+                $this->connection->channel()->basic_cancel(consumer_tag: $this->consumerTag);
+            } catch (AMQPExceptionInterface $e) {
+                throw new TransportException($e->getMessage(), 0, $e);
+            }
+
+            $this->consumerTag = null;
+        }
+    }
+
     /**
      * @throws AMQPExceptionInterface
      * @throws TransportException
      * @throws InvalidArgumentException
      */
-    private function startConsumer(QueueConfig $queueConfig): void
+    private function start(QueueConfig $queueConfig): void
     {
         $this->connection->channel()->basic_qos(
             prefetch_size: 0,
@@ -77,7 +91,7 @@ class AmqpConsumer
             a_global: false,
         );
 
-        $this->connection->channel()->basic_consume(
+        $this->consumerTag = $this->connection->channel()->basic_consume(
             queue: $queueConfig->name,
             consumer_tag: '',
             no_local: false,
@@ -86,7 +100,5 @@ class AmqpConsumer
             nowait: false,
             callback: $this->callback(...),
         );
-
-        $this->isConsuming = true;
     }
 }

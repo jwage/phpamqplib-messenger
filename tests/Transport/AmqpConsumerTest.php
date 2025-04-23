@@ -58,7 +58,8 @@ class AmqpConsumerTest extends TestCase
                 exclusive: false,
                 nowait: false,
                 callback: self::isInstanceOf(Closure::class),
-            );
+            )
+            ->willReturn('consumer_tag');
 
         $channel->expects(self::exactly(2))
             ->method('is_consuming')
@@ -129,7 +130,8 @@ class AmqpConsumerTest extends TestCase
                 exclusive: false,
                 nowait: false,
                 callback: self::isInstanceOf(Closure::class),
-            );
+            )
+            ->willReturn('consumer_tag');
 
         $channel->expects(self::exactly(2))
             ->method('is_consuming')
@@ -157,6 +159,66 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
+    }
+
+    public function testStopConsumer(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $this->connection->expects(self::any())
+            ->method('channel')
+            ->willReturn($channel);
+
+        $this->connection->expects(self::any())
+            ->method('getQueueNames')
+            ->willReturn(['test_queue']);
+
+        $channel->expects(self::once())
+            ->method('basic_qos')
+            ->with(
+                prefetch_size: 0,
+                prefetch_count: 20,
+                a_global: false,
+            );
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->with(
+                queue: 'test_queue',
+                consumer_tag: '',
+                no_local: false,
+                no_ack: false,
+                exclusive: false,
+                nowait: false,
+                callback: self::isInstanceOf(Closure::class),
+            )
+            ->willReturn('consumer_tag');
+
+        $channel->expects(self::once())
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::once())
+            ->method('wait')
+            ->with(
+                allowed_methods: null,
+                non_blocking: false,
+                timeout: 2,
+            )
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        $channel->expects(self::once())
+            ->method('basic_cancel')
+            ->with(
+                consumer_tag: 'consumer_tag',
+            );
+
+        /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $this->consumer->consume('test_queue');
+
+        self::assertCount(0, iterator_to_array($amqpEnvelopes));
+
+        $this->consumer->stop();
     }
 
     protected function setUp(): void

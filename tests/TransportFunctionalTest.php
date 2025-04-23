@@ -93,6 +93,25 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertEquals(2, $envelopes[2]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
     }
 
+    public function testDispatchWithoutBatches(): void
+    {
+        $message1 = new ConfirmMessage(1);
+        $message2 = new ConfirmMessage(2);
+        $message3 = new ConfirmMessage(3);
+
+        $this->bus->dispatch($message1);
+        $this->bus->dispatch($message2);
+        $this->bus->dispatch($message3);
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 3);
+
+        self::assertCount(3, $envelopes);
+
+        self::assertEquals($message1, $envelopes[0]->getMessage());
+        self::assertEquals($message2, $envelopes[1]->getMessage());
+        self::assertEquals($message3, $envelopes[2]->getMessage());
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -112,6 +131,12 @@ class TransportFunctionalTest extends KernelTestCase
         assert($transactionsTransport instanceof AmqpTransport);
 
         $this->transactionsTransport = $transactionsTransport;
+    }
+
+    protected function tearDown(): void
+    {
+        $this->confirmsTransport->getConnection()->close();
+        $this->transactionsTransport->getConnection()->close();
     }
 
     /** @param array<object> $messages */
