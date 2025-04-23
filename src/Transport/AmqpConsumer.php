@@ -37,23 +37,33 @@ class AmqpConsumer
         $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
 
         if ($this->consumerTag === null) {
-            $this->start($queueConfig);
+            $this->connection->withRetry(function () use ($queueConfig): void {
+                $this->start($queueConfig);
+            })->run();
         }
 
+        $stop = false;
+
         while ($this->connection->channel()->is_consuming()) {
+            try {
+                $this->connection->withRetry(function () use ($queueConfig): void {
+                    $this->connection->channel()->wait(
+                        allowed_methods: null,
+                        non_blocking: false,
+                        timeout: $queueConfig->waitTimeout,
+                    );
+                })->run();
+            } catch (AMQPTimeoutException) {
+                $stop = true;
+            }
+
             $buffer = $this->buffer;
 
             $this->buffer = [];
 
             yield from $buffer;
 
-            try {
-                $this->connection->channel()->wait(
-                    allowed_methods: null,
-                    non_blocking: false,
-                    timeout: $queueConfig->waitTimeout,
-                );
-            } catch (AMQPTimeoutException) {
+            if ($stop) {
                 break;
             }
         }
