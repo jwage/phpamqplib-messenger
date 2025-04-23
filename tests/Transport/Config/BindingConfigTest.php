@@ -7,6 +7,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport\Config;
 use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 
 class BindingConfigTest extends TestCase
 {
@@ -35,7 +36,7 @@ class BindingConfigTest extends TestCase
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
-        self::expectExceptionMessage('Invalid binding option(s) "invalid" passed to the AMQP Messenger transport.');
+        self::expectExceptionMessage('Invalid binding option(s) "invalid" passed to the AMQP Messenger transport - known options: "routing_key", "arguments".');
 
         BindingConfig::fromArray(['invalid' => true]);
     }
@@ -49,6 +50,15 @@ class BindingConfigTest extends TestCase
 
         self::assertSame('routing_key', $bindingConfig->routingKey);
         self::assertSame(['arg1' => 'value1', 'arg2' => 'value2'], $bindingConfig->arguments);
+    }
+
+    /** @psalm-suppress InvalidArgument */
+    public function testFromArrayWithInvalidTypes(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Invalid type "object" for key "routing_key" (expected string)');
+
+        BindingConfig::fromArray(['routing_key' => new stdClass()]);
     }
 
     private static function assertDefaultBindingConfig(BindingConfig $bindingConfig): void

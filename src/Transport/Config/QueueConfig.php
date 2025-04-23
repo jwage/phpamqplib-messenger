@@ -6,10 +6,6 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport\Config;
 
 use InvalidArgumentException;
 
-use function array_diff;
-use function array_keys;
-use function count;
-use function implode;
 use function is_string;
 use function sprintf;
 
@@ -105,7 +101,13 @@ final readonly class QueueConfig
     {
         self::validate($queueConfig);
 
-        $bindings = $queueConfig['bindings'] ?? [];
+        /**
+         * @var array<int|string, array{
+         *     routing_key?: string,
+         *     arguments?: array<string, mixed>,
+         * }|null> $bindings
+         */
+        $bindings = ConfigHelper::getArray($queueConfig, 'bindings') ?? [];
 
         $bindingConfigs = [];
 
@@ -122,15 +124,15 @@ final readonly class QueueConfig
         }
 
         return new self(
-            name: $queueConfig['name'] ?? null,
-            prefetchCount: isset($queueConfig['prefetch_count']) ? (int) $queueConfig['prefetch_count'] : null,
-            waitTimeout: isset($queueConfig['wait_timeout']) ? (float) $queueConfig['wait_timeout'] : null,
-            passive: isset($queueConfig['passive']) ? (bool) $queueConfig['passive'] : null,
-            durable: isset($queueConfig['durable']) ? (bool) $queueConfig['durable'] : null,
-            exclusive: isset($queueConfig['exclusive']) ? (bool) $queueConfig['exclusive'] : null,
-            autoDelete: isset($queueConfig['auto_delete']) ? (bool) $queueConfig['auto_delete'] : null,
+            name: ConfigHelper::getString($queueConfig, 'name'),
+            prefetchCount: ConfigHelper::getInt($queueConfig, 'prefetch_count'),
+            waitTimeout: ConfigHelper::getFloat($queueConfig, 'wait_timeout'),
+            passive: ConfigHelper::getBool($queueConfig, 'passive'),
+            durable: ConfigHelper::getBool($queueConfig, 'durable'),
+            exclusive: ConfigHelper::getBool($queueConfig, 'exclusive'),
+            autoDelete: ConfigHelper::getBool($queueConfig, 'auto_delete'),
             bindings: $bindingConfigs,
-            arguments: $queueConfig['arguments'] ?? null,
+            arguments: ConfigHelper::getArray($queueConfig, 'arguments'),
         );
     }
 
@@ -141,9 +143,7 @@ final readonly class QueueConfig
      */
     private static function validate(array $queueConfig): void
     {
-        if (0 < count($invalidQueueOptions = array_diff(array_keys($queueConfig), self::AVAILABLE_OPTIONS))) {
-            throw new InvalidArgumentException(sprintf('Invalid queue option(s) "%s" passed to the AMQP Messenger transport.', implode('", "', $invalidQueueOptions)));
-        }
+        ConfigHelper::validate('queue', $queueConfig, self::AVAILABLE_OPTIONS);
     }
 
     /**

@@ -8,10 +8,7 @@ use InvalidArgumentException;
 use PhpAmqpLib\Connection\AMQPConnectionConfig;
 use SensitiveParameter;
 
-use function array_diff;
 use function array_keys;
-use function count;
-use function implode;
 use function is_string;
 use function sprintf;
 
@@ -239,13 +236,26 @@ readonly class ConnectionConfig
     {
         self::validate($connectionConfig);
 
-        $prefetchCount = isset($connectionConfig['prefetch_count'])
-            ? (int) $connectionConfig['prefetch_count'] : null;
+        $prefetchCount = ConfigHelper::getInt($connectionConfig, 'prefetch_count');
+        $waitTimeout   = ConfigHelper::getFloat($connectionConfig, 'wait_timeout');
 
-        $waitTimeout = isset($connectionConfig['wait_timeout'])
-            ? (float) $connectionConfig['wait_timeout'] : null;
-
-        $queues = $connectionConfig['queues'] ?? [];
+        /**
+         * @var array<int|string, array{
+         *     name?: string,
+         *     prefetch_count?: int|mixed,
+         *     wait_timeout?: int|float|mixed,
+         *     passive?: bool|mixed,
+         *     durable?: bool|mixed,
+         *     exclusive?: bool|mixed,
+         *     auto_delete?: bool|mixed,
+         *     bindings?: array<int|string, array{
+         *         routing_key?: string,
+         *         arguments?: array<string, mixed>,
+         *     }|null>,
+         *     arguments?: array<string, mixed>,
+         * }|null> $queues
+         */
+        $queues = ConfigHelper::getArray($connectionConfig, 'queues') ?? [];
 
         $queueConfigs = [];
 
@@ -270,26 +280,26 @@ readonly class ConnectionConfig
         }
 
         return new self(
-            autoSetup: $connectionConfig['auto_setup'] ?? null,
-            host: $connectionConfig['host'] ?? null,
-            port: isset($connectionConfig['port']) ? (int) $connectionConfig['port'] : null,
-            user: $connectionConfig['user'] ?? null,
-            password: $connectionConfig['password'] ?? null,
-            vhost: $connectionConfig['vhost'] ?? null,
-            insist: isset($connectionConfig['insist']) ? (bool) $connectionConfig['insist'] : null,
-            loginMethod: $connectionConfig['login_method'] ?? null,
-            locale: $connectionConfig['locale'] ?? null,
-            connectionTimeout: isset($connectionConfig['connection_timeout']) ? (float) $connectionConfig['connection_timeout'] : null,
-            readTimeout: isset($connectionConfig['read_timeout']) ? (float) $connectionConfig['read_timeout'] : null,
-            writeTimeout: isset($connectionConfig['write_timeout']) ? (float) $connectionConfig['write_timeout'] : null,
-            channelRPCTimeout: isset($connectionConfig['channel_rpc_timeout']) ? (float) $connectionConfig['channel_rpc_timeout'] : null,
-            heartbeat: isset($connectionConfig['heartbeat']) ? (int) $connectionConfig['heartbeat'] : null,
-            keepalive: isset($connectionConfig['keepalive']) ? (bool) $connectionConfig['keepalive'] : null,
+            autoSetup: ConfigHelper::getBool($connectionConfig, 'auto_setup'),
+            host: ConfigHelper::getString($connectionConfig, 'host'),
+            port: ConfigHelper::getInt($connectionConfig, 'port'),
+            user: ConfigHelper::getString($connectionConfig, 'user'),
+            password: ConfigHelper::getString($connectionConfig, 'password'),
+            vhost: ConfigHelper::getString($connectionConfig, 'vhost'),
+            insist: ConfigHelper::getBool($connectionConfig, 'insist'),
+            loginMethod: ConfigHelper::getString($connectionConfig, 'login_method'),
+            locale: ConfigHelper::getString($connectionConfig, 'locale'),
+            connectionTimeout: ConfigHelper::getFloat($connectionConfig, 'connection_timeout'),
+            readTimeout: ConfigHelper::getFloat($connectionConfig, 'read_timeout'),
+            writeTimeout: ConfigHelper::getFloat($connectionConfig, 'write_timeout'),
+            channelRPCTimeout: ConfigHelper::getFloat($connectionConfig, 'channel_rpc_timeout'),
+            heartbeat: ConfigHelper::getInt($connectionConfig, 'heartbeat'),
+            keepalive: ConfigHelper::getBool($connectionConfig, 'keepalive'),
             prefetchCount: $prefetchCount,
             waitTimeout: $waitTimeout,
-            confirmEnabled: isset($connectionConfig['confirm_enabled']) ? (bool) $connectionConfig['confirm_enabled'] : null,
-            confirmTimeout: isset($connectionConfig['confirm_timeout']) ? (float) $connectionConfig['confirm_timeout'] : null,
-            transactionsEnabled: isset($connectionConfig['transactions_enabled']) ? (bool) $connectionConfig['transactions_enabled'] : null,
+            confirmEnabled: ConfigHelper::getBool($connectionConfig, 'confirm_enabled'),
+            confirmTimeout: ConfigHelper::getFloat($connectionConfig, 'confirm_timeout'),
+            transactionsEnabled: ConfigHelper::getBool($connectionConfig, 'transactions_enabled'),
             ssl: isset($connectionConfig['ssl']) ? SslConfig::fromArray($connectionConfig['ssl']) : null,
             exchange: isset($connectionConfig['exchange']) ? ExchangeConfig::fromArray($connectionConfig['exchange']) : null,
             delay: isset($connectionConfig['delay']) ? DelayConfig::fromArray($connectionConfig['delay']) : null,
@@ -320,9 +330,7 @@ readonly class ConnectionConfig
      */
     private static function validate(array $connectionConfig): void
     {
-        if (0 < count($invalidOptions = array_diff(array_keys($connectionConfig), self::AVAILABLE_OPTIONS))) {
-            throw new InvalidArgumentException(sprintf('Invalid option(s) "%s" passed to the AMQP Messenger transport - known options: "%s".', implode('", "', $invalidOptions), implode('", "', self::AVAILABLE_OPTIONS)));
-        }
+        ConfigHelper::validate('connection', $connectionConfig, self::AVAILABLE_OPTIONS);
     }
 
     /**

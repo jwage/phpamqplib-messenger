@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\DelayConfig;
 use PhpAmqpLib\Exchange\AMQPExchangeType;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 
 class DelayConfigTest extends TestCase
 {
@@ -60,9 +61,17 @@ class DelayConfigTest extends TestCase
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
-        self::expectExceptionMessage('Invalid delay option(s) "invalid" passed to the AMQP Messenger transport.');
+        self::expectExceptionMessage('Invalid delay option(s) "invalid" passed to the AMQP Messenger transport - known options:');
 
         DelayConfig::fromArray(['invalid' => true]);
+    }
+
+    public function testFromArrayWithInvalidTypes(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Invalid type "object" for key "enabled" (expected boolean)');
+
+        DelayConfig::fromArray(['enabled' => new stdClass()]);
     }
 
     public function testGetQueueName(): void

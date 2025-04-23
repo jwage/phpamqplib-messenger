@@ -7,6 +7,7 @@ namespace App\Tests\Transport\Config;
 use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\SslConfig;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 
 class SslConfigTest extends TestCase
 {
@@ -46,7 +47,7 @@ class SslConfigTest extends TestCase
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
-        self::expectExceptionMessage('Invalid ssl option(s) "invalid" passed to the AMQP Messenger transport.');
+        self::expectExceptionMessage('Invalid ssl option(s) "invalid" passed to the AMQP Messenger transport - known options:');
 
         SslConfig::fromArray(['invalid' => true]);
     }
@@ -76,5 +77,14 @@ class SslConfigTest extends TestCase
         self::assertSame('ciphers', $sslConfig->ciphers);
         self::assertSame(1, $sslConfig->securityLevel);
         self::assertSame(1, $sslConfig->cryptoMethod);
+    }
+
+    /** @psalm-suppress InvalidArgument */
+    public function testFromArrayWithInvalidTypes(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Invalid type "object" for key "cafile" (expected string)');
+
+        SslConfig::fromArray(['cafile' => new stdClass()]);
     }
 }
