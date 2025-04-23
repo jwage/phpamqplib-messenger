@@ -152,12 +152,9 @@ class Connection
             $this->setupExchangeAndQueues();
         }
 
-        /** @var array<string, mixed> $attributeHeaders */
-        $attributeHeaders = $amqpStamp?->getAttributes()['headers'] ?? [];
+        $attributes = $amqpStamp?->getAttributes() ?? [];
 
-        $headers = array_merge($attributeHeaders, $headers);
-
-        $amqpEnvelope = $this->createAMQPEnvelope($body, $headers);
+        $amqpEnvelope = $this->createAMQPEnvelope($body, $attributes, $headers);
 
         $isDelayed      = $delayInMs > 0;
         $isRetryAttempt = $amqpStamp && $amqpStamp->isRetryAttempt();
@@ -454,9 +451,19 @@ class Connection
         return $this->connection;
     }
 
-    /** @param array<string, mixed> $headers */
-    private function createAMQPEnvelope(string $body, array $headers): AmqpEnvelope
+    /**
+     * @param array<string, mixed> $attributes
+     * @param array<string, mixed> $headers
+     */
+    private function createAMQPEnvelope(string $body, array $attributes, array $headers): AmqpEnvelope
     {
+        /** @var array<string, mixed> $attributeHeaders */
+        $attributeHeaders = $attributes['headers'] ?? [];
+
+        $headers = array_merge($attributeHeaders, $headers);
+
+        unset($attributes['headers']);
+
         return new AmqpEnvelope(
             new AMQPMessage(
                 $body,
@@ -464,6 +471,7 @@ class Connection
                     'content_type' => 'text/plain',
                     'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
                     'application_headers' => new AMQPTable(['protocol' => 3, ...$headers]),
+                    ...$attributes,
                 ],
             ),
         );

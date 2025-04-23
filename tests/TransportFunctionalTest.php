@@ -12,6 +12,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
 use Traversable;
 
 use function assert;
@@ -110,6 +111,18 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertEquals($message1, $envelopes[0]->getMessage());
         self::assertEquals($message2, $envelopes[1]->getMessage());
         self::assertEquals($message3, $envelopes[2]->getMessage());
+    }
+
+    public function testMessageId(): void
+    {
+        $message = Envelope::wrap(new ConfirmMessage(1))->with(new AmqpStamp(attributes: ['message_id' => '123']));
+
+        $this->bus->dispatch($message);
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 1);
+
+        self::assertEquals('123', $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getMessageId());
+        self::assertEquals('123', $envelopes[0]->last(TransportMessageIdStamp::class)?->getId());
     }
 
     protected function setUp(): void
