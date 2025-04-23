@@ -178,3 +178,40 @@ class SomeService
     }
 }
 ```
+
+## Deduplication Plugin
+
+This bundle prioritizes message reliability over raw performance. By default, confirms are enabled to ensure that messages are acknowledged by the server. In the event of a connection exception, publishes are retried if there is uncertainty about whether a message was received by the server. This approach ensures that messages are not lost, but it also means that a message could potentially be published twice. Therefore, it is crucial to ensure that your message handlers are 100% idempotent to handle such scenarios gracefully.
+
+Alternatively, you can use the [deduplication plugin](https://github.com/noxdafox/rabbitmq-message-deduplication) to deduplicate messages based on a message id. So if we have connection issues while publishing messages, we can safely retry publishing the message without worrying about duplications.
+
+```yaml
+# config/packages/messenger.yaml
+framework:
+    messenger:
+        transports:
+            async:
+                dsn: 'phpamqplib://guest:guest@localhost:5672/myvhost'
+                options:
+                    exchange:
+                        name: async_exchange
+                        type: x-message-deduplication
+                        arguments:
+                            x-cache-size: 100000
+                            x-cache-ttl: 60000
+                    queues:
+                        async_messages: ~
+```
+
+Now when publishing a message, you can set the `message_id` property when dispatching the message:
+
+```php
+$envelope = Envelope::wrap($message)->with(AmqpStamp::createWithAttributes(
+    attributes: [
+        'headers' => ['x-deduplication-header' => 'message_id'],
+        'message_id' => '123', // generate unique message id
+    ]
+));
+
+$bus->dispatch($envelope);
+```
