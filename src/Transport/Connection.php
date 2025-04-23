@@ -48,6 +48,7 @@ class Connection
 
     public function __destruct()
     {
+        $this->consumer?->stop();
         $this->connection = null;
         $this->channel    = null;
         $this->consumer   = null;
@@ -63,11 +64,20 @@ class Connection
         return $this->connection !== null && $this->connection->isConnected();
     }
 
+    public function close(): void
+    {
+        $this->consumer?->stop();
+        $this->connection?->close();
+        $this->channel  = null;
+        $this->consumer = null;
+    }
+
     /** @throws AMQPExceptionInterface */
     public function reconnect(): void
     {
         $this->connection?->reconnect();
-        $this->channel  = null;
+        $this->channel = null;
+        $this->consumer?->stop();
         $this->consumer = null;
     }
 
