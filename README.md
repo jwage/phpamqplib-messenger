@@ -50,6 +50,10 @@ There are several reasons why you might prefer to use the `php-amqplib/php-amqpl
 
 In summary, `php-amqplib` provides a more robust and flexible solution for connecting to RabbitMQ in Symfony Messenger, making it the preferred choice for many developers.
 
+## Message Reliability
+
+This bundle prioritizes message reliability over raw performance. By default, confirms are enabled to ensure that messages are acknowledged by the server. In the event of a connection exception, publishes are retried if there is uncertainty about whether a message was received by the server. This approach ensures that messages are not lost, but it also means that a message could potentially be published twice. Therefore, it is crucial to ensure that your message handlers are 100% idempotent to handle such scenarios gracefully.
+
 ## Acknowledgements
 
 We would like to express our sincere gratitude to [@videlalvaro](https://github.com/videlalvaro), the author of the [php-amqplib](https://github.com/php-amqplib/php-amqplib) library, for his invaluable contributions to the development of this project. We also acknowledge Microsoft for supporting his efforts, as he utilized company time to help make this Symfony bundle a robust and reliable solution for connecting to RabbitMQ in Symfony applications.
