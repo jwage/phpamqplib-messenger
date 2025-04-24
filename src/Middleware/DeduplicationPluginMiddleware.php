@@ -10,6 +10,7 @@ use Override;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
 use Symfony\Component\Messenger\Middleware\StackInterface;
+use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 use Symfony\Component\Uid\Uuid;
 
 use function assert;
@@ -26,6 +27,10 @@ final class DeduplicationPluginMiddleware implements MiddlewareInterface
     #[Override]
     public function handle(Envelope $envelope, StackInterface $stack): Envelope
     {
+        if ($envelope->last(ReceivedStamp::class)) {
+            return $stack->next()->handle($envelope, $stack);
+        }
+
         $existingAmqpStamp = $envelope->last(AmqpStamp::class);
 
         $messageId = $existingAmqpStamp?->getAttributes()['message_id'] ?? null;
