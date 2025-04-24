@@ -206,10 +206,12 @@ framework:
 Now when publishing a message, you can set the `message_id` property when dispatching the message:
 
 ```php
+$messageId = '123'; // generate unique message id
+
 $envelope = Envelope::wrap($message)->with(AmqpStamp::createWithAttributes(
     attributes: [
-        'headers' => ['x-deduplication-header' => 'message_id'],
-        'message_id' => '123', // generate unique message id
+        'headers' => ['x-deduplication-header' => $messageId],
+        'message_id' => $messageId,
     ]
 ));
 

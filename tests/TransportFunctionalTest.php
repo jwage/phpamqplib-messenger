@@ -139,7 +139,7 @@ class TransportFunctionalTest extends KernelTestCase
 
         self::assertSame([
             'message_id' => $messageId,
-            'headers' => ['x-deduplication-header' => 'message_id'],
+            'headers' => ['x-deduplication-header' => $messageId],
         ], $attributes);
 
         self::assertNotNull($messageId);
@@ -151,13 +151,13 @@ class TransportFunctionalTest extends KernelTestCase
 
         self::assertSame([
             'protocol' => 3,
-            'x-deduplication-header' => 'message_id',
+            'x-deduplication-header' => $messageId,
         ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders());
 
         self::assertEquals([
             'content_type' => 'text/plain',
             'application_headers' => new AMQPTable([
-                'x-deduplication-header' => 'message_id',
+                'x-deduplication-header' => $messageId,
                 'protocol' => 3,
             ]),
             'delivery_mode' => 2,
@@ -186,7 +186,7 @@ class TransportFunctionalTest extends KernelTestCase
             'test' => 'abc',
             'headers' => [
                 'x-test' => true,
-                'x-deduplication-header' => 'message_id',
+                'x-deduplication-header' => $messageId,
             ],
         ], $attributes);
 
@@ -199,7 +199,7 @@ class TransportFunctionalTest extends KernelTestCase
 
         self::assertSame([
             'protocol' => 3,
-            'x-deduplication-header' => 'message_id',
+            'x-deduplication-header' => $messageId,
             'x-test' => true,
         ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders());
 
@@ -207,7 +207,7 @@ class TransportFunctionalTest extends KernelTestCase
             'content_type' => 'text/plain',
             'application_headers' => new AMQPTable([
                 'x-test' => true,
-                'x-deduplication-header' => 'message_id',
+                'x-deduplication-header' => $messageId,
                 'protocol' => 3,
             ]),
             'delivery_mode' => 2,
