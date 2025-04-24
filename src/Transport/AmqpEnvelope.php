@@ -24,6 +24,15 @@ class AmqpEnvelope
         return $this->amqpMessage;
     }
 
+    /** @return array<string, mixed> */
+    public function getAttributes(): array
+    {
+        /** @var array<string, mixed> $attributes */
+        $attributes = $this->amqpMessage->get_properties();
+
+        return $attributes;
+    }
+
     public function ack(): void
     {
         $this->amqpMessage->ack();

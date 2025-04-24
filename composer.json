@@ -26,6 +26,7 @@
         "psalm/plugin-phpunit": "^0.19.5",
         "psalm/plugin-symfony": "^5.2",
         "symfony/phpunit-bridge": "^7.2",
+        "symfony/uid": "^7.2",
         "vimeo/psalm": "^6"
     },
     "autoload": {
