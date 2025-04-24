@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
-use Jwage\PhpAmqpLibMessengerBundle\BatchMessageBusInterface;
+use Jwage\PhpAmqpLibMessengerBundle\Batch;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\ConfirmMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\TransactionMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
@@ -12,6 +12,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
 use Traversable;
 
@@ -20,7 +21,7 @@ use function count;
 
 class TransportFunctionalTest extends KernelTestCase
 {
-    private BatchMessageBusInterface $bus;
+    private MessageBusInterface $bus;
 
     private AmqpTransport $confirmsTransport;
 
@@ -133,7 +134,7 @@ class TransportFunctionalTest extends KernelTestCase
 
         $container = static::getContainer();
 
-        $this->bus = $container->get(BatchMessageBusInterface::class);
+        $this->bus = $container->get(MessageBusInterface::class);
 
         $confirmsTransport = $container->get('messenger.transport.with_confirms');
         assert($confirmsTransport instanceof AmqpTransport);
@@ -155,7 +156,7 @@ class TransportFunctionalTest extends KernelTestCase
     /** @param array<object> $messages */
     private function dispatchMessages(array $messages): void
     {
-        $batch = $this->bus->getBatch(2);
+        $batch = Batch::new($this->bus, 2);
 
         foreach ($messages as $message) {
             $batch->dispatch($message);

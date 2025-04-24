@@ -31,8 +31,6 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
     public function process(ContainerBuilder $container): void
     {
-        $container->getDefinition('bus1.batch')
-            ->setPublic(true);
     }
 
     public function registerContainerConfiguration(LoaderInterface $loader): void

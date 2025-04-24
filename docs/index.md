@@ -160,7 +160,7 @@ The bundle supports batch dispatching of messages. You can inject the `Jwage\Php
 class SomeService
 {
     public function __construct(
-        private BatchMessageBusInterface $batchMessageBus,
+        private MessageBusInterface $bus,
     ) {
     }
 
@@ -168,7 +168,7 @@ class SomeService
     {
         $iterable = ...;
 
-        $batch = $this->batchMessageBus->getBatch(10);
+        $batch = Batch::new($this->bus, 10);
 
         foreach ($iterable as $message) {
             $batch->dispatch($message);
