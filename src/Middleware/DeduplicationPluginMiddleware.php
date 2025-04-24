@@ -47,7 +47,7 @@ final class DeduplicationPluginMiddleware implements MiddlewareInterface
                 'message_id' => $messageId,
                 'headers' => [
                     ...$headers,
-                    'x-deduplication-header' => 'message_id',
+                    'x-deduplication-header' => $messageId,
                 ],
             ],
             previousStamp: $existingAmqpStamp,
