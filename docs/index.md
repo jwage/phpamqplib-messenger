@@ -215,3 +215,15 @@ $envelope = Envelope::wrap($message)->with(AmqpStamp::createWithAttributes(
 
 $bus->dispatch($envelope);
 ```
+
+To make this easier, you can use the `DeduplicationPluginMiddleware` middleware that will automatically add the required attributes to each message if they are not already present:
+
+```yaml
+# config/packages/messenger.yaml
+framework:
+    messenger:
+        buses:
+            messenger.bus.default:
+                middleware:
+                    - 'Jwage\PhpAmqpLibMessengerBundle\Middleware\DeduplicationPluginMiddleware'
+```

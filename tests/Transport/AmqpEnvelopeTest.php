@@ -23,6 +23,15 @@ class AmqpEnvelopeTest extends TestCase
         self::assertSame($this->message, $this->envelope->getAMQPMessage());
     }
 
+    public function testGetAttributes(): void
+    {
+        $this->message->expects(self::once())
+            ->method('get_properties')
+            ->willReturn(['test' => 'abc']);
+
+        self::assertSame(['test' => 'abc'], $this->envelope->getAttributes());
+    }
+
     public function testAck(): void
     {
         $this->message->expects(self::once())

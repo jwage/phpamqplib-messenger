@@ -10,6 +10,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\TransactionMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
+use PhpAmqpLib\Wire\AMQPTable;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -124,6 +125,96 @@ class TransportFunctionalTest extends KernelTestCase
 
         self::assertEquals('123', $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getMessageId());
         self::assertEquals('123', $envelopes[0]->last(TransportMessageIdStamp::class)?->getId());
+    }
+
+    public function testDeduplicationPluginMiddlewareGeneratesMessageIdAndHeader(): void
+    {
+        $message = new ConfirmMessage(1);
+
+        $envelope = $this->bus->dispatch($message);
+
+        $attributes = $envelope->last(AmqpStamp::class)?->getAttributes() ?? [];
+
+        $messageId = $attributes['message_id'] ?? null;
+
+        self::assertSame([
+            'message_id' => $messageId,
+            'headers' => ['x-deduplication-header' => 'message_id'],
+        ], $attributes);
+
+        self::assertNotNull($messageId);
+        self::assertSame($messageId, $envelope->last(TransportMessageIdStamp::class)?->getId());
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 1);
+
+        self::assertSame($messageId, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getMessageId());
+
+        self::assertSame([
+            'protocol' => 3,
+            'x-deduplication-header' => 'message_id',
+        ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders());
+
+        self::assertEquals([
+            'content_type' => 'text/plain',
+            'application_headers' => new AMQPTable([
+                'x-deduplication-header' => 'message_id',
+                'protocol' => 3,
+            ]),
+            'delivery_mode' => 2,
+            'message_id' => $messageId,
+        ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getAttributes());
+
+        self::assertSame($messageId, $envelopes[0]->last(TransportMessageIdStamp::class)?->getId());
+    }
+
+    public function testDeduplicationPluginMiddlewareMaintainsExistingAmqpStampAttributes(): void
+    {
+        $message = Envelope::wrap(new ConfirmMessage(1))->with(new AmqpStamp(attributes: [
+            'message_id' => '123',
+            'test' => 'abc',
+            'headers' => ['x-test' => true],
+        ]));
+
+        $envelope = $this->bus->dispatch($message);
+
+        $attributes = $envelope->last(AmqpStamp::class)?->getAttributes() ?? [];
+
+        $messageId = $attributes['message_id'] ?? null;
+
+        self::assertSame([
+            'message_id' => $messageId,
+            'test' => 'abc',
+            'headers' => [
+                'x-test' => true,
+                'x-deduplication-header' => 'message_id',
+            ],
+        ], $attributes);
+
+        self::assertNotNull($messageId);
+        self::assertSame($messageId, $envelope->last(TransportMessageIdStamp::class)?->getId());
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 1);
+
+        self::assertSame($messageId, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getMessageId());
+
+        self::assertSame([
+            'protocol' => 3,
+            'x-deduplication-header' => 'message_id',
+            'x-test' => true,
+        ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders());
+
+        self::assertEquals([
+            'content_type' => 'text/plain',
+            'application_headers' => new AMQPTable([
+                'x-test' => true,
+                'x-deduplication-header' => 'message_id',
+                'protocol' => 3,
+            ]),
+            'delivery_mode' => 2,
+            'message_id' => $messageId,
+        ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getAttributes());
+
+        self::assertSame($messageId, $envelopes[0]->last(TransportMessageIdStamp::class)?->getId());
     }
 
     protected function setUp(): void

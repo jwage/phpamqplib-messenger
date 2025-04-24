@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
+use Jwage\PhpAmqpLibMessengerBundle\Middleware\DeduplicationPluginMiddleware;
 use Jwage\PhpAmqpLibMessengerBundle\PhpAmqpLibMessengerBundle;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\ConfirmMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\TransactionMessage;
@@ -48,8 +49,16 @@ class TestKernel extends Kernel implements CompilerPassInterface
                 'messenger' => [
                     'default_bus' => 'bus1',
                     'buses' => [
-                        'bus1' => [],
-                        'bus2' => [],
+                        'bus1' => [
+                            'middleware' => [
+                                DeduplicationPluginMiddleware::class,
+                            ],
+                        ],
+                        'bus2' => [
+                            'middleware' => [
+                                DeduplicationPluginMiddleware::class,
+                            ],
+                        ],
                     ],
                     'transports' => [
                         'with_confirms' => [
