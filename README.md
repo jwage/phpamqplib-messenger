@@ -32,7 +32,7 @@ The configuration above will create an exchange named `orders` and bind a queue 
 
 ## Roadmap
 
-The objective and future roadmap for this bundle is to achieve version 1.0 as an third-party Symfony bundle first, and then subsequently integrate it into the Symfony core for Symfony 7.4 LTS, as `symfony/phpamqplib-messenger`, providing an alternative to `symfony/amqp-messenger`.
+The objective and future roadmap for this bundle is to achieve version 1.0 as a third-party Symfony bundle first, and then subsequently integrate it into the Symfony core for Symfony 7.4 LTS, as `symfony/phpamqplib-messenger`, providing an alternative to `symfony/amqp-messenger`.
 
 ## Documentation
 
