@@ -18,10 +18,15 @@ class Batch implements MessageBusInterface
     /** @var array<array-key,BatchTransportInterface> */
     private array $transportsToFlush = [];
 
-    public function __construct(
+    final public function __construct(
         private MessageBusInterface $wrappedBus,
         private int $batchSize,
     ) {
+    }
+
+    public static function new(MessageBusInterface $wrappedBus, int $batchSize): self
+    {
+        return new self($wrappedBus, $batchSize);
     }
 
     public function __destruct()
@@ -39,7 +44,8 @@ class Batch implements MessageBusInterface
         $envelope = $this->wrappedBus->dispatch($envelope);
 
         if (($stamp = $envelope->last(DeferredStamp::class)) !== null) {
-            $transport                                          = $stamp->getTransport();
+            $transport = $stamp->getTransport();
+
             $this->transportsToFlush[spl_object_id($transport)] = $transport;
         }
 
