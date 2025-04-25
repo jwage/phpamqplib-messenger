@@ -20,6 +20,7 @@ final readonly class QueueConfig
         'exclusive',
         'auto_delete',
         'bindings',
+        'binding_keys',
         'arguments',
     ];
 
@@ -100,6 +101,20 @@ final readonly class QueueConfig
     public static function fromArray(array $queueConfig): self
     {
         self::validate($queueConfig);
+
+        if (isset($queueConfig['bindings']) && isset($queueConfig['binding_keys'])) {
+            throw new InvalidArgumentException('Invalid queue config: "bindings" and "binding_keys" cannot both be set. binding_keys is only available for compatibility with symfony/amqp-messenger. It is recommended to use "bindings" instead.');
+        }
+
+        if (isset($queueConfig['binding_keys'])) {
+            $bindingKeys = ConfigHelper::getArray($queueConfig, 'binding_keys') ?? [];
+
+            $queueConfig['bindings'] = [];
+
+            foreach ($bindingKeys as $bindingKey) {
+                $queueConfig['bindings'][] = ['routing_key' => $bindingKey];
+            }
+        }
 
         /**
          * @var array<int|string, array{
