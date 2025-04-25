@@ -89,6 +89,7 @@ final readonly class QueueConfig
      *     durable?: bool|mixed,
      *     exclusive?: bool|mixed,
      *     auto_delete?: bool|mixed,
+     *     binding_keys?: array<string>,
      *     bindings?: array<int|string, array{
      *         routing_key?: string,
      *         arguments?: array<string, mixed>,
@@ -107,6 +108,7 @@ final readonly class QueueConfig
         }
 
         if (isset($queueConfig['binding_keys'])) {
+            /** @var array<string> $bindingKeys */
             $bindingKeys = ConfigHelper::getArray($queueConfig, 'binding_keys') ?? [];
 
             $queueConfig['bindings'] = [];
