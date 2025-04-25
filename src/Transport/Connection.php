@@ -334,7 +334,7 @@ class Connection
             passive: $this->connectionConfig->exchange->passive,
             durable: $this->connectionConfig->exchange->durable,
             auto_delete: $this->connectionConfig->exchange->autoDelete,
-            nowait: true,
+            nowait: false,
             arguments: new AMQPTable($this->connectionConfig->exchange->arguments),
         );
     }
@@ -357,7 +357,7 @@ class Connection
                 queue: $queueConfig->name,
                 exchange: $this->connectionConfig->exchange->name,
                 routing_key: $bindingConfig?->routingKey ?? '',
-                nowait: true,
+                nowait: false,
                 arguments: new AMQPTable($bindingConfig?->arguments ?? []),
             );
         }
@@ -374,7 +374,7 @@ class Connection
             durable: $queueConfig->durable,
             exclusive: $queueConfig->exclusive,
             auto_delete: $queueConfig->autoDelete,
-            nowait: true,
+            nowait: false,
             arguments: new AMQPTable($queueConfig->arguments),
         ) ?? [$queueName, 0];
 
@@ -404,7 +404,7 @@ class Connection
                 passive: $this->connectionConfig->delay->exchange->passive,
                 durable: $this->connectionConfig->delay->exchange->durable,
                 auto_delete: $this->connectionConfig->delay->exchange->autoDelete,
-                nowait: true,
+                nowait: false,
                 arguments: new AMQPTable($this->connectionConfig->delay->exchange->arguments),
             );
 
@@ -423,7 +423,7 @@ class Connection
 
             $this->channel()->queue_declare(
                 queue: $delayQueueName,
-                nowait: true,
+                nowait: false,
                 arguments: new AMQPTable([
                     'x-message-ttl' => $delay,
                     'x-expires' => $delay + 10000,
@@ -436,7 +436,7 @@ class Connection
                 queue: $delayQueueName,
                 exchange: $this->connectionConfig->delay->exchange->name,
                 routing_key: $delayQueueName,
-                nowait: true,
+                nowait: false,
             );
         } catch (AMQPExceptionInterface $e) {
             throw new TransportException($e->getMessage(), 0, $e);
