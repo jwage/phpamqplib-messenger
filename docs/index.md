@@ -156,6 +156,42 @@ Any option can be specified in the DSN as an alternative to defining it in the `
 phpamqplib://guest:guest@localhost?heartbeat=60&read_timeout=5.0
 ```
 
+## AmqpStamp
+
+This bundle offers an `AmqpStamp` that is mostly compatible with the `symfony/amqp-messenger` bundle. You can use it to set the routing key and other message attributes when dispatching a message.
+
+The constructor is slightly different from the `symfony/amqp-messenger` bundle. This is what ours looks like:
+
+```php
+public function __construct(
+    private string|null $routingKey = null,
+    private array $attributes = [],
+) {
+}
+```
+
+Versus the `symfony/amqp-messenger` bundle:
+
+```php
+public function __construct(
+    private ?string $routingKey = null,
+    private int $flags = \AMQP_NOPARAM,
+    private array $attributes = [],
+) {
+}
+```
+Here is how you can use it:
+
+```php
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
+
+$stamp = new AmqpStamp(routingKey: 'routing_key');
+
+$envelope = Envelope::wrap($message)->with($stamp);
+
+$bus->dispatch($envelope);
+```
+
 ## Batch Dispatching
 
 The bundle supports batch dispatching of messages. You can inject the `Jwage\PhpAmqpLibMessengerBundle\BatchMessageBusInterface` service, which wraps your message bus and provides a new method named `getBatch()` for dispatching messages in batches:
