@@ -10,6 +10,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Exception\TransportException;
 
 class AmqpConsumer
@@ -22,6 +23,7 @@ class AmqpConsumer
     public function __construct(
         private Connection $connection,
         private ConnectionConfig $connectionConfig,
+        private LoggerInterface|null $logger = null,
     ) {
     }
 
@@ -57,7 +59,12 @@ class AmqpConsumer
             // If we get any AMQP exception here besides the expected AMQPTimeoutException,
             // we need to reconnect and break the loop immediately. The consumer will be restarted
             // on the next iteration that calls AmqpConsumer::consume().
-            } catch (AMQPExceptionInterface) {
+            } catch (AMQPExceptionInterface $e) {
+                $this->logger?->warning('AMQP exception occurred while waiting for messages: {message}', [
+                    'message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
+
                 $this->connection->reconnect();
 
                 break;
