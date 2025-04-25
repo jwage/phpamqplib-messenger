@@ -25,15 +25,16 @@ readonly class ConnectionConfig
         'host',
         'port',
         'user',
+        'login',
         'password',
         'vhost',
         'insist',
         'login_method',
         'locale',
-        'connection_timeout',
+        'connect_timeout',
         'read_timeout',
         'write_timeout',
-        'channel_rpc_timeout',
+        'rpc_timeout',
         'heartbeat',
         'keepalive',
         'prefetch_count',
@@ -65,13 +66,13 @@ readonly class ConnectionConfig
 
     public string $locale;
 
-    public float $connectionTimeout;
+    public float $connectTimeout;
 
     public float $readTimeout;
 
     public float $writeTimeout;
 
-    public float $channelRPCTimeout;
+    public float $rpcTimeout;
 
     public int $heartbeat;
 
@@ -110,10 +111,10 @@ readonly class ConnectionConfig
         bool|null $insist = null,
         string|null $loginMethod = null,
         string|null $locale = null,
-        float|null $connectionTimeout = null,
+        float|null $connectTimeout = null,
         float|null $readTimeout = null,
         float|null $writeTimeout = null,
-        float|null $channelRPCTimeout = null,
+        float|null $rpcTimeout = null,
         int|null $heartbeat = null,
         bool|null $keepalive = null,
         int|null $prefetchCount = null,
@@ -143,10 +144,10 @@ readonly class ConnectionConfig
         $this->insist              = $insist ?? false;
         $this->loginMethod         = $loginMethod ?? AMQPConnectionConfig::AUTH_AMQPPLAIN;
         $this->locale              = $locale ?? 'en_US';
-        $this->connectionTimeout   = $connectionTimeout ?? 3.0;
+        $this->connectTimeout      = $connectTimeout ?? 3.0;
         $this->readTimeout         = $readTimeout ?? 3.0;
         $this->writeTimeout        = $writeTimeout ?? 3.0;
-        $this->channelRPCTimeout   = $channelRPCTimeout ?? 3.0;
+        $this->rpcTimeout          = $rpcTimeout ?? 3.0;
         $this->heartbeat           = $heartbeat ?? 0;
         $this->keepalive           = $keepalive ?? true;
         $this->prefetchCount       = $prefetchCount ?? self::DEFAULT_PREFETCH_COUNT;
@@ -165,15 +166,16 @@ readonly class ConnectionConfig
      *     host?: string,
      *     port?: int|mixed,
      *     user?: string,
+     *     login?: string,
      *     password?: string,
      *     vhost?: string,
      *     insist?: bool|mixed,
      *     login_method?: string,
      *     locale?: string,
-     *     connection_timeout?: float|mixed,
+     *     connect_timeout?: float|mixed,
      *     read_timeout?: float|mixed,
      *     write_timeout?: float|mixed,
-     *     channel_rpc_timeout?: float|mixed,
+     *     rpc_timeout?: float|mixed,
      *     heartbeat?: int|mixed,
      *     keepalive?: bool|mixed,
      *     prefetch_count?: int|mixed,
@@ -283,16 +285,17 @@ readonly class ConnectionConfig
             autoSetup: ConfigHelper::getBool($connectionConfig, 'auto_setup'),
             host: ConfigHelper::getString($connectionConfig, 'host'),
             port: ConfigHelper::getInt($connectionConfig, 'port'),
-            user: ConfigHelper::getString($connectionConfig, 'user'),
+            // Support both user and login for compatibility with symfony/amqp-messenger
+            user: ConfigHelper::getString($connectionConfig, 'user') ?? ConfigHelper::getString($connectionConfig, 'login'),
             password: ConfigHelper::getString($connectionConfig, 'password'),
             vhost: ConfigHelper::getString($connectionConfig, 'vhost'),
             insist: ConfigHelper::getBool($connectionConfig, 'insist'),
             loginMethod: ConfigHelper::getString($connectionConfig, 'login_method'),
             locale: ConfigHelper::getString($connectionConfig, 'locale'),
-            connectionTimeout: ConfigHelper::getFloat($connectionConfig, 'connection_timeout'),
+            connectTimeout: ConfigHelper::getFloat($connectionConfig, 'connect_timeout'),
             readTimeout: ConfigHelper::getFloat($connectionConfig, 'read_timeout'),
             writeTimeout: ConfigHelper::getFloat($connectionConfig, 'write_timeout'),
-            channelRPCTimeout: ConfigHelper::getFloat($connectionConfig, 'channel_rpc_timeout'),
+            rpcTimeout: ConfigHelper::getFloat($connectionConfig, 'rpc_timeout'),
             heartbeat: ConfigHelper::getInt($connectionConfig, 'heartbeat'),
             keepalive: ConfigHelper::getBool($connectionConfig, 'keepalive'),
             prefetchCount: $prefetchCount,

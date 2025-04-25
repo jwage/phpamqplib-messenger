@@ -144,6 +144,27 @@ class QueueConfigTest extends TestCase
         new QueueConfig(name: 'queue_name', waitTimeout: $waitTimeout);
     }
 
+    public function testBindingKeysSymfonyAmqpMessengerCompatibility(): void
+    {
+        $queueConfig = QueueConfig::fromArray([
+            'name' => 'queue_name',
+            'binding_keys' => ['routing_key1', 'routing_key2'],
+        ]);
+
+        self::assertEquals([
+            'routing_key1' => new BindingConfig(routingKey: 'routing_key1'),
+            'routing_key2' => new BindingConfig(routingKey: 'routing_key2'),
+        ], $queueConfig->bindings);
+    }
+
+    public function testCannotSetBothBindingsAndBindingKeys(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Invalid queue config: "bindings" and "binding_keys" cannot both be set. binding_keys is only available for compatibility with symfony/amqp-messenger. It is recommended to use "bindings" instead.');
+
+        QueueConfig::fromArray(['binding_keys' => [], 'bindings' => []]);
+    }
+
     private static function assertDefaultQueueConfig(QueueConfig $queueConfig): void
     {
         self::assertSame('queue_name', $queueConfig->name);

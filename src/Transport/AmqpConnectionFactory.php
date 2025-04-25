@@ -25,10 +25,10 @@ class AmqpConnectionFactory
         $config->setInsist($connectionConfig->insist);
         $config->setLoginMethod($connectionConfig->loginMethod);
         $config->setLocale($connectionConfig->locale);
-        $config->setConnectionTimeout($connectionConfig->connectionTimeout);
+        $config->setConnectionTimeout($connectionConfig->connectTimeout);
         $config->setReadTimeout($connectionConfig->readTimeout);
         $config->setWriteTimeout($connectionConfig->writeTimeout);
-        $config->setChannelRPCTimeout($connectionConfig->channelRPCTimeout);
+        $config->setChannelRPCTimeout($connectionConfig->rpcTimeout);
         $config->setHeartbeat($connectionConfig->heartbeat);
         $config->setKeepalive($connectionConfig->keepalive);
 
