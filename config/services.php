@@ -27,6 +27,7 @@ return static function (ContainerConfigurator $container): void {
                             service(LoggerInterface::class),
                         ]),
                     inline_service(AmqpConnectionFactory::class),
+                    service(LoggerInterface::class),
                 ]),
             inline_service(RetryFactory::class)
                 ->args([

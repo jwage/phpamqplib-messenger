@@ -16,6 +16,7 @@ use PhpAmqpLib\Exception\AMQPExceptionInterface;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Exception\TransportException;
 
 use function array_map;
@@ -41,6 +42,7 @@ class Connection
         private RetryFactory $retryFactory,
         private AmqpConnectionFactory $amqpConnectionFactory,
         private ConnectionConfig $connectionConfig,
+        private LoggerInterface|null $logger = null,
     ) {
         $this->autoSetup      = $connectionConfig->autoSetup;
         $this->autoSetupDelay = $connectionConfig->delay->enabled && $connectionConfig->delay->autoSetup;

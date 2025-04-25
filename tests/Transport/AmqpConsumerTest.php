@@ -138,6 +138,8 @@ class AmqpConsumerTest extends TestCase
             ->method('is_consuming')
             ->willReturn(true);
 
+        $exception = new AMQPProtocolChannelException(1, 'Test', []);
+
         $channel->expects(self::once())
             ->method('wait')
             ->with(
@@ -145,7 +147,14 @@ class AmqpConsumerTest extends TestCase
                 non_blocking: false,
                 timeout: 2,
             )
-            ->will($this->throwException(new AMQPProtocolChannelException(1, '2', [])));
+            ->will($this->throwException($exception));
+
+        $this->logger->expects(self::once())
+            ->method('warning')
+            ->with(
+                'AMQP exception occurred while waiting for messages: {message}',
+                ['message' => 'Test', 'exception' => $exception],
+            );
 
         $this->connection->expects(self::once())
             ->method('reconnect');
@@ -315,14 +324,19 @@ class AmqpConsumerTest extends TestCase
 
     private function getTestConsumer(ConnectionConfig|null $connectionConfig = null): AmqpConsumer
     {
-        return new AmqpConsumer($this->connection, $connectionConfig ?? $this->connectionConfig);
+        return new AmqpConsumer($this->connection, $connectionConfig ?? $this->connectionConfig, $this->logger);
     }
 
     private function getTestConnection(ConnectionConfig|null $connectionConfig = null): Connection&MockObject
     {
         return $this->getMockBuilder(Connection::class)
             ->onlyMethods(['channel', 'getQueueNames', 'reconnect'])
-            ->setConstructorArgs([$this->retryFactory, $this->amqpConnectionFactory, $connectionConfig ?? $this->connectionConfig])
+            ->setConstructorArgs([
+                $this->retryFactory,
+                $this->amqpConnectionFactory,
+                $connectionConfig ?? $this->connectionConfig,
+                $this->logger,
+            ])
             ->getMock();
     }
 }
