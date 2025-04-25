@@ -72,7 +72,7 @@ class ConnectionTest extends TestCase
                     true,
                     false,
                     false,
-                    true,
+                    false,
                     new AMQPTable([]),
                 ],
                 [
@@ -82,7 +82,7 @@ class ConnectionTest extends TestCase
                     true,
                     false,
                     false,
-                    true,
+                    false,
                     new AMQPTable([]),
                 ],
             ));
@@ -95,7 +95,7 @@ class ConnectionTest extends TestCase
                 durable: true,
                 exclusive: false,
                 auto_delete: false,
-                nowait: true,
+                nowait: false,
                 arguments: new AMQPTable([]),
             );
 
@@ -105,7 +105,7 @@ class ConnectionTest extends TestCase
                 queue: 'queue_name',
                 exchange: 'exchange_name',
                 routing_key: 'routing_key',
-                nowait: true,
+                nowait: false,
                 arguments: new AMQPTable(['arg1' => 'value1', 'arg2' => 'value2']),
             );
 
@@ -140,7 +140,7 @@ class ConnectionTest extends TestCase
                     true,
                     false,
                     false,
-                    true,
+                    false,
                     new AMQPTable([]),
                 ],
                 [
@@ -150,7 +150,7 @@ class ConnectionTest extends TestCase
                     true,
                     false,
                     false,
-                    true,
+                    false,
                     new AMQPTable([]),
                 ],
             ));
@@ -163,7 +163,7 @@ class ConnectionTest extends TestCase
                 durable: true,
                 exclusive: false,
                 auto_delete: false,
-                nowait: true,
+                nowait: false,
                 arguments: new AMQPTable([]),
             );
 
@@ -173,7 +173,7 @@ class ConnectionTest extends TestCase
                 queue: 'queue_name',
                 exchange: 'exchange_name',
                 routing_key: 'routing_key',
-                nowait: true,
+                nowait: false,
                 arguments: new AMQPTable(['arg1' => 'value1', 'arg2' => 'value2']),
             );
 
@@ -197,7 +197,7 @@ class ConnectionTest extends TestCase
                     true,
                     false,
                     false,
-                    true,
+                    false,
                     new AMQPTable([]),
                 ],
             ));
