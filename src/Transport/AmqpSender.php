@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferrableStamp;
+use LogicException;
 use Override;
+use Symfony\Component\Messenger\Bridge\Amqp\Transport\AmqpStamp as SymfonyAmqpStamp;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
@@ -17,6 +19,7 @@ use Throwable;
 
 use function assert;
 use function is_string;
+use function sprintf;
 
 class AmqpSender implements SenderInterface, BatchSenderInterface
 {
@@ -33,6 +36,15 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
     #[Override]
     public function send(Envelope $envelope): Envelope
     {
+        /** @psalm-suppress UndefinedClass */
+        if ($envelope->last(SymfonyAmqpStamp::class) !== null) {
+            throw new LogicException(sprintf(
+                'Wrong AmqpStamp class used. Switch your code from using "%s" to "%s".',
+                SymfonyAmqpStamp::class,
+                AmqpStamp::class,
+            ));
+        }
+
         $encodedMessage = $this->serializer->encode($envelope);
 
         $deferrable = $envelope->last(DeferrableStamp::class);
