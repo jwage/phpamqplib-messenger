@@ -94,6 +94,40 @@ class DsnParserTest extends TestCase
         $this->dsnParser->parseDsn('phpamqplib://guest:guest@127.0.0.1:5672/vhost?auto_setup=not_a_bool');
     }
 
+    public function testUsernameAndPassword(): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://username:password@127.0.0.1');
+
+        self::assertSame('username', $connectionConfig->user);
+        self::assertSame('password', $connectionConfig->password);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1?login=username&password=password');
+
+        self::assertSame('username', $connectionConfig->user);
+        self::assertSame('password', $connectionConfig->password);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1?user=username&password=password');
+
+        self::assertSame('username', $connectionConfig->user);
+        self::assertSame('password', $connectionConfig->password);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', [
+            'user' => 'username',
+            'password' => 'password',
+        ]);
+
+        self::assertSame('username', $connectionConfig->user);
+        self::assertSame('password', $connectionConfig->password);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', [
+            'login' => 'username',
+            'password' => 'password',
+        ]);
+
+        self::assertSame('username', $connectionConfig->user);
+        self::assertSame('password', $connectionConfig->password);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
