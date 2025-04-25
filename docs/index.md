@@ -66,6 +66,8 @@ framework:
                     host: 'localhost'
                     port: 5672
                     user: 'guest'
+                    # Optional for compatibility with symfony/amqp-messenger
+                    # login: 'guest'
                     password: 'guest'
                     vhost: '/'
                     insist: true
@@ -73,10 +75,10 @@ framework:
                     locale: 'en_US'
 
                     # Timeout settings
-                    connection_timeout: 3.0
+                    connect_timeout: 3.0
                     read_timeout: 3.0
                     write_timeout: 3.0
-                    channel_rpc_timeout: 3.0
+                    rpc_timeout: 3.0
 
                     # Heartbeat settings
                     heartbeat: 60
@@ -124,6 +126,8 @@ framework:
                             durable: true
                             exclusive: false
                             auto_delete: false
+                            # Optional "binding_keys" for compatibility with symfony/amqp-messenger
+                            # binding_keys: ['routing_key1', 'routing_key2']
                             bindings:
                                 routing_key1:
                                     arguments: []
