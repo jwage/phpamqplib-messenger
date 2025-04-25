@@ -37,7 +37,7 @@ class DsnParserTest extends TestCase
         self::assertSame(3.0, $connectionConfig->connectionTimeout);
         self::assertSame(3.0, $connectionConfig->readTimeout);
         self::assertSame(3.0, $connectionConfig->writeTimeout);
-        self::assertSame(3.0, $connectionConfig->channelRPCTimeout);
+        self::assertSame(3.0, $connectionConfig->rpcTimeout);
         self::assertSame(0, $connectionConfig->heartbeat);
         self::assertSame(true, $connectionConfig->keepalive);
         self::assertNull($connectionConfig->ssl);
@@ -148,7 +148,7 @@ class DsnParserTest extends TestCase
         self::assertSame(1.0, $connectionConfig->connectionTimeout);
         self::assertSame(2.0, $connectionConfig->readTimeout);
         self::assertSame(3.0, $connectionConfig->writeTimeout);
-        self::assertSame(4.0, $connectionConfig->channelRPCTimeout);
+        self::assertSame(4.0, $connectionConfig->rpcTimeout);
         self::assertSame(5, $connectionConfig->heartbeat);
         self::assertSame(true, $connectionConfig->keepalive);
 
@@ -225,7 +225,7 @@ class DsnParserTest extends TestCase
             'connection_timeout' => 1.0,
             'read_timeout' => 2.0,
             'write_timeout' => 3.0,
-            'channel_rpc_timeout' => 4.0,
+            'rpc_timeout' => 4.0,
             'heartbeat' => 5,
             'keepalive' => true,
             'ssl' => ['cafile' => 'cacert'],

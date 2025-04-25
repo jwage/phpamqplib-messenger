@@ -73,7 +73,7 @@ class ConnectionConfigTest extends TestCase
             'connection_timeout' => 5.0,
             'read_timeout' => 4.0,
             'write_timeout' => 4.0,
-            'channel_rpc_timeout' => 4.0,
+            'rpc_timeout' => 4.0,
             'heartbeat' => 10,
             'keepalive' => false,
             'prefetch_count' => 15,
@@ -116,7 +116,7 @@ class ConnectionConfigTest extends TestCase
         self::assertSame(5.0, $connectionConfig->connectionTimeout);
         self::assertSame(4.0, $connectionConfig->readTimeout);
         self::assertSame(4.0, $connectionConfig->writeTimeout);
-        self::assertSame(4.0, $connectionConfig->channelRPCTimeout);
+        self::assertSame(4.0, $connectionConfig->rpcTimeout);
         self::assertSame(10, $connectionConfig->heartbeat);
         self::assertFalse($connectionConfig->keepalive);
         self::assertSame(15, $connectionConfig->prefetchCount);
@@ -314,7 +314,7 @@ class ConnectionConfigTest extends TestCase
         self::assertSame(3.0, $connectionConfig->connectionTimeout);
         self::assertSame(3.0, $connectionConfig->readTimeout);
         self::assertSame(3.0, $connectionConfig->writeTimeout);
-        self::assertSame(3.0, $connectionConfig->channelRPCTimeout);
+        self::assertSame(3.0, $connectionConfig->rpcTimeout);
         self::assertSame(0, $connectionConfig->heartbeat);
         self::assertTrue($connectionConfig->keepalive);
         self::assertSame(1, $connectionConfig->prefetchCount);

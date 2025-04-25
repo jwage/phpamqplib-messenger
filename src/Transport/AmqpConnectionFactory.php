@@ -28,7 +28,7 @@ class AmqpConnectionFactory
         $config->setConnectionTimeout($connectionConfig->connectionTimeout);
         $config->setReadTimeout($connectionConfig->readTimeout);
         $config->setWriteTimeout($connectionConfig->writeTimeout);
-        $config->setChannelRPCTimeout($connectionConfig->channelRPCTimeout);
+        $config->setChannelRPCTimeout($connectionConfig->rpcTimeout);
         $config->setHeartbeat($connectionConfig->heartbeat);
         $config->setKeepalive($connectionConfig->keepalive);
 

@@ -34,7 +34,7 @@ readonly class ConnectionConfig
         'connection_timeout',
         'read_timeout',
         'write_timeout',
-        'channel_rpc_timeout',
+        'rpc_timeout',
         'heartbeat',
         'keepalive',
         'prefetch_count',
@@ -72,7 +72,7 @@ readonly class ConnectionConfig
 
     public float $writeTimeout;
 
-    public float $channelRPCTimeout;
+    public float $rpcTimeout;
 
     public int $heartbeat;
 
@@ -114,7 +114,7 @@ readonly class ConnectionConfig
         float|null $connectionTimeout = null,
         float|null $readTimeout = null,
         float|null $writeTimeout = null,
-        float|null $channelRPCTimeout = null,
+        float|null $rpcTimeout = null,
         int|null $heartbeat = null,
         bool|null $keepalive = null,
         int|null $prefetchCount = null,
@@ -147,7 +147,7 @@ readonly class ConnectionConfig
         $this->connectionTimeout   = $connectionTimeout ?? 3.0;
         $this->readTimeout         = $readTimeout ?? 3.0;
         $this->writeTimeout        = $writeTimeout ?? 3.0;
-        $this->channelRPCTimeout   = $channelRPCTimeout ?? 3.0;
+        $this->rpcTimeout          = $rpcTimeout ?? 3.0;
         $this->heartbeat           = $heartbeat ?? 0;
         $this->keepalive           = $keepalive ?? true;
         $this->prefetchCount       = $prefetchCount ?? self::DEFAULT_PREFETCH_COUNT;
@@ -175,7 +175,7 @@ readonly class ConnectionConfig
      *     connection_timeout?: float|mixed,
      *     read_timeout?: float|mixed,
      *     write_timeout?: float|mixed,
-     *     channel_rpc_timeout?: float|mixed,
+     *     rpc_timeout?: float|mixed,
      *     heartbeat?: int|mixed,
      *     keepalive?: bool|mixed,
      *     prefetch_count?: int|mixed,
@@ -295,7 +295,7 @@ readonly class ConnectionConfig
             connectionTimeout: ConfigHelper::getFloat($connectionConfig, 'connection_timeout'),
             readTimeout: ConfigHelper::getFloat($connectionConfig, 'read_timeout'),
             writeTimeout: ConfigHelper::getFloat($connectionConfig, 'write_timeout'),
-            channelRPCTimeout: ConfigHelper::getFloat($connectionConfig, 'channel_rpc_timeout'),
+            rpcTimeout: ConfigHelper::getFloat($connectionConfig, 'rpc_timeout'),
             heartbeat: ConfigHelper::getInt($connectionConfig, 'heartbeat'),
             keepalive: ConfigHelper::getBool($connectionConfig, 'keepalive'),
             prefetchCount: $prefetchCount,
