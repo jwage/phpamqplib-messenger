@@ -46,15 +46,21 @@ class AmqpConsumer
 
         while ($this->connection->channel()->is_consuming()) {
             try {
-                $this->connection->withRetry(function () use ($queueConfig): void {
-                    $this->connection->channel()->wait(
-                        allowed_methods: null,
-                        non_blocking: false,
-                        timeout: $queueConfig->waitTimeout,
-                    );
-                })->run();
+                $this->connection->channel()->wait(
+                    allowed_methods: null,
+                    non_blocking: false,
+                    timeout: $queueConfig->waitTimeout,
+                );
+            // After we get the expected AMQPTimeoutException, we need to yield the buffer and break the loop.
             } catch (AMQPTimeoutException) {
                 $stop = true;
+            // If we get any AMQP exception here besides the expected AMQPTimeoutException,
+            // we need to reconnect and break the loop immediately. The consumer will be restarted
+            // on the next iteration that calls AmqpConsumer::consume().
+            } catch (AMQPExceptionInterface) {
+                $this->connection->reconnect();
+
+                break;
             }
 
             $buffer = $this->buffer;
