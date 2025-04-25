@@ -34,7 +34,7 @@ class DsnParserTest extends TestCase
         self::assertSame(false, $connectionConfig->insist);
         self::assertSame(AMQPConnectionConfig::AUTH_AMQPPLAIN, $connectionConfig->loginMethod);
         self::assertSame('en_US', $connectionConfig->locale);
-        self::assertSame(3.0, $connectionConfig->connectionTimeout);
+        self::assertSame(3.0, $connectionConfig->connectTimeout);
         self::assertSame(3.0, $connectionConfig->readTimeout);
         self::assertSame(3.0, $connectionConfig->writeTimeout);
         self::assertSame(3.0, $connectionConfig->rpcTimeout);
@@ -145,7 +145,7 @@ class DsnParserTest extends TestCase
         self::assertSame(true, $connectionConfig->insist);
         self::assertSame('login_method', $connectionConfig->loginMethod);
         self::assertSame('locale', $connectionConfig->locale);
-        self::assertSame(1.0, $connectionConfig->connectionTimeout);
+        self::assertSame(1.0, $connectionConfig->connectTimeout);
         self::assertSame(2.0, $connectionConfig->readTimeout);
         self::assertSame(3.0, $connectionConfig->writeTimeout);
         self::assertSame(4.0, $connectionConfig->rpcTimeout);
@@ -222,7 +222,7 @@ class DsnParserTest extends TestCase
             'insist' => true,
             'login_method' => 'login_method',
             'locale' => 'locale',
-            'connection_timeout' => 1.0,
+            'connect_timeout' => 1.0,
             'read_timeout' => 2.0,
             'write_timeout' => 3.0,
             'rpc_timeout' => 4.0,

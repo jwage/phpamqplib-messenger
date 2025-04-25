@@ -63,7 +63,7 @@ class DsnParser
          *     insist?: bool|mixed,
          *     login_method?: string,
          *     locale?: string,
-         *     connection_timeout?: float|mixed,
+         *     connect_timeout?: float|mixed,
          *     read_timeout?: float|mixed,
          *     write_timeout?: float|mixed,
          *     rpc_timeout?: float|mixed,

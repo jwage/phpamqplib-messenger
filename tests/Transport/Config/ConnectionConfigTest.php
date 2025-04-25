@@ -70,7 +70,7 @@ class ConnectionConfigTest extends TestCase
             'insist' => false,
             'login_method' => 'PLAIN',
             'locale' => 'fr_FR',
-            'connection_timeout' => 5.0,
+            'connect_timeout' => 5.0,
             'read_timeout' => 4.0,
             'write_timeout' => 4.0,
             'rpc_timeout' => 4.0,
@@ -113,7 +113,7 @@ class ConnectionConfigTest extends TestCase
         self::assertFalse($connectionConfig->insist);
         self::assertSame('PLAIN', $connectionConfig->loginMethod);
         self::assertSame('fr_FR', $connectionConfig->locale);
-        self::assertSame(5.0, $connectionConfig->connectionTimeout);
+        self::assertSame(5.0, $connectionConfig->connectTimeout);
         self::assertSame(4.0, $connectionConfig->readTimeout);
         self::assertSame(4.0, $connectionConfig->writeTimeout);
         self::assertSame(4.0, $connectionConfig->rpcTimeout);
@@ -311,7 +311,7 @@ class ConnectionConfigTest extends TestCase
         self::assertFalse($connectionConfig->insist);
         self::assertSame('AMQPLAIN', $connectionConfig->loginMethod);
         self::assertSame('en_US', $connectionConfig->locale);
-        self::assertSame(3.0, $connectionConfig->connectionTimeout);
+        self::assertSame(3.0, $connectionConfig->connectTimeout);
         self::assertSame(3.0, $connectionConfig->readTimeout);
         self::assertSame(3.0, $connectionConfig->writeTimeout);
         self::assertSame(3.0, $connectionConfig->rpcTimeout);
