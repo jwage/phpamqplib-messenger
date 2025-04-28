@@ -7,6 +7,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle;
 use Closure;
 use PhpAmqpLib\Exception\AMQPChannelClosedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
+use PhpAmqpLib\Exception\AMQPIOException;
 use Psr\Log\LoggerInterface;
 
 class RetryFactory
@@ -28,6 +29,7 @@ class RetryFactory
             ->catch([
                 AMQPChannelClosedException::class,
                 AMQPConnectionClosedException::class,
+                AMQPIOException::class,
             ]);
     }
 }

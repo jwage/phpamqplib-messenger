@@ -36,6 +36,9 @@ class Retry
     /** @var array<class-string> */
     private array $catch = [Throwable::class];
 
+    /** @var array<class-string> */
+    private array $except = [];
+
     private bool $isRetry = false;
 
     private Closure|null $beforeRetry = null;
@@ -60,6 +63,18 @@ class Retry
         }
 
         $this->catch = $catch;
+
+        return $this;
+    }
+
+    /** @param array<class-string>|class-string $except */
+    public function except(array|string $except): self
+    {
+        if (! is_array($except)) {
+            $except = [$except];
+        }
+
+        $this->except = $except;
 
         return $this;
     }
@@ -145,6 +160,14 @@ class Retry
 
         foreach ($this->catch as $exceptionClass) {
             if ($e instanceof $exceptionClass) {
+                if ($this->except !== []) {
+                    foreach ($this->except as $exceptClass) {
+                        if ($e instanceof $exceptClass) {
+                            return false;
+                        }
+                    }
+                }
+
                 return true;
             }
         }

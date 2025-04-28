@@ -74,8 +74,7 @@ class Connection
     {
         $this->consumer?->stop();
         $this->connection?->close();
-        $this->channel  = null;
-        $this->consumer = null;
+        $this->channel = null;
     }
 
     /** @throws AMQPExceptionInterface */
@@ -84,7 +83,6 @@ class Connection
         $this->connection?->reconnect();
         $this->channel = null;
         $this->consumer?->stop();
-        $this->consumer = null;
     }
 
     /**
@@ -134,7 +132,7 @@ class Connection
             $this->setupExchangeAndQueues();
         }
 
-        return ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig))->consume($queueName);
+        return ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger))->consume($queueName);
     }
 
     /**

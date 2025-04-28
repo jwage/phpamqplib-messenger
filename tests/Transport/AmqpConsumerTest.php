@@ -157,7 +157,7 @@ class AmqpConsumerTest extends TestCase
             );
 
         $this->connection->expects(self::once())
-            ->method('reconnect');
+            ->method('close');
 
         /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
         $amqpEnvelopes = $this->consumer->consume('test_queue');
@@ -330,7 +330,7 @@ class AmqpConsumerTest extends TestCase
     private function getTestConnection(ConnectionConfig|null $connectionConfig = null): Connection&MockObject
     {
         return $this->getMockBuilder(Connection::class)
-            ->onlyMethods(['channel', 'getQueueNames', 'reconnect'])
+            ->onlyMethods(['channel', 'getQueueNames', 'close'])
             ->setConstructorArgs([
                 $this->retryFactory,
                 $this->amqpConnectionFactory,
