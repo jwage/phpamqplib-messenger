@@ -23,7 +23,7 @@ class AmqpConsumer
     public function __construct(
         private Connection $connection,
         private ConnectionConfig $connectionConfig,
-        private LoggerInterface|null $logger = null,
+        private LoggerInterface|null $logger,
     ) {
     }
 
@@ -39,9 +39,7 @@ class AmqpConsumer
         $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
 
         if ($this->consumerTag === null) {
-            $this->connection->withRetry(function () use ($queueConfig): void {
-                $this->start($queueConfig);
-            })->run();
+            $this->start($queueConfig);
         }
 
         $stop = false;
@@ -65,7 +63,7 @@ class AmqpConsumer
                     'exception' => $e,
                 ]);
 
-                $this->connection->reconnect();
+                $this->connection->close();
 
                 break;
             }
@@ -93,8 +91,8 @@ class AmqpConsumer
         if ($this->consumerTag !== null) {
             try {
                 $this->connection->channel()->basic_cancel(consumer_tag: $this->consumerTag);
-            } catch (AMQPExceptionInterface $e) {
-                throw new TransportException($e->getMessage(), 0, $e);
+            } catch (AMQPExceptionInterface) {
+                // do nothing
             }
 
             $this->consumerTag = null;
