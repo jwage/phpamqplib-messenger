@@ -79,6 +79,11 @@ class AmqpEnvelope
         return [];
     }
 
+    public function getHeader(string $key): mixed
+    {
+        return $this->getHeaders()[$key] ?? null;
+    }
+
     public function getDeliveryMode(): int|null
     {
         return $this->getInt('delivery_mode');

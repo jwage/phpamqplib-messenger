@@ -14,6 +14,7 @@ use PhpAmqpLib\Wire\AMQPTable;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
 use Traversable;
 
@@ -215,6 +216,31 @@ class TransportFunctionalTest extends KernelTestCase
         ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getAttributes());
 
         self::assertSame($messageId, $envelopes[0]->last(TransportMessageIdStamp::class)?->getId());
+    }
+
+    public function testDelayedMessages(): void
+    {
+        $message = Envelope::wrap(new ConfirmMessage(1))->with(new DelayStamp(delay: 100));
+
+        $this->bus->dispatch($message);
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 1);
+
+        self::assertCount(1, $envelopes);
+
+        $envelope = $envelopes[0];
+
+        $amqpEnvelope = $envelope->last(AmqpReceivedStamp::class)?->getAmqpEnvelope();
+
+        self::assertNotNull($amqpEnvelope);
+
+        self::assertSame('delays', $amqpEnvelope->getHeader('x-first-death-exchange'));
+        self::assertSame('delay_test_confirms_exchange__100_delay', $amqpEnvelope->getHeader('x-first-death-queue'));
+        self::assertSame('expired', $amqpEnvelope->getHeader('x-first-death-reason'));
+
+        self::assertSame('delays', $amqpEnvelope->getHeader('x-last-death-exchange'));
+        self::assertSame('delay_test_confirms_exchange__100_delay', $amqpEnvelope->getHeader('x-last-death-queue'));
+        self::assertSame('expired', $amqpEnvelope->getHeader('x-last-death-reason'));
     }
 
     protected function setUp(): void
