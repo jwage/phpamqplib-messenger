@@ -300,6 +300,31 @@ class ConnectionConfigTest extends TestCase
         new ConnectionConfig(transactionsEnabled: true, confirmEnabled: true);
     }
 
+    public function testGetQueueName(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            exchange: new ExchangeConfig(name: 'my_queue_name'),
+        );
+
+        self::assertSame('delay_my_queue_name_routing_key_1000_retry', $connectionConfig->getDelayQueueName(
+            delay: 1000,
+            routingKey: 'routing_key',
+            isRetryAttempt: true,
+        ));
+
+        self::assertSame('delay_my_queue_name_routing_key_1000_delay', $connectionConfig->getDelayQueueName(
+            delay: 1000,
+            routingKey: 'routing_key',
+            isRetryAttempt: false,
+        ));
+
+        self::assertSame('delay_my_queue_name__1000_delay', $connectionConfig->getDelayQueueName(
+            delay: 1000,
+            routingKey: null,
+            isRetryAttempt: false,
+        ));
+    }
+
     private static function assertDefaultConnectionConfig(ConnectionConfig $connectionConfig): void
     {
         self::assertTrue($connectionConfig->autoSetup);

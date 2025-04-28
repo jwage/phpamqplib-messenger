@@ -73,27 +73,4 @@ class DelayConfigTest extends TestCase
 
         DelayConfig::fromArray(['enabled' => new stdClass()]);
     }
-
-    public function testGetQueueName(): void
-    {
-        $delayConfig = new DelayConfig();
-
-        self::assertSame('delay_delays_routing_key_1000_retry', $delayConfig->getQueueName(
-            delay: 1000,
-            routingKey: 'routing_key',
-            isRetryAttempt: true,
-        ));
-
-        self::assertSame('delay_delays_routing_key_1000_delay', $delayConfig->getQueueName(
-            delay: 1000,
-            routingKey: 'routing_key',
-            isRetryAttempt: false,
-        ));
-
-        self::assertSame('delay_delays__1000_delay', $delayConfig->getQueueName(
-            delay: 1000,
-            routingKey: null,
-            isRetryAttempt: false,
-        ));
-    }
 }

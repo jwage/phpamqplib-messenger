@@ -11,6 +11,7 @@ use SensitiveParameter;
 use function array_keys;
 use function is_string;
 use function sprintf;
+use function str_replace;
 
 readonly class ConnectionConfig
 {
@@ -324,6 +325,21 @@ readonly class ConnectionConfig
         }
 
         return $this->queues[$queueName];
+    }
+
+    public function getDelayQueueName(int $delay, string|null $routingKey, bool $isRetryAttempt): string
+    {
+        $action = $isRetryAttempt ? '_retry' : '_delay';
+
+        return str_replace(
+            ['%delay%', '%exchange_name%', '%routing_key%'],
+            [
+                $delay,
+                $this->exchange->name,
+                $routingKey ?? '',
+            ],
+            $this->delay->queueNamePattern,
+        ) . $action;
     }
 
     /**

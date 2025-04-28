@@ -163,7 +163,7 @@ class Connection
         $routingKey     = $this->getRoutingKeyForMessage($amqpStamp);
 
         if ($isDelayed) {
-            $publishRoutingKey = $this->connectionConfig->delay->getQueueName(
+            $publishRoutingKey = $this->connectionConfig->getDelayQueueName(
                 $delayInMs,
                 $routingKey,
                 $isRetryAttempt,
@@ -418,8 +418,8 @@ class Connection
     private function setupDelayQueue(int $delay, string|null $routingKey, bool $isRetryAttempt): void
     {
         try {
-            $delayQueueName = $this->connectionConfig->delay
-                ->getQueueName($delay, $routingKey, $isRetryAttempt);
+            $delayQueueName = $this->connectionConfig
+                ->getDelayQueueName($delay, $routingKey, $isRetryAttempt);
 
             $this->channel()->queue_declare(
                 queue: $delayQueueName,

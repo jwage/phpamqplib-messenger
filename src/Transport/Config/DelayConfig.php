@@ -7,8 +7,6 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport\Config;
 use InvalidArgumentException;
 use PhpAmqpLib\Exchange\AMQPExchangeType;
 
-use function str_replace;
-
 readonly class DelayConfig
 {
     private const array AVAILABLE_OPTIONS = [
@@ -79,21 +77,6 @@ readonly class DelayConfig
             queueNamePattern: ConfigHelper::getString($delayConfig, 'queue_name_pattern'),
             arguments: ConfigHelper::getArray($delayConfig, 'arguments'),
         );
-    }
-
-    public function getQueueName(int $delay, string|null $routingKey, bool $isRetryAttempt): string
-    {
-        $action = $isRetryAttempt ? '_retry' : '_delay';
-
-        return str_replace(
-            ['%delay%', '%exchange_name%', '%routing_key%'],
-            [
-                $delay,
-                $this->exchange->name,
-                $routingKey ?? '',
-            ],
-            $this->queueNamePattern,
-        ) . $action;
     }
 
     /**
