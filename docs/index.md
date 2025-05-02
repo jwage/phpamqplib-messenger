@@ -31,6 +31,23 @@ For SSL/TLS connections, use:
 phpamqplibs://username:password@localhost[:port]/vhost[/exchange]
 ```
 
+## Limitations
+
+You cannot consume messages from multiple transports at the same time in one `messenger:consume` process. For example, you should not do this:
+
+```bash
+bin/console messenger:consume transport1 transport2
+```
+
+Instead, you should consume messages from each transport in a separate process.
+
+```bash
+bin/console messenger:consume transport1
+bin/console messenger:consume transport2
+```
+
+Because we're using a blocking consumer, when you pass multiple transports to the `messenger:consume` command, the first transport will block the process and wait for messages for the configured `queueConfig.waitTimeout` value before the second transport will start consuming messages. This maybe could be enhanced to work better in the future, but we believe something would have to be changed in the Symfony Messenger component to support this. For now, we recommend consuming messages from each transport in a separate process.
+
 ## Minimum Configuration
 
 The minimum configuration required is the transports name and the DSN.
