@@ -11,6 +11,9 @@ use SensitiveParameter;
 
 class ConnectionFactory
 {
+    /** @var array<string, Connection> */
+    private array $connections = [];
+
     public function __construct(
         private DsnParser $dsnParser,
         private RetryFactory $retryFactory,
@@ -29,10 +32,14 @@ class ConnectionFactory
         string $dsn,
         array $options = [],
     ): Connection {
-        return new Connection(
+        $connectionConfig = $this->dsnParser->parseDsn($dsn, $options);
+
+        $connectionHash = $connectionConfig->getHash();
+
+        return $this->connections[$connectionHash] ??= new Connection(
             $this->retryFactory,
             $this->amqpConnectionFactory,
-            $this->dsnParser->parseDsn($dsn, $options),
+            $connectionConfig,
             $this->logger,
         );
     }

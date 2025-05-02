@@ -300,7 +300,7 @@ class ConnectionConfigTest extends TestCase
         new ConnectionConfig(transactionsEnabled: true, confirmEnabled: true);
     }
 
-    public function testGetQueueName(): void
+    public function testGetDelayQueueName(): void
     {
         $connectionConfig = new ConnectionConfig(
             exchange: new ExchangeConfig(name: 'my_queue_name'),
@@ -323,6 +323,59 @@ class ConnectionConfigTest extends TestCase
             routingKey: null,
             isRetryAttempt: false,
         ));
+    }
+
+    public function testGetHash(): void
+    {
+        $connectionConfig = new ConnectionConfig();
+
+        self::assertSame('05f85c5ae10ce5a52d553a80cf2ecc17', $connectionConfig->getHash());
+
+        $connectionConfig = ConnectionConfig::fromArray([
+            'auto_setup' => true,
+            'host' => 'example.com',
+            'port' => 5673,
+            'user' => 'admin',
+            'password' => 'admin123',
+            'vhost' => '/custom',
+            'insist' => false,
+            'login_method' => 'PLAIN',
+            'locale' => 'fr_FR',
+            'connect_timeout' => 5.0,
+            'read_timeout' => 4.0,
+            'write_timeout' => 4.0,
+            'rpc_timeout' => 4.0,
+            'heartbeat' => 10,
+            'keepalive' => false,
+            'prefetch_count' => 15,
+            'wait_timeout' => 2.0,
+            'confirm_enabled' => true,
+            'confirm_timeout' => 10.0,
+            'exchange' => [
+                'name' => 'custom_exchange',
+                'type' => 'fanout',
+                'durable' => false,
+                'auto_delete' => true,
+            ],
+            'delay' => [
+                'exchange' => [
+                    'name' => 'delay_exchange',
+                    'type' => 'direct',
+                ],
+            ],
+            'queues' => [
+                'queue1' => [
+                    'prefetch_count' => 20,
+                    'wait_timeout' => 3.0,
+                ],
+                'queue2' => [
+                    'prefetch_count' => 30,
+                    'wait_timeout' => 4.0,
+                ],
+            ],
+        ]);
+
+        self::assertSame('7933824aa9b09330f25625b8fd6e5bb5', $connectionConfig->getHash());
     }
 
     private static function assertDefaultConnectionConfig(ConnectionConfig $connectionConfig): void

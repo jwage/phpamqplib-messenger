@@ -10,6 +10,8 @@ use SensitiveParameter;
 
 use function array_keys;
 use function is_string;
+use function md5;
+use function serialize;
 use function sprintf;
 use function str_replace;
 
@@ -340,6 +342,77 @@ readonly class ConnectionConfig
             ],
             $this->delay->queueNamePattern,
         ) . $action;
+    }
+
+    public function getAMQPConnectionConfig(): AMQPConnectionConfig
+    {
+        $config = new AMQPConnectionConfig();
+        $config->setIsLazy(true);
+        $config->setHost($this->host);
+        $config->setPort($this->port);
+        $config->setUser($this->user);
+        $config->setPassword($this->password);
+        $config->setVhost($this->vhost);
+        $config->setInsist($this->insist);
+        $config->setLoginMethod($this->loginMethod);
+        $config->setLocale($this->locale);
+        $config->setConnectionTimeout($this->connectTimeout);
+        $config->setReadTimeout($this->readTimeout);
+        $config->setWriteTimeout($this->writeTimeout);
+        $config->setChannelRPCTimeout($this->rpcTimeout);
+        $config->setHeartbeat($this->heartbeat);
+        $config->setKeepalive($this->keepalive);
+
+        if ($this->ssl !== null) {
+            $config->setIsSecure(true);
+
+            if ($this->ssl->cafile !== null) {
+                $config->setSslCaCert($this->ssl->cafile);
+            }
+
+            if ($this->ssl->capath !== null) {
+                $config->setSslCaPath($this->ssl->capath);
+            }
+
+            if ($this->ssl->localCert !== null) {
+                $config->setSslCert($this->ssl->localCert);
+            }
+
+            if ($this->ssl->localPk !== null) {
+                $config->setSslKey($this->ssl->localPk);
+            }
+
+            if ($this->ssl->verifyPeer !== null) {
+                $config->setSslVerify($this->ssl->verifyPeer);
+            }
+
+            if ($this->ssl->verifyPeerName !== null) {
+                $config->setSslVerifyName($this->ssl->verifyPeerName);
+            }
+
+            if ($this->ssl->passphrase !== null) {
+                $config->setSslPassPhrase($this->ssl->passphrase);
+            }
+
+            if ($this->ssl->ciphers !== null) {
+                $config->setSslCiphers($this->ssl->ciphers);
+            }
+
+            if ($this->ssl->securityLevel !== null) {
+                $config->setSslSecurityLevel($this->ssl->securityLevel);
+            }
+
+            if ($this->ssl->cryptoMethod !== null) {
+                $config->setSslCryptoMethod($this->ssl->cryptoMethod);
+            }
+        }
+
+        return $config;
+    }
+
+    public function getHash(): string
+    {
+        return md5(serialize($this->getAMQPConnectionConfig()));
     }
 
     /**

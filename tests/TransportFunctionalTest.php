@@ -243,6 +243,14 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertSame('expired', $amqpEnvelope->getHeader('x-last-death-reason'));
     }
 
+    public function testConnectionCaching(): void
+    {
+        self::assertSame(
+            $this->confirmsTransport->getConnection()->channel(),
+            $this->transactionsTransport->getConnection()->channel(),
+        );
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
