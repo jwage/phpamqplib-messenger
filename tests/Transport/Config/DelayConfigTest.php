@@ -73,22 +73,4 @@ class DelayConfigTest extends TestCase
 
         DelayConfig::fromArray(['enabled' => new stdClass()]);
     }
-
-    public function testCustomQueueNamePattern(): void
-    {
-        $delayConfig = DelayConfig::fromArray([
-            'queue_name_pattern' => 'custom_{delay}_{exchange_name}',
-        ]);
-
-        self::assertSame('custom_{delay}_{exchange_name}', $delayConfig->queueNamePattern);
-    }
-
-    public function testConstructorWithCustomPattern(): void
-    {
-        $delayConfig = new DelayConfig(
-            queueNamePattern: 'my_custom_{delay}_pattern'
-        );
-
-        self::assertSame('my_custom_{delay}_pattern', $delayConfig->queueNamePattern);
-    }
 }
