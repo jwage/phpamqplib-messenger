@@ -43,10 +43,7 @@ readonly class DelayConfig
 
         $this->enabled          = $enabled ?? true;
         $this->autoSetup        = $autoSetup ?? true;
-        // Fixed: Convert curly brace placeholders to % placeholders for runtime use
-        $this->queueNamePattern = $queueNamePattern !== null 
-            ? $this->convertPlaceholders($queueNamePattern)
-            : 'delay_%exchange_name%_%routing_key%_%delay%';
+        $this->queueNamePattern = $queueNamePattern ?? 'delay_{exchange_name}_{routing_key}_{delay}';
         $this->arguments        = $arguments ?? [];
     }
 
@@ -90,15 +87,5 @@ readonly class DelayConfig
     private static function validate(array $delayConfig): void
     {
         ConfigHelper::validate('delay', $delayConfig, self::AVAILABLE_OPTIONS);
-    }
-
-    /**
-     * Convert curly brace placeholders to percent placeholders for runtime use
-     * This allows using {delay} in YAML config instead of %delay% which would be resolved by DI
-     */
-    private function convertPlaceholders(string $pattern): string
-    {
-        // Convert {placeholder} to %placeholder% for runtime processing
-        return preg_replace('/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/', '%$1%', $pattern);
     }
 }
