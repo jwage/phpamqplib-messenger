@@ -73,4 +73,86 @@ class DelayConfigTest extends TestCase
 
         DelayConfig::fromArray(['enabled' => new stdClass()]);
     }
+
+    // New tests for curly brace placeholder functionality
+
+    public function testFromArrayWithCurlyBracePlaceholders(): void
+    {
+        $config = [
+            'queue_name_pattern' => 'message-bus.delay-queue.{delay}',
+        ];
+
+        $delayConfig = DelayConfig::fromArray($config);
+
+        // The curly braces should be converted to % placeholders for runtime use
+        self::assertSame('message-bus.delay-queue.%delay%', $delayConfig->queueNamePattern);
+    }
+
+    public function testFromArrayWithMultipleCurlyBracePlaceholders(): void
+    {
+        $config = [
+            'queue_name_pattern' => 'delay-{exchange_name}-{routing_key}-{delay}',
+        ];
+
+        $delayConfig = DelayConfig::fromArray($config);
+
+        self::assertSame('delay-%exchange_name%-%routing_key%-%delay%', $delayConfig->queueNamePattern);
+    }
+
+    public function testFromArrayWithMixedPlaceholders(): void
+    {
+        $config = [
+            'queue_name_pattern' => '{exchange_name}.delay-queue.%app.prefix%.{delay}',
+        ];
+
+        $delayConfig = DelayConfig::fromArray($config);
+
+        // Only curly braces should be converted, % placeholders should remain
+        self::assertSame('%exchange_name%.delay-queue.%app.prefix%.%delay%', $delayConfig->queueNamePattern);
+    }
+
+    public function testFromArrayWithPercentPlaceholders(): void
+    {
+        $config = [
+            'queue_name_pattern' => 'message-bus.delay-queue.%delay%',
+        ];
+
+        $delayConfig = DelayConfig::fromArray($config);
+
+        // Percent placeholders should remain unchanged
+        self::assertSame('message-bus.delay-queue.%delay%', $delayConfig->queueNamePattern);
+    }
+
+    public function testConstructorWithCurlyBracePlaceholders(): void
+    {
+        $delayConfig = new DelayConfig(
+            queueNamePattern: 'message-bus.delay-queue.{delay}'
+        );
+
+        self::assertSame('message-bus.delay-queue.%delay%', $delayConfig->queueNamePattern);
+    }
+
+    public function testFromArrayWithNoPlaceholders(): void
+    {
+        $config = [
+            'queue_name_pattern' => 'static-queue-name',
+        ];
+
+        $delayConfig = DelayConfig::fromArray($config);
+
+        // Strings without placeholders should remain unchanged
+        self::assertSame('static-queue-name', $delayConfig->queueNamePattern);
+    }
+
+    public function testFromArrayWithInvalidCurlyBraces(): void
+    {
+        $config = [
+            'queue_name_pattern' => 'queue-{123invalid}-{valid_name}',
+        ];
+
+        $delayConfig = DelayConfig::fromArray($config);
+
+        // Only valid identifiers should be converted (starts with letter or underscore)
+        self::assertSame('queue-{123invalid}-%valid_name%', $delayConfig->queueNamePattern);
+    }
 }
