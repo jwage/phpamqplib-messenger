@@ -332,7 +332,7 @@ readonly class ConnectionConfig
         $action = $isRetryAttempt ? '_retry' : '_delay';
 
         return str_replace(
-            ['%delay%', '%exchange_name%', '%routing_key%'],
+            ['{delay}', '{exchange_name}', '{routing_key}'],
             [
                 $delay,
                 $this->exchange->name,

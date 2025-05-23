@@ -18,7 +18,7 @@ class DelayConfigTest extends TestCase
 
         self::assertSame('delays', $delayConfig->exchange->name);
         self::assertSame(AMQPExchangeType::DIRECT, $delayConfig->exchange->type);
-        self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
+        self::assertSame('delay_{exchange_name}_{routing_key}_{delay}', $delayConfig->queueNamePattern);
     }
 
     public function testFromArrayWithEmptyArray(): void
@@ -27,7 +27,7 @@ class DelayConfigTest extends TestCase
 
         self::assertSame('delays', $delayConfig->exchange->name);
         self::assertSame(AMQPExchangeType::DIRECT, $delayConfig->exchange->type);
-        self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
+        self::assertSame('delay_{exchange_name}_{routing_key}_{delay}', $delayConfig->queueNamePattern);
     }
 
     public function testFromArray(): void
@@ -42,7 +42,7 @@ class DelayConfigTest extends TestCase
                 'auto_delete' => true,
                 'arguments' => ['arg1' => 'val1', 'arg2' => 'val2'],
             ],
-            'queue_name_pattern' => 'delay_%exchange_name%_%routing_key%_%delay%',
+            'queue_name_pattern' => 'delay_{exchange_name}_{routing_key}_{delay}',
             'arguments' => ['arg3' => 'val3', 'arg4' => 'val4'],
         ]);
 
@@ -53,7 +53,7 @@ class DelayConfigTest extends TestCase
         self::assertTrue($delayConfig->exchange->durable);
         self::assertTrue($delayConfig->exchange->autoDelete);
         self::assertSame(['arg1' => 'val1', 'arg2' => 'val2'], $delayConfig->exchange->arguments);
-        self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
+        self::assertSame('delay_{exchange_name}_{routing_key}_{delay}', $delayConfig->queueNamePattern);
         self::assertSame(['arg3' => 'val3', 'arg4' => 'val4'], $delayConfig->arguments);
     }
 

@@ -43,7 +43,7 @@ readonly class DelayConfig
 
         $this->enabled          = $enabled ?? true;
         $this->autoSetup        = $autoSetup ?? true;
-        $this->queueNamePattern = $queueNamePattern ?? 'delay_%exchange_name%_%routing_key%_%delay%';
+        $this->queueNamePattern = $queueNamePattern ?? 'delay_{exchange_name}_{routing_key}_{delay}';
         $this->arguments        = $arguments ?? [];
     }
 
