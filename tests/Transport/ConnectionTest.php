@@ -251,7 +251,7 @@ class ConnectionTest extends TestCase
             [
                 'content_type' => 'text/plain',
                 'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
-                'application_headers' => new AMQPTable(['protocol' => 3, ...$headers]),
+                'application_headers' => new AMQPTable($headers),
             ],
         );
 
@@ -279,7 +279,7 @@ class ConnectionTest extends TestCase
             [
                 'content_type' => 'text/plain',
                 'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
-                'application_headers' => new AMQPTable(['protocol' => 3]),
+                'application_headers' => new AMQPTable(),
             ],
         );
 
@@ -312,7 +312,7 @@ class ConnectionTest extends TestCase
             [
                 'content_type' => 'text/plain',
                 'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
-                'application_headers' => new AMQPTable(['protocol' => 3]),
+                'application_headers' => new AMQPTable(),
             ],
         );
 
@@ -321,7 +321,7 @@ class ConnectionTest extends TestCase
             [
                 'content_type' => 'text/plain',
                 'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
-                'application_headers' => new AMQPTable(['protocol' => 3]),
+                'application_headers' => new AMQPTable(),
             ],
         );
 

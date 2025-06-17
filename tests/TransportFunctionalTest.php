@@ -150,17 +150,11 @@ class TransportFunctionalTest extends KernelTestCase
 
         self::assertSame($messageId, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getMessageId());
 
-        self::assertSame([
-            'protocol' => 3,
-            'x-deduplication-header' => $messageId,
-        ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders());
+        self::assertSame(['x-deduplication-header' => $messageId], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders());
 
         self::assertEquals([
             'content_type' => 'text/plain',
-            'application_headers' => new AMQPTable([
-                'x-deduplication-header' => $messageId,
-                'protocol' => 3,
-            ]),
+            'application_headers' => new AMQPTable(['x-deduplication-header' => $messageId]),
             'delivery_mode' => 2,
             'message_id' => $messageId,
         ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getAttributes());
@@ -199,7 +193,6 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertSame($messageId, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getMessageId());
 
         self::assertSame([
-            'protocol' => 3,
             'x-deduplication-header' => $messageId,
             'x-test' => true,
         ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders());
@@ -209,7 +202,6 @@ class TransportFunctionalTest extends KernelTestCase
             'application_headers' => new AMQPTable([
                 'x-test' => true,
                 'x-deduplication-header' => $messageId,
-                'protocol' => 3,
             ]),
             'delivery_mode' => 2,
             'message_id' => $messageId,
