@@ -234,7 +234,7 @@ class AmqpEnvelopeTest extends TestCase
             [
                 'content_type' => 'text/plain',
                 'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
-                'application_headers' => new AMQPTable(['protocol' => 3]),
+                'application_headers' => new AMQPTable(['foo' => 'bar']),
             ],
         );
 
@@ -243,7 +243,7 @@ class AmqpEnvelopeTest extends TestCase
         self::assertSame('test body', $envelope->getBody());
         self::assertSame('text/plain', $envelope->getContentType());
         self::assertSame(AMQPMessage::DELIVERY_MODE_PERSISTENT, $envelope->getDeliveryMode());
-        self::assertSame(['protocol' => 3], $envelope->getHeaders());
+        self::assertSame(['foo' => 'bar'], $envelope->getHeaders());
     }
 
     protected function setUp(): void
