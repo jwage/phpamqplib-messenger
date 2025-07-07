@@ -8,6 +8,7 @@ use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\DelayConfig;
@@ -341,6 +342,36 @@ class ConnectionTest extends TestCase
 
         $this->connection->publish(body: $body1, batchSize: 2);
         $this->connection->publish(body: $body2, batchSize: 2);
+    }
+
+    public function testPublishWithBatchSizeGreaterThanOneAndRetryAttemptDoesNotBatchPublish(): void
+    {
+        $body = 'test body';
+
+        $amqpMessage = new AMQPMessage(
+            $body,
+            [
+                'content_type' => 'text/plain',
+                'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
+                'application_headers' => new AMQPTable(),
+            ],
+        );
+
+        $amqpEnvelope = new AmqpEnvelope($amqpMessage);
+
+        $amqpStamp = AmqpStamp::createFromAMQPEnvelope(
+            amqpEnvelope: $amqpEnvelope,
+            retryRoutingKey: 'test_retry_routing_key',
+        );
+
+        $this->amqpChannel->expects(self::once())
+            ->method('basic_publish');
+
+        $this->amqpChannel->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->with(timeout: 5);
+
+        $this->connection->publish(body: $body, batchSize: 2, amqpStamp: $amqpStamp);
     }
 
     public function testFlush(): void

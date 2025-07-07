@@ -182,7 +182,13 @@ class Connection
             ? $this->connectionConfig->delay->exchange->name
             : $this->connectionConfig->exchange->name;
 
-        if ($batchSize > 1) {
+        /**
+         * The original message may have been published in a batch and a retry will still have a
+         * batch size defined but we should not batch publish when it is a retry attempt.
+         */
+        $shouldBatchPublish = $batchSize > 1 && $isRetryAttempt === false;
+
+        if ($shouldBatchPublish) {
             $this->channel()->batch_basic_publish(
                 message: $amqpEnvelope->getAMQPMessage(),
                 exchange: $exchangeName,
