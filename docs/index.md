@@ -110,6 +110,9 @@ framework:
                     # Confirm settings
                     confirm_enabled: true
                     confirm_timeout: 3.0
+                    
+                    # Connection name (optional for easier identification in server logs and management UI)
+                    connection_name: ''
 
                     # SSL/TLS configuration
                     ssl:

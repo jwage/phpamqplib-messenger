@@ -44,6 +44,7 @@ class DsnParserTest extends TestCase
         self::assertEquals(new ExchangeConfig(name: 'messages'), $connectionConfig->exchange);
         self::assertEquals(new DelayConfig(), $connectionConfig->delay);
         self::assertEquals(['messages' => new QueueConfig(name: 'messages')], $connectionConfig->queues);
+        self::assertSame('', $connectionConfig->connectionName);
     }
 
     public function testMissingSslConfig(): void
@@ -128,6 +129,37 @@ class DsnParserTest extends TestCase
         self::assertSame('password', $connectionConfig->password);
     }
 
+    public function testConnectionName(): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1');
+
+        self::assertSame('', $connectionConfig->connectionName);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1?connection_name=MyConnection');
+
+        self::assertSame('MyConnection', $connectionConfig->connectionName);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', ['connection_name' => 'MyConnection']);
+
+        self::assertSame('MyConnection', $connectionConfig->connectionName);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1?connection_name=My+Connection');
+
+        self::assertSame('My Connection', $connectionConfig->connectionName);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1?connection_name=My%2FConnection');
+
+        self::assertSame('My/Connection', $connectionConfig->connectionName);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', ['connection_name' => 'My Connection']);
+
+        self::assertSame('My Connection', $connectionConfig->connectionName);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', ['connection_name' => 'My/Connection']);
+
+        self::assertSame('My/Connection', $connectionConfig->connectionName);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -151,6 +183,7 @@ class DsnParserTest extends TestCase
         self::assertSame(4.0, $connectionConfig->rpcTimeout);
         self::assertSame(5, $connectionConfig->heartbeat);
         self::assertSame(true, $connectionConfig->keepalive);
+        self::assertSame('connection_name', $connectionConfig->connectionName);
 
         self::assertEquals(new SslConfig(
             cafile: 'cacert',
@@ -267,6 +300,7 @@ class DsnParserTest extends TestCase
                     'bindings' => ['routing_key' => ['arguments' => ['key' => 'value']]],
                 ],
             ],
+            'connection_name' => 'connection_name',
         ];
     }
 }
