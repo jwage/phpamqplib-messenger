@@ -116,7 +116,8 @@ class DsnParser
          *             arguments?: array<string, mixed>,
          *         }>,
          *         arguments?: array<string, mixed>,
-         *     }|null>
+         *     }|null>,
+         *     connection_name?: string,
          * } $connectionConfig
          */
         $connectionConfig = array_replace_recursive([

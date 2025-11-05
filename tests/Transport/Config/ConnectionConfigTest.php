@@ -102,6 +102,7 @@ class ConnectionConfigTest extends TestCase
                     'wait_timeout' => 4.0,
                 ],
             ],
+            'connection_name' => 'My test connection',
         ]);
 
         self::assertTrue($connectionConfig->autoSetup);
@@ -123,6 +124,7 @@ class ConnectionConfigTest extends TestCase
         self::assertSame(2.0, $connectionConfig->waitTimeout);
         self::assertTrue($connectionConfig->confirmEnabled);
         self::assertSame(10.0, $connectionConfig->confirmTimeout);
+        self::assertSame('My test connection', $connectionConfig->connectionName);
 
         self::assertEquals(new ExchangeConfig(
             name: 'custom_exchange',
@@ -350,5 +352,6 @@ class ConnectionConfigTest extends TestCase
         self::assertEquals(new DelayConfig(), $connectionConfig->delay);
         self::assertSame([], $connectionConfig->queues);
         self::assertEmpty($connectionConfig->getQueueNames());
+        self::assertSame('', $connectionConfig->connectionName);
     }
 }

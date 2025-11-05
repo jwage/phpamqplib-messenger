@@ -31,6 +31,7 @@ class AmqpConnectionFactory
         $config->setChannelRPCTimeout($connectionConfig->rpcTimeout);
         $config->setHeartbeat($connectionConfig->heartbeat);
         $config->setKeepalive($connectionConfig->keepalive);
+        $config->setConnectionName($connectionConfig->connectionName);
 
         if ($connectionConfig->ssl !== null) {
             $config->setIsSecure(true);

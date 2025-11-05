@@ -47,6 +47,7 @@ readonly class ConnectionConfig
         'exchange',
         'delay',
         'queues',
+        'connection_name',
     ];
 
     public bool $autoSetup;
@@ -96,6 +97,8 @@ readonly class ConnectionConfig
     /** @var array<string, QueueConfig> */
     public array $queues;
 
+    public string $connectionName;
+
     /**
      * @param array<int|string, QueueConfig> $queues
      *
@@ -127,6 +130,7 @@ readonly class ConnectionConfig
         ExchangeConfig|null $exchange = null,
         DelayConfig|null $delay = null,
         array|null $queues = null,
+        string|null $connectionName = null,
     ) {
         if ($waitTimeout === 0 || $waitTimeout === 0.0) {
             throw new InvalidArgumentException('Connection wait timeout cannot be zero. This will cause the consumer to wait forever and block the messenger worker loop.');
@@ -159,6 +163,7 @@ readonly class ConnectionConfig
         $this->exchange            = $exchange ?? new ExchangeConfig();
         $this->delay               = $delay ?? new DelayConfig();
         $this->queues              = self::indexByQueueName($queues ?? []);
+        $this->connectionName      = $connectionName ?? '';
     }
 
     /**
@@ -231,6 +236,7 @@ readonly class ConnectionConfig
      *         }|null>,
      *         arguments?: array<string, mixed>,
      *     }|null>,
+     *     connection_name?: string,
      * } $connectionConfig
      *
      * @throws InvalidArgumentException
@@ -308,6 +314,7 @@ readonly class ConnectionConfig
             exchange: isset($connectionConfig['exchange']) ? ExchangeConfig::fromArray($connectionConfig['exchange']) : null,
             delay: isset($connectionConfig['delay']) ? DelayConfig::fromArray($connectionConfig['delay']) : null,
             queues: $queueConfigs,
+            connectionName: ConfigHelper::getString($connectionConfig, 'connection_name'),
         );
     }
 
