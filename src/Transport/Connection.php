@@ -234,7 +234,8 @@ class Connection
     /** @throws TransportException */
     public function flush(): void
     {
-        $this->retryWithReconnect(function (): void {
+        // We don't want to use retryWithReconnect() here because it needs to be retried on the same connection and channel
+        $this->retry(function (): void {
             if ($this->connectionConfig->transactionsEnabled) {
                 $this->channel()->tx_select();
             }

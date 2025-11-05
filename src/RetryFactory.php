@@ -8,6 +8,7 @@ use Closure;
 use PhpAmqpLib\Exception\AMQPChannelClosedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
 use PhpAmqpLib\Exception\AMQPIOException;
+use PhpAmqpLib\Exception\AMQPTimeoutException;
 use Psr\Log\LoggerInterface;
 
 class RetryFactory
@@ -30,6 +31,7 @@ class RetryFactory
                 AMQPChannelClosedException::class,
                 AMQPConnectionClosedException::class,
                 AMQPIOException::class,
+                AMQPTimeoutException::class,
             ]);
     }
 }
