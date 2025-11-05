@@ -102,7 +102,7 @@ class Connection
     public function channel(): AMQPChannel
     {
         if ($this->channel === null) {
-            $channel = $this->withRetry(function (): AMQPChannel {
+            $channel = $this->retryWithReconnect(function (): AMQPChannel {
                 $channel = $this->connection()->channel();
 
                 if ($this->connectionConfig->confirmEnabled) {
@@ -201,7 +201,7 @@ class Connection
                 $this->flush();
             }
         } else {
-            $this->withRetry(function () use ($amqpEnvelope, $exchangeName, $publishRoutingKey): void {
+            $this->retryWithReconnect(function () use ($amqpEnvelope, $exchangeName, $publishRoutingKey): void {
                 if ($this->connectionConfig->transactionsEnabled) {
                     $this->channel()->tx_select();
                 }
@@ -225,7 +225,10 @@ class Connection
                 }
 
                 if ($this->connectionConfig->confirmEnabled) {
-                    $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                    // Retry on the current connection and channel first before retrying the whole publish with retryWithReconnect()
+                    $this->retry(function (): void {
+                        $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                    })->run();
                 }
             })->run();
         }
@@ -234,7 +237,8 @@ class Connection
     /** @throws TransportException */
     public function flush(): void
     {
-        $this->withRetry(function (): void {
+        // We don't want to use retryWithReconnect() here because it needs to be retried on the same connection and channel
+        $this->retry(function (): void {
             if ($this->connectionConfig->transactionsEnabled) {
                 $this->channel()->tx_select();
             }
@@ -277,7 +281,7 @@ class Connection
      *
      * @throws TransportException
      */
-    public function withRetry(
+    public function retryWithReconnect(
         Closure $run,
         int|null $retries = null,
         int|null $waitTime = null,
@@ -292,6 +296,25 @@ class Connection
             ->beforeRetry(function (): void {
                 $this->reconnect();
             });
+    }
+
+    /**
+     * @param positive-int|0 $waitTime
+     *
+     * @throws TransportException
+     */
+    public function retry(
+        Closure $run,
+        int|null $retries = null,
+        int|null $waitTime = null,
+        bool|null $jitter = null,
+    ): Retry {
+        return $this->retryFactory->retry(
+            $run,
+            $retries,
+            $waitTime,
+            $jitter,
+        );
     }
 
     private function getRoutingKeyForMessage(AmqpStamp|null $amqpStamp): string|null
