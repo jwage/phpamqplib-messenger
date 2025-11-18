@@ -413,11 +413,11 @@ class ConnectionTest extends TestCase
         self::assertSame(['queue_name'], $this->connection->getQueueNames());
     }
 
-    public function testWithRetrySuccess(): void
+    public function testRetryWithReconnectSuccess(): void
     {
         $count = 0;
 
-        $check = $this->connection->withRetry(static function () use (&$count) {
+        $check = $this->connection->retryWithReconnect(static function () use (&$count) {
             $count++;
 
             if ($count < 3) {
@@ -431,12 +431,40 @@ class ConnectionTest extends TestCase
         self::assertSame('test', $check);
     }
 
-    public function testWithRetryFailure(): void
+    public function testRetryWithReconnectFailure(): void
     {
         self::expectException(TransportException::class);
         self::expectExceptionMessage('test');
 
-        $this->connection->withRetry(static function (): void {
+        $this->connection->retryWithReconnect(static function (): void {
+            throw new AMQPConnectionClosedException('test');
+        }, waitTime: 0)->run();
+    }
+
+    public function testRetrySuccess(): void
+    {
+        $count = 0;
+
+        $check = $this->connection->retry(static function () use (&$count) {
+            $count++;
+
+            if ($count < 3) {
+                throw new AMQPConnectionClosedException();
+            }
+
+            return 'test';
+        }, waitTime: 0)->run();
+
+        self::assertSame(3, $count);
+        self::assertSame('test', $check);
+    }
+
+    public function testRetryFailure(): void
+    {
+        self::expectException(TransportException::class);
+        self::expectExceptionMessage('test');
+
+        $this->connection->retry(static function (): void {
             throw new AMQPConnectionClosedException('test');
         }, waitTime: 0)->run();
     }
