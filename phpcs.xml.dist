@@ -22,5 +22,6 @@
     <file>src/</file>
     <file>tests/</file>
 
+    <exclude-pattern>config/reference.php</exclude-pattern>
     <exclude-pattern>vendor/*</exclude-pattern>
 </ruleset>

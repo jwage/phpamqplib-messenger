@@ -13,218 +13,266 @@ use PHPUnit\Framework\MockObject\MockObject;
 
 class AmqpEnvelopeTest extends TestCase
 {
-    /** @var MockObject&AMQPMessage */
-    private AMQPMessage $message;
+    /** @return array{AMQPMessage&MockObject, AmqpEnvelope} */
+    private function createMockEnvelope(): array
+    {
+        $message = $this->createMock(AMQPMessage::class);
 
-    private AmqpEnvelope $envelope;
+        return [$message, new AmqpEnvelope($message)];
+    }
 
     public function testGetAMQPMessage(): void
     {
-        self::assertSame($this->message, $this->envelope->getAMQPMessage());
+        $message  = $this->createStub(AMQPMessage::class);
+        $envelope = new AmqpEnvelope($message);
+
+        self::assertSame($message, $envelope->getAMQPMessage());
     }
 
     public function testGetAttributes(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get_properties')
             ->willReturn(['test' => 'abc']);
 
-        self::assertSame(['test' => 'abc'], $this->envelope->getAttributes());
+        self::assertSame(['test' => 'abc'], $envelope->getAttributes());
     }
 
     public function testAck(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('ack');
 
-        $this->envelope->ack();
+        $envelope->ack();
     }
 
     public function testNack(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('nack');
 
-        $this->envelope->nack();
+        $envelope->nack();
     }
 
     public function testGetBody(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('getBody')
             ->willReturn('test body');
 
-        self::assertSame('test body', $this->envelope->getBody());
+        self::assertSame('test body', $envelope->getBody());
     }
 
     public function testGetRoutingKey(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('getRoutingKey')
             ->willReturn('test routing key');
 
-        self::assertSame('test routing key', $this->envelope->getRoutingKey());
+        self::assertSame('test routing key', $envelope->getRoutingKey());
     }
 
     public function testGetContentType(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('content_type')
             ->willReturn('test content type');
 
-        self::assertSame('test content type', $this->envelope->getContentType());
+        self::assertSame('test content type', $envelope->getContentType());
     }
 
     public function testGetContentEncoding(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('getContentEncoding')
             ->willReturn('test content encoding');
 
-        self::assertSame('test content encoding', $this->envelope->getContentEncoding());
+        self::assertSame('test content encoding', $envelope->getContentEncoding());
     }
 
     public function testGetHeaders(): void
     {
+        [$message, $envelope] = $this->createMockEnvelope();
+
         $headers = new AMQPTable(['test' => 1]);
 
-        $this->message->expects(self::once())
+        $message->expects(self::once())
             ->method('get')
             ->with('application_headers')
             ->willReturn($headers);
 
-        self::assertSame(['test' => 1], $this->envelope->getHeaders());
+        self::assertSame(['test' => 1], $envelope->getHeaders());
     }
 
     public function testGetHeadersEmpty(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('application_headers')
             ->willReturn(null);
 
-        self::assertSame([], $this->envelope->getHeaders());
+        self::assertSame([], $envelope->getHeaders());
     }
 
     public function testGetDeliveryMode(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('delivery_mode')
             ->willReturn(AMQPMessage::DELIVERY_MODE_PERSISTENT);
 
-        self::assertSame(AMQPMessage::DELIVERY_MODE_PERSISTENT, $this->envelope->getDeliveryMode());
+        self::assertSame(AMQPMessage::DELIVERY_MODE_PERSISTENT, $envelope->getDeliveryMode());
     }
 
     public function testGetPriority(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('priority')
             ->willReturn(1);
 
-        self::assertSame(1, $this->envelope->getPriority());
+        self::assertSame(1, $envelope->getPriority());
     }
 
     public function testGetCorrelationId(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('correlation_id')
             ->willReturn('123');
 
-        self::assertSame('123', $this->envelope->getCorrelationId());
+        self::assertSame('123', $envelope->getCorrelationId());
     }
 
     public function testGetReplyTo(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('reply_to')
             ->willReturn('test reply to');
 
-        self::assertSame('test reply to', $this->envelope->getReplyTo());
+        self::assertSame('test reply to', $envelope->getReplyTo());
     }
 
     public function testGetExpiration(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('expiration')
             ->willReturn(123);
 
-        self::assertSame(123, $this->envelope->getExpiration());
+        self::assertSame(123, $envelope->getExpiration());
     }
 
     public function testGetMessageId(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('message_id')
             ->willReturn('test message id');
 
-        self::assertSame('test message id', $this->envelope->getMessageId());
+        self::assertSame('test message id', $envelope->getMessageId());
     }
 
     public function testGetTimestamp(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('timestamp')
             ->willReturn(123);
 
-        self::assertSame(123, $this->envelope->getTimestamp());
+        self::assertSame(123, $envelope->getTimestamp());
     }
 
     public function getType(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('type')
             ->willReturn('test type');
 
-        self::assertSame('test type', $this->envelope->getType());
+        self::assertSame('test type', $envelope->getType());
     }
 
     public function testGetUserId(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('user_id')
             ->willReturn('test user id');
 
-        self::assertSame('test user id', $this->envelope->getUserId());
+        self::assertSame('test user id', $envelope->getUserId());
     }
 
     public function testGetAppId(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('app_id')
             ->willReturn('test app id');
 
-        self::assertSame('test app id', $this->envelope->getAppId());
+        self::assertSame('test app id', $envelope->getAppId());
     }
 
     public function testGetClusterId(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('cluster_id')
             ->willReturn('test cluster id');
 
-        self::assertSame('test cluster id', $this->envelope->getClusterId());
+        self::assertSame('test cluster id', $envelope->getClusterId());
     }
 
     public function testGetReturnsNullIfPropertyDoesNotExist(): void
     {
-        $this->message->expects(self::once())
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
             ->method('get')
             ->with('type')
             ->willReturn($this->throwException(new OutOfBoundsException()));
 
-        self::assertNull($this->envelope->getType());
+        self::assertNull($envelope->getType());
     }
 
     public function testWithRealAMQPMessage(): void
@@ -244,14 +292,5 @@ class AmqpEnvelopeTest extends TestCase
         self::assertSame('text/plain', $envelope->getContentType());
         self::assertSame(AMQPMessage::DELIVERY_MODE_PERSISTENT, $envelope->getDeliveryMode());
         self::assertSame(['foo' => 'bar'], $envelope->getHeaders());
-    }
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        $this->message = $this->createMock(AMQPMessage::class);
-
-        $this->envelope = new AmqpEnvelope($this->message);
     }
 }

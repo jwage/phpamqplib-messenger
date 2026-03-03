@@ -30,40 +30,147 @@ class ConnectionTest extends TestCase
 {
     private RetryFactory $retryFactory;
 
-    /** @var AMQPConnectionFactory&MockObject */
-    private AmqpConnectionFactory $amqpConnectionFactory;
-
-    /** @var AMQPStreamConnection&MockObject */
-    private AMQPStreamConnection $amqpConnection;
-
-    /** @var AMQPChannel&MockObject */
-    private AMQPChannel $amqpChannel;
-
     private Connection $connection;
+
+    /**
+     * Creates a Connection with all stubs (no mock expectations possible).
+     * Used for tests that don't need to verify interactions.
+     */
+    private function createConnectionWithStubs(ConnectionConfig|null $connectionConfig = null): Connection
+    {
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createStub(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+
+        return new Connection(
+            retryFactory: $this->retryFactory,
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig ?? $this->getDefaultConfig(),
+        );
+    }
+
+    /**
+     * Creates a Connection with a mock AMQPChannel for verifying channel interactions.
+     *
+     * @return array{Connection, AMQPChannel&MockObject}
+     */
+    private function createConnectionWithChannelMock(ConnectionConfig|null $connectionConfig = null): array
+    {
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+        $amqpChannel->method('confirm_select');
+
+        $connection = new Connection(
+            retryFactory: $this->retryFactory,
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig ?? $this->getDefaultConfig(),
+        );
+
+        return [$connection, $amqpChannel];
+    }
+
+    /**
+     * Creates a Connection with a mock AMQPStreamConnection for verifying connection interactions.
+     *
+     * @return array{Connection, AMQPStreamConnection&MockObject}
+     */
+    private function createConnectionWithConnectionMock(ConnectionConfig|null $connectionConfig = null): array
+    {
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createStub(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+
+        $connection = new Connection(
+            retryFactory: $this->retryFactory,
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig ?? $this->getDefaultConfig(),
+        );
+
+        return [$connection, $amqpConnection];
+    }
+
+    /**
+     * Creates a Connection with mock AMQPStreamConnection and AMQPChannel.
+     * Does not pre-configure channel() or confirm_select() — tests must configure these.
+     *
+     * @return array{Connection, AMQPStreamConnection&MockObject, AMQPChannel&MockObject}
+     */
+    private function createConnectionWithAllMocks(ConnectionConfig|null $connectionConfig = null): array
+    {
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+
+        $connection = new Connection(
+            retryFactory: $this->retryFactory,
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig ?? $this->getDefaultConfig(),
+        );
+
+        return [$connection, $amqpConnection, $amqpChannel];
+    }
+
+    private function getDefaultConfig(): ConnectionConfig
+    {
+        return new ConnectionConfig(
+            confirmEnabled: true,
+            confirmTimeout: 5.0,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            queues: [
+                'queue_name' => new QueueConfig(
+                    name: 'queue_name',
+                    bindings: [
+                        'routing_key' => new BindingConfig(
+                            routingKey: 'routing_key',
+                            arguments: ['arg1' => 'value1', 'arg2' => 'value2'],
+                        ),
+                    ],
+                ),
+            ],
+        );
+    }
 
     public function testClose(): void
     {
-        $this->amqpConnection->expects(self::once())
+        [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();
+
+        $amqpConnection->expects(self::once())
             ->method('close');
 
-        $this->connection->channel();
+        $connection->channel();
 
-        $this->connection->close();
+        $connection->close();
     }
 
     public function testReconnect(): void
     {
-        $this->connection->channel();
+        [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();
 
-        $this->amqpConnection->expects(self::once())
+        $connection->channel();
+
+        $amqpConnection->expects(self::once())
             ->method('reconnect');
 
-        $this->connection->reconnect();
+        $connection->reconnect();
     }
 
     public function testSetup(): void
     {
-        $this->amqpChannel->expects(self::exactly(2))
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock();
+
+        $amqpChannel->expects(self::exactly(2))
             ->method('exchange_declare')
             ->with(...self::withConsecutive(
                 [
@@ -88,7 +195,7 @@ class ConnectionTest extends TestCase
                 ],
             ));
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('queue_declare')
             ->with(
                 queue: 'queue_name',
@@ -100,7 +207,7 @@ class ConnectionTest extends TestCase
                 arguments: new AMQPTable([]),
             );
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('queue_bind')
             ->with(
                 queue: 'queue_name',
@@ -110,12 +217,12 @@ class ConnectionTest extends TestCase
                 arguments: new AMQPTable(['arg1' => 'value1', 'arg2' => 'value2']),
             );
 
-        $this->connection->setup();
+        $connection->setup();
     }
 
     public function testSetupWithAutoSetupDisabled(): void
     {
-        $connection = $this->getTestConnection(new ConnectionConfig(
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
             autoSetup: false,
             exchange: new ExchangeConfig(name: 'exchange_name'),
             queues: [
@@ -131,7 +238,7 @@ class ConnectionTest extends TestCase
             ],
         ));
 
-        $this->amqpChannel->expects(self::exactly(2))
+        $amqpChannel->expects(self::exactly(2))
             ->method('exchange_declare')
             ->with(...self::withConsecutive(
                 [
@@ -156,7 +263,7 @@ class ConnectionTest extends TestCase
                 ],
             ));
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('queue_declare')
             ->with(
                 queue: 'queue_name',
@@ -168,7 +275,7 @@ class ConnectionTest extends TestCase
                 arguments: new AMQPTable([]),
             );
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('queue_bind')
             ->with(
                 queue: 'queue_name',
@@ -183,12 +290,12 @@ class ConnectionTest extends TestCase
 
     public function testSetupWithDelayDisabled(): void
     {
-        $connection = $this->getTestConnection(new ConnectionConfig(
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
             exchange: new ExchangeConfig(name: 'exchange_name'),
             delay: new DelayConfig(enabled: false),
         ));
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('exchange_declare')
             ->with(...self::withConsecutive(
                 [
@@ -208,30 +315,34 @@ class ConnectionTest extends TestCase
 
     public function testChannel(): void
     {
-        $this->amqpConnection->expects(self::once())
-            ->method('channel')
-            ->willReturn($this->amqpChannel);
+        [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks();
 
-        $this->amqpChannel->expects(self::once())
+        $amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel);
+
+        $amqpChannel->expects(self::once())
             ->method('confirm_select');
 
-        self::assertSame($this->amqpChannel, $this->connection->channel());
-        self::assertSame($this->amqpChannel, $this->connection->channel());
+        self::assertSame($amqpChannel, $connection->channel());
+        self::assertSame($amqpChannel, $connection->channel());
     }
 
     public function testChannelWithConfirmDisabled(): void
     {
-        $this->amqpConnection->expects(self::once())
-            ->method('channel')
-            ->willReturn($this->amqpChannel);
+        [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks(
+            new ConnectionConfig(confirmEnabled: false),
+        );
 
-        $this->amqpChannel->expects(self::never())
+        $amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel);
+
+        $amqpChannel->expects(self::never())
             ->method('confirm_select');
 
-        $connection = $this->getTestConnection(new ConnectionConfig(confirmEnabled: false));
-
-        self::assertSame($this->amqpChannel, $connection->channel());
-        self::assertSame($this->amqpChannel, $connection->channel());
+        self::assertSame($amqpChannel, $connection->channel());
+        self::assertSame($amqpChannel, $connection->channel());
     }
 
     public function testGet(): void
@@ -244,6 +355,8 @@ class ConnectionTest extends TestCase
 
     public function testPublish(): void
     {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock();
+
         $body    = 'test body';
         $headers = ['header1' => 'value1', 'header2' => 'value2'];
 
@@ -256,7 +369,7 @@ class ConnectionTest extends TestCase
             ],
         );
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('basic_publish')
             ->with(
                 body: $amqpMessage,
@@ -264,15 +377,20 @@ class ConnectionTest extends TestCase
                 routing_key: '',
             );
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('wait_for_pending_acks')
             ->with(timeout: 5);
 
-        $this->connection->publish(body: 'test body', headers: $headers);
+        $connection->publish(body: 'test body', headers: $headers);
     }
 
     public function testPublishWithConfirmDisabled(): void
     {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            confirmEnabled: false,
+        ));
+
         $body = 'test body';
 
         $amqpMessage = new AMQPMessage(
@@ -284,7 +402,7 @@ class ConnectionTest extends TestCase
             ],
         );
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('basic_publish')
             ->with(
                 body: $amqpMessage,
@@ -292,19 +410,16 @@ class ConnectionTest extends TestCase
                 routing_key: '',
             );
 
-        $this->amqpChannel->expects(self::never())
+        $amqpChannel->expects(self::never())
             ->method('wait_for_pending_acks');
-
-        $connection = $this->getTestConnection(new ConnectionConfig(
-            exchange: new ExchangeConfig(name: 'exchange_name'),
-            confirmEnabled: false,
-        ));
 
         $connection->publish(body: 'test body');
     }
 
     public function testPublishWithBatchSizeGreaterThanOne(): void
     {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock();
+
         $body1 = 'test body 1';
         $body2 = 'test body 2';
 
@@ -326,26 +441,28 @@ class ConnectionTest extends TestCase
             ],
         );
 
-        $this->amqpChannel->expects(self::exactly(2))
+        $amqpChannel->expects(self::exactly(2))
             ->method('batch_basic_publish')
             ->with(...self::withConsecutive(
                 [$amqpMessage1, 'exchange_name'],
                 [$amqpMessage2, 'exchange_name'],
             ));
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('publish_batch');
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('wait_for_pending_acks')
             ->with(timeout: 5);
 
-        $this->connection->publish(body: $body1, batchSize: 2);
-        $this->connection->publish(body: $body2, batchSize: 2);
+        $connection->publish(body: $body1, batchSize: 2);
+        $connection->publish(body: $body2, batchSize: 2);
     }
 
     public function testPublishWithBatchSizeGreaterThanOneAndRetryAttemptDoesNotBatchPublish(): void
     {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock();
+
         $body = 'test body';
 
         $amqpMessage = new AMQPMessage(
@@ -364,36 +481,40 @@ class ConnectionTest extends TestCase
             retryRoutingKey: 'test_retry_routing_key',
         );
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('basic_publish');
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('wait_for_pending_acks')
             ->with(timeout: 5);
 
-        $this->connection->publish(body: $body, batchSize: 2, amqpStamp: $amqpStamp);
+        $connection->publish(body: $body, batchSize: 2, amqpStamp: $amqpStamp);
     }
 
     public function testFlush(): void
     {
-        $this->amqpChannel->expects(self::once())
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock();
+
+        $amqpChannel->expects(self::once())
             ->method('publish_batch');
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('wait_for_pending_acks')
             ->with(timeout: 5);
 
-        $this->connection->flush();
+        $connection->flush();
     }
 
     public function testFlushWithConfirmDisabled(): void
     {
-        $connection = $this->getTestConnection(new ConnectionConfig(confirmEnabled: false));
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(
+            new ConnectionConfig(confirmEnabled: false),
+        );
 
-        $this->amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::once())
             ->method('publish_batch');
 
-        $this->amqpChannel->expects(self::never())
+        $amqpChannel->expects(self::never())
             ->method('wait_for_pending_acks');
 
         $connection->flush();
@@ -401,11 +522,13 @@ class ConnectionTest extends TestCase
 
     public function testCountMessagesInQueues(): void
     {
-        $this->amqpChannel->expects(self::once())
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock();
+
+        $amqpChannel->expects(self::once())
             ->method('queue_declare')
             ->willReturn(['queue_name', 2]);
 
-        self::assertSame(2, $this->connection->countMessagesInQueues());
+        self::assertSame(2, $connection->countMessagesInQueues());
     }
 
     public function testGetQueueNames(): void
@@ -475,47 +598,6 @@ class ConnectionTest extends TestCase
 
         $this->retryFactory = new RetryFactory();
 
-        $this->amqpConnectionFactory = $this->createMock(AmqpConnectionFactory::class);
-
-        $this->amqpConnection = $this->createMock(AMQPStreamConnection::class);
-
-        $this->amqpChannel = $this->createMock(AMQPChannel::class);
-
-        $this->amqpConnectionFactory->expects(self::any())
-            ->method('create')
-            ->willReturn($this->amqpConnection);
-
-        $this->amqpConnection->expects(self::any())
-            ->method('channel')
-            ->willReturn($this->amqpChannel);
-
-        $this->amqpChannel->expects(self::any())
-            ->method('confirm_select');
-
-        $this->connection = $this->getTestConnection();
-    }
-
-    private function getTestConnection(ConnectionConfig|null $connectionConfig = null): Connection
-    {
-        return new Connection(
-            retryFactory: $this->retryFactory,
-            amqpConnectionFactory: $this->amqpConnectionFactory,
-            connectionConfig: $connectionConfig ?? new ConnectionConfig(
-                confirmEnabled: true,
-                confirmTimeout: 5.0,
-                exchange: new ExchangeConfig(name: 'exchange_name'),
-                queues: [
-                    'queue_name' => new QueueConfig(
-                        name: 'queue_name',
-                        bindings: [
-                            'routing_key' => new BindingConfig(
-                                routingKey: 'routing_key',
-                                arguments: ['arg1' => 'value1', 'arg2' => 'value2'],
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-        );
+        $this->connection = $this->createConnectionWithStubs();
     }
 }

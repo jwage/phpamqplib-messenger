@@ -9,30 +9,32 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceiver;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpSender;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
-use PHPUnit\Framework\MockObject\MockObject;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class AmqpTransportTest extends TestCase
 {
-    /** @var Connection&MockObject */
-    private Connection $connection;
-
-    /** @var AMQPReceiver&MockObject */
-    private AmqpReceiver $receiver;
-
-    /** @var AMQPSender&MockObject */
-    private AmqpSender $sender;
-
-    /** @var SerializerInterface&MockObject */
-    private SerializerInterface $serializer;
-
-    private AmqpTransport $transport;
+    private function createTransport(
+        Connection|null $connection = null,
+        AmqpReceiver|null $receiver = null,
+        AmqpSender|null $sender = null,
+        SerializerInterface|null $serializer = null,
+    ): AmqpTransport {
+        return new AmqpTransport(
+            connection: $connection ?? $this->createStub(Connection::class),
+            receiver: $receiver ?? $this->createStub(AmqpReceiver::class),
+            sender: $sender ?? $this->createStub(AmqpSender::class),
+            serializer: $serializer ?? $this->createStub(SerializerInterface::class),
+        );
+    }
 
     public function testGetConnection(): void
     {
-        self::assertSame($this->connection, $this->transport->getConnection());
+        $connection = $this->createStub(Connection::class);
+        $transport  = $this->createTransport(connection: $connection);
+
+        self::assertSame($connection, $transport->getConnection());
     }
 
     public function testGet(): void
@@ -42,81 +44,79 @@ class AmqpTransportTest extends TestCase
 
         $return = [$envelope1, $envelope2];
 
-        $this->receiver->expects(self::once())
+        $receiver  = $this->createMock(AmqpReceiver::class);
+        $transport = $this->createTransport(receiver: $receiver);
+
+        $receiver->expects(self::once())
             ->method('get')
             ->willReturn($return);
 
-        self::assertSame($return, $this->transport->get());
+        self::assertSame($return, $transport->get());
     }
 
     public function testAck(): void
     {
         $envelope = new Envelope(new stdClass());
 
-        $this->receiver->expects(self::once())
+        $receiver  = $this->createMock(AmqpReceiver::class);
+        $transport = $this->createTransport(receiver: $receiver);
+
+        $receiver->expects(self::once())
             ->method('ack')
             ->with($envelope);
 
-        $this->transport->ack($envelope);
+        $transport->ack($envelope);
     }
 
     public function testReject(): void
     {
         $envelope = new Envelope(new stdClass());
 
-        $this->receiver->expects(self::once())
+        $receiver  = $this->createMock(AmqpReceiver::class);
+        $transport = $this->createTransport(receiver: $receiver);
+
+        $receiver->expects(self::once())
             ->method('reject')
             ->with($envelope);
 
-        $this->transport->reject($envelope);
+        $transport->reject($envelope);
     }
 
     public function testSend(): void
     {
         $envelope = new Envelope(new stdClass());
 
-        $this->sender->expects(self::once())
+        $sender    = $this->createMock(AmqpSender::class);
+        $transport = $this->createTransport(sender: $sender);
+
+        $sender->expects(self::once())
             ->method('send')
             ->with($envelope)
             ->willReturn($envelope);
 
-        self::assertSame($envelope, $this->transport->send($envelope));
+        self::assertSame($envelope, $transport->send($envelope));
     }
 
     public function testGetMessageCount(): void
     {
-        $this->receiver->expects(self::once())
+        $receiver  = $this->createMock(AmqpReceiver::class);
+        $transport = $this->createTransport(receiver: $receiver);
+
+        $receiver->expects(self::once())
             ->method('getMessageCount')
             ->willReturn(1);
 
-        self::assertSame(1, $this->transport->getMessageCount());
+        self::assertSame(1, $transport->getMessageCount());
     }
 
     public function testSetup(): void
     {
-        $this->connection->expects(self::once())
+        $connection = $this->createMock(Connection::class);
+        $transport  = $this->createTransport(connection: $connection);
+
+        $connection->expects(self::once())
             ->method('setup');
 
-        $this->transport->setup();
-    }
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        $this->connection = $this->createMock(Connection::class);
-
-        $this->receiver = $this->createMock(AmqpReceiver::class);
-
-        $this->sender = $this->createMock(AmqpSender::class);
-
-        $this->serializer = $this->createMock(SerializerInterface::class);
-
-        $this->transport = new AmqpTransport(
-            connection: $this->connection,
-            receiver: $this->receiver,
-            sender: $this->sender,
-            serializer: $this->serializer,
-        );
+        $transport->setup();
     }
 }
