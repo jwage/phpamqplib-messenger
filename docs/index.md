@@ -5,7 +5,7 @@ This bundle adds support for `php-amqplib/php-amqplib` to Symfony Messenger, pro
 ## Installation
 
 ```bash
-composer require checkthiscloud/phpamqplib-messenger
+composer require jwage/phpamqplib-messenger
 ```
 
 Make sure the bundled is enabled in `config/bundles.php`:
