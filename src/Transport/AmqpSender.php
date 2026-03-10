@@ -44,6 +44,7 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
             ));
         }
 
+        /** @var array{body: string, headers?: array<string, mixed>} $encodedMessage */
         $encodedMessage = $this->serializer->encode($envelope);
 
         $deferrable = $envelope->last(DeferrableStamp::class);

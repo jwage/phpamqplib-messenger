@@ -285,7 +285,7 @@ class TransportFunctionalTest extends KernelTestCase
     }
 
     /** @return array<Envelope> */
-    private function getEnvelopes(AMQPTransport $transport, int $count): array
+    private function getEnvelopes(AmqpTransport $transport, int $count): array
     {
         $collectedEnvelopes = [];
 
