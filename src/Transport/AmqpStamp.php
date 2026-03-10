@@ -19,7 +19,6 @@ class AmqpStamp implements NonSendableStampInterface
     ) {
     }
 
-    /** @psalm-suppress MixedAssignment */
     public static function createFromAMQPEnvelope(
         AmqpEnvelope $amqpEnvelope,
         self|null $previousStamp = null,
@@ -57,7 +56,7 @@ class AmqpStamp implements NonSendableStampInterface
     {
         return new self(
             routingKey: $previousStamp?->routingKey,
-            attributes: array_merge($previousStamp?->attributes ?? [], $attributes),
+            attributes: array_merge($previousStamp->attributes ?? [], $attributes),
         );
     }
 

@@ -17,8 +17,6 @@ use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Throwable;
 
-use function assert;
-use function is_string;
 use function sprintf;
 
 class AmqpSender implements SenderInterface, BatchSenderInterface
@@ -36,10 +34,11 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
     #[Override]
     public function send(Envelope $envelope): Envelope
     {
-        /** @psalm-suppress UndefinedClass */
+        // @phpstan-ignore-next-line
         if ($envelope->last(SymfonyAmqpStamp::class) !== null) {
             throw new LogicException(sprintf(
                 'Wrong AmqpStamp class used. Switch your code from using "%s" to "%s".',
+                // @phpstan-ignore class.notFound
                 SymfonyAmqpStamp::class,
                 AmqpStamp::class,
             ));
@@ -57,7 +56,6 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
 
         if (isset($encodedMessage['headers']['Content-Type'])) {
             $contentType = $encodedMessage['headers']['Content-Type'];
-            assert(is_string($contentType));
             unset($encodedMessage['headers']['Content-Type']);
 
             if (! $amqpStamp || ! isset($amqpStamp->getAttributes()['content_type'])) {
@@ -80,7 +78,6 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
         }
 
         $body = $encodedMessage['body'];
-        assert(is_string($body));
 
         /** @var array<string, mixed> $headers */
         $headers = $encodedMessage['headers'] ?? [];

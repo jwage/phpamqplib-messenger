@@ -50,14 +50,18 @@ class TransportFunctionalTest extends KernelTestCase
 
         self::assertCount(3, $envelopes);
 
+        self::assertInstanceOf(ConfirmMessage::class, $envelopes[0]->getMessage());
+
         self::assertEquals(1, $envelopes[0]->getMessage()->count);
         self::assertEquals(1, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
         self::assertEquals(2, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
 
+        self::assertInstanceOf(ConfirmMessage::class, $envelopes[1]->getMessage());
         self::assertEquals(2, $envelopes[1]->getMessage()->count);
         self::assertEquals(1, $envelopes[1]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
         self::assertEquals(2, $envelopes[1]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
 
+        self::assertInstanceOf(ConfirmMessage::class, $envelopes[2]->getMessage());
         self::assertEquals(3, $envelopes[2]->getMessage()->count);
         self::assertEquals(1, $envelopes[2]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
         self::assertEquals(2, $envelopes[2]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
@@ -84,14 +88,17 @@ class TransportFunctionalTest extends KernelTestCase
 
         self::assertCount(3, $envelopes);
 
+        self::assertInstanceOf(TransactionMessage::class, $envelopes[0]->getMessage());
         self::assertEquals(1, $envelopes[0]->getMessage()->count);
         self::assertEquals(1, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
         self::assertEquals(2, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
 
+        self::assertInstanceOf(TransactionMessage::class, $envelopes[1]->getMessage());
         self::assertEquals(2, $envelopes[1]->getMessage()->count);
         self::assertEquals(1, $envelopes[1]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
         self::assertEquals(2, $envelopes[1]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
 
+        self::assertInstanceOf(TransactionMessage::class, $envelopes[2]->getMessage());
         self::assertEquals(3, $envelopes[2]->getMessage()->count);
         self::assertEquals(1, $envelopes[2]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test1']);
         self::assertEquals(2, $envelopes[2]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders()['test2']);
@@ -148,16 +155,16 @@ class TransportFunctionalTest extends KernelTestCase
 
         $envelopes = $this->getEnvelopes($this->confirmsTransport, 1);
 
-        self::assertSame($messageId, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getMessageId());
+        self::assertSame($messageId, $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()->getMessageId());
 
-        self::assertSame(['x-deduplication-header' => $messageId], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders());
+        self::assertSame(['x-deduplication-header' => $messageId], $envelopes[0]->last(AmqpReceivedStamp::class)->getAmqpEnvelope()->getHeaders());
 
         self::assertEquals([
             'content_type' => 'text/plain',
             'application_headers' => new AMQPTable(['x-deduplication-header' => $messageId]),
             'delivery_mode' => 2,
             'message_id' => $messageId,
-        ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getAttributes());
+        ], $envelopes[0]->last(AmqpReceivedStamp::class)->getAmqpEnvelope()->getAttributes());
 
         self::assertSame($messageId, $envelopes[0]->last(TransportMessageIdStamp::class)?->getId());
     }
@@ -195,7 +202,7 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertSame([
             'x-deduplication-header' => $messageId,
             'x-test' => true,
-        ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getHeaders());
+        ], $envelopes[0]->last(AmqpReceivedStamp::class)->getAmqpEnvelope()->getHeaders());
 
         self::assertEquals([
             'content_type' => 'text/plain',
@@ -205,7 +212,7 @@ class TransportFunctionalTest extends KernelTestCase
             ]),
             'delivery_mode' => 2,
             'message_id' => $messageId,
-        ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getAttributes());
+        ], $envelopes[0]->last(AmqpReceivedStamp::class)->getAmqpEnvelope()->getAttributes());
 
         self::assertSame($messageId, $envelopes[0]->last(TransportMessageIdStamp::class)?->getId());
     }
@@ -243,7 +250,10 @@ class TransportFunctionalTest extends KernelTestCase
 
         $container = static::getContainer();
 
-        $this->bus = $container->get(MessageBusInterface::class);
+        $bus = $container->get(MessageBusInterface::class);
+        assert($bus instanceof MessageBusInterface);
+
+        $this->bus = $bus;
 
         $confirmsTransport = $container->get('messenger.transport.with_confirms');
         assert($confirmsTransport instanceof AmqpTransport);

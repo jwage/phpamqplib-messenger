@@ -44,8 +44,8 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          coverage: none
-          extensions: :xdebug
+          coverage: xdebug
+          extensions: sockets, amqp
 
       - run: php ./tests/bin/pin-symfony-version.php "${{ matrix.symfony_version }}"
 
@@ -54,7 +54,18 @@ jobs:
       - name: PHPCS
         run: ./vendor/bin/phpcs
 
+      - name: PHPStan
+        run: ./vendor/bin/phpstan analyse
+
       - name: PHPUnit
-        run: ./vendor/bin/phpunit
+        run: ./vendor/bin/phpunit --coverage-clover=coverage.xml
         env:
           MESSENGER_TRANSPORT_PHPAMQPLIB_DSN: "phpamqplib://guest:guest@127.0.0.1:${{ job.services.rabbitmq.ports['5672'] }}/%2f/messages"
+          XDEBUG_MODE: coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}

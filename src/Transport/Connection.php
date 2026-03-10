@@ -380,9 +380,9 @@ class Connection
             $this->channel()->queue_bind(
                 queue: $queueConfig->name,
                 exchange: $this->connectionConfig->exchange->name,
-                routing_key: $bindingConfig?->routingKey ?? '',
+                routing_key: $bindingConfig->routingKey ?? '',
                 nowait: false,
-                arguments: new AMQPTable($bindingConfig?->arguments ?? []),
+                arguments: new AMQPTable($bindingConfig->arguments ?? []),
             );
         }
     }
@@ -402,6 +402,7 @@ class Connection
             arguments: new AMQPTable($queueConfig->arguments),
         ) ?? [$queueName, 0];
 
+        // @phpstan-ignore-next-line
         return (int) $messageCount;
     }
 

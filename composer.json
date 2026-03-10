@@ -1,5 +1,5 @@
 {
-    "name": "jwage/phpamqplib-messenger",
+    "name": "checkthiscloud/phpamqplib-messenger",
     "type": "symfony-bundle",
     "description": "Symfony messenger transport for the php-amqplib/php-amqplib library.",
     "keywords": [

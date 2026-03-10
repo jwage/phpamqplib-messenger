@@ -1,0 +1,22 @@
+codecov:
+  require_ci_to_pass: false
+
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: false
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 2%         # allow small fluctuations
+        if_no_uploads: success
+    patch:
+      default:
+        target: auto
+        threshold: 2%
+        if_no_uploads: success
+
+ignore:
+  - "tests/**/*"

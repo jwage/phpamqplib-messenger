@@ -89,7 +89,7 @@ class BatchTest extends TestCase
 
         $this->transport1->expects(self::exactly(1))
             ->method('flush');
-        $this->transport1->expects(self::exactly(1))
+        $this->transport2->expects(self::exactly(1))
             ->method('flush');
 
         $this->batch->dispatch($message1);
@@ -99,13 +99,13 @@ class BatchTest extends TestCase
         $this->batch->flush();
     }
 
-    /** @psalm-suppress UndefinedMagicMethod */
     public function testCall(): void
     {
         $this->wrappedBus->expects(self::once())
             ->method('someMethod')
             ->willReturn('result');
 
+        /** @phpstan-ignore-next-line Magic __call forwarding */
         self::assertSame('result', $this->batch->someMethod('arg1', 'arg2'));
     }
 

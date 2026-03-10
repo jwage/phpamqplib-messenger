@@ -106,7 +106,7 @@ class DsnParser
          *         },
          *         queue_name_pattern?: string,
          *     },
-         *     queues: array<string, array{
+         *     queues?: array<string, array{
          *         passive?: bool,
          *         durable?: bool,
          *         exclusive?: bool,

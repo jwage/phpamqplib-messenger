@@ -32,7 +32,6 @@ class BindingConfigTest extends TestCase
         BindingConfig::fromArray([]);
     }
 
-    /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
@@ -52,12 +51,12 @@ class BindingConfigTest extends TestCase
         self::assertSame(['arg1' => 'value1', 'arg2' => 'value2'], $bindingConfig->arguments);
     }
 
-    /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidTypes(): void
     {
         self::expectException(InvalidArgumentException::class);
         self::expectExceptionMessage('Invalid type "object" for key "routing_key" (expected string)');
 
+        /** @phpstan-ignore-next-line  Intentionally passing invalid type to test validation */
         BindingConfig::fromArray(['routing_key' => new stdClass()]);
     }
 

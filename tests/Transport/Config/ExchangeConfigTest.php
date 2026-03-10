@@ -46,7 +46,6 @@ class ExchangeConfigTest extends TestCase
         self::assertSame(['arg1' => 'val1', 'arg2' => 'val2'], $exchangeConfig->arguments);
     }
 
-    /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
@@ -55,12 +54,12 @@ class ExchangeConfigTest extends TestCase
         ExchangeConfig::fromArray(['invalid' => true]);
     }
 
-    /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidTypes(): void
     {
         self::expectException(InvalidArgumentException::class);
         self::expectExceptionMessage('Invalid type "object" for key "name" (expected string)');
 
+        /** @phpstan-ignore-next-line  Intentionally passing invalid type to test validation */
         ExchangeConfig::fromArray(['name' => new stdClass()]);
     }
 }

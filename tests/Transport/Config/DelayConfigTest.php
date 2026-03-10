@@ -57,7 +57,6 @@ class DelayConfigTest extends TestCase
         self::assertSame(['arg3' => 'val3', 'arg4' => 'val4'], $delayConfig->arguments);
     }
 
-    /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
