@@ -1,13 +1,11 @@
 # PhpAmqpLibMessengerBundle
 
-[![codecov](https://codecov.io/gh/CheckThisCloud/phpamqplib-messenger/branch/main/graph/badge.svg?token=KTxf7NkZ2f)](https://codecov.io/gh/CheckThisCloud/phpamqplib-messenger)
-
 This bundle adds support for `php-amqplib/php-amqplib` to Symfony Messenger, providing an alternative way to connect to RabbitMQ using a pure PHP library instead of the [php-amqp](https://github.com/php-amqp/php-amqp) C extension.
 
 ## Installation
 
 ```bash
-composer require checkthiscloud/phpamqplib-messenger
+composer require jwage/phpamqplib-messenger
 ```
 
 Make sure the bundled is enabled in `config/bundles.php`:
