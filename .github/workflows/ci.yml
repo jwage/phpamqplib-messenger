@@ -47,8 +47,8 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          coverage: xdebug
-          extensions: sockets, amqp
+          coverage: none
+          extensions: :xdebug
 
       - run: php ./tests/bin/pin-symfony-version.php "${{ matrix.symfony_version }}"
 
@@ -64,4 +64,3 @@ jobs:
         run: ./vendor/bin/phpunit
         env:
           MESSENGER_TRANSPORT_PHPAMQPLIB_DSN: "phpamqplib://guest:guest@127.0.0.1:${{ job.services.rabbitmq.ports['5672'] }}/%2f/messages"
-          XDEBUG_MODE: coverage
