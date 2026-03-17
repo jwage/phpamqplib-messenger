@@ -18,6 +18,9 @@ use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Throwable;
 
+use function assert;
+use function class_exists;
+use function is_a;
 use function sprintf;
 
 class AmqpSender implements SenderInterface, BatchSenderInterface
@@ -46,7 +49,7 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
                         'Wrong AmqpStamp class used. Switch your code from using "%s" to "%s".',
                         SymfonyAmqpStamp::class,
                         AmqpStamp::class,
-                    )
+                    ),
                 );
             }
         }
