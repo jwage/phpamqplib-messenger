@@ -24,7 +24,7 @@
     },
     "require-dev": {
         "doctrine/coding-standard": "^13.0",
-        "symfony/framework-bundle": "^5.4 || ^6.4 || ^7.0 || ^8.0",
+        "symfony/framework-bundle": "^6.4 || ^7.0 || ^8.0",
         "phpunit/phpunit": "^12.1",
         "symfony/phpunit-bridge": "^6.4 || ^7.4 || ^8.0",
         "symfony/uid": "^6.4 || ^7.4 || ^8.0",
