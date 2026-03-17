@@ -402,7 +402,8 @@ class Connection
             arguments: new AMQPTable($queueConfig->arguments),
         ) ?? [$queueName, 0];
 
-        // @phpstan-ignore-next-line
+        assert(is_numeric($messageCount));
+
         return (int) $messageCount;
     }
 
