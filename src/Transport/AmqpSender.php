@@ -12,6 +12,7 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Messenger\Stamp\RedeliveryStamp;
+use Symfony\Component\Messenger\Stamp\StampInterface;
 use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
@@ -34,14 +35,20 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
     #[Override]
     public function send(Envelope $envelope): Envelope
     {
-        // @phpstan-ignore-next-line
-        if ($envelope->last(SymfonyAmqpStamp::class) !== null) {
-            throw new LogicException(sprintf(
-                'Wrong AmqpStamp class used. Switch your code from using "%s" to "%s".',
-                // @phpstan-ignore class.notFound
-                SymfonyAmqpStamp::class,
-                AmqpStamp::class,
-            ));
+        if (class_exists(SymfonyAmqpStamp::class)) {
+            $symfonyStampClass = SymfonyAmqpStamp::class;
+
+            assert(is_a($symfonyStampClass, StampInterface::class, true));
+
+            if ($envelope->last($symfonyStampClass) !== null) {
+                throw new LogicException(
+                    sprintf(
+                        'Wrong AmqpStamp class used. Switch your code from using "%s" to "%s".',
+                        SymfonyAmqpStamp::class,
+                        AmqpStamp::class,
+                    )
+                );
+            }
         }
 
         /** @var array{body: string, headers?: array<string, mixed>} $encodedMessage */
