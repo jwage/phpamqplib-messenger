@@ -61,14 +61,7 @@ jobs:
         run: ./vendor/bin/phpstan analyse
 
       - name: PHPUnit
-        run: ./vendor/bin/phpunit --coverage-clover=coverage.xml
+        run: ./vendor/bin/phpunit
         env:
           MESSENGER_TRANSPORT_PHPAMQPLIB_DSN: "phpamqplib://guest:guest@127.0.0.1:${{ job.services.rabbitmq.ports['5672'] }}/%2f/messages"
           XDEBUG_MODE: coverage
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: coverage.xml
-          fail_ci_if_error: true
-          token: ${{ secrets.CODECOV_TOKEN }}
