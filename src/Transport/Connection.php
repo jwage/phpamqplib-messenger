@@ -23,6 +23,7 @@ use function array_map;
 use function array_merge;
 use function array_sum;
 use function assert;
+use function is_numeric;
 
 class Connection
 {
