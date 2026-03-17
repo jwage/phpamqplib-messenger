@@ -15,7 +15,6 @@
         }
     ],
     "require": {
-        "ext-sockets": "*",
         "php": "^8.3",
         "php-amqplib/php-amqplib": "^3.7",
         "symfony/dependency-injection": "^6.4 || ^7.4 || ^8.0",
