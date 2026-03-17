@@ -16,8 +16,7 @@ use Symfony\Component\Messenger\Transport\Receiver\QueueReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Throwable;
 
-use function array_map;
-use function strval;
+use function is_scalar;
 
 class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
 {
@@ -96,9 +95,13 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
         foreach ($amqpEnvelopes as $amqpEnvelope) {
             $body = $amqpEnvelope->getBody();
 
-            /** @var array<string, scalar|null> $headers */
             $headers       = $amqpEnvelope->getHeaders();
-            $stringHeaders = array_map(strval(...), $headers);
+            $stringHeaders = [];
+            foreach ($headers as $key => $value) {
+                if (is_scalar($value) || $value === null) {
+                    $stringHeaders[$key] = (string) $value;
+                }
+            }
 
             try {
                 $envelope = $this->serializer->decode([
