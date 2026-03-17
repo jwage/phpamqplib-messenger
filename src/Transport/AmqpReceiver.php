@@ -93,13 +93,14 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
         foreach ($amqpEnvelopes as $amqpEnvelope) {
             $body = $amqpEnvelope->getBody();
 
-            /** @var array<string, string> $headers */
+            /** @var array<string, scalar|null> $headers */
             $headers = $amqpEnvelope->getHeaders();
+            $stringHeaders= array_map(strval(...), $headers);
 
             try {
                 $envelope = $this->serializer->decode([
                     'body' => $body,
-                    'headers' => $headers,
+                    'headers' => $stringHeaders,
                 ]);
             } catch (MessageDecodingFailedException $e) {
                 $amqpEnvelope->nack();
