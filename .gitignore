@@ -4,3 +4,4 @@ var
 vendor
 
 .idea
+config/reference.php
