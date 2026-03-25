@@ -57,6 +57,7 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
 
         if (isset($encodedMessage['headers']['Content-Type'])) {
             $contentType = $encodedMessage['headers']['Content-Type'];
+            /** @psalm-suppress RedundantConditionGivenDocblockType */
             assert(is_string($contentType));
             unset($encodedMessage['headers']['Content-Type']);
 
@@ -80,6 +81,7 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
         }
 
         $body = $encodedMessage['body'];
+        /** @psalm-suppress RedundantConditionGivenDocblockType */
         assert(is_string($body));
 
         /** @var array<string, mixed> $headers */

@@ -14,6 +14,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\MockObject\Stub;
 use Psr\Log\LoggerInterface;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
@@ -24,18 +25,13 @@ use function serialize;
 
 class AmqpReceiverTest extends TestCase
 {
-    /** @var LoggerInterface&MockObject */
     private LoggerInterface $logger;
 
     private RetryFactory $retryFactory;
 
-    /** @var Connection&MockObject */
-    private Connection $connection;
+    private AmqpConnectionFactory $amqpConnectionFactory;
 
-    /** @var SerializerInterface&MockObject */
-    private SerializerInterface $serializer;
-
-    private AmqpReceiver $receiver;
+    private ConnectionConfig $connectionConfig;
 
     public function testGet(): void
     {
@@ -44,20 +40,23 @@ class AmqpReceiverTest extends TestCase
         $amqpMessage  = new AMQPMessage(serialize($message), ['message_id' => '1']);
         $amqpEnvelope = new AmqpEnvelope($amqpMessage);
 
-        $this->connection->expects(self::any())
-            ->method('getQueueNames')
+        $connection = $this->getTestConnection();
+        $connection->method('getQueueNames')
             ->willReturn(['queue_name']);
 
-        $this->connection->expects(self::once())
+        $connection->expects(self::once())
             ->method('consume')
             ->willReturn([$amqpEnvelope]);
 
-        $this->serializer->expects(self::once())
+        $serializer = $this->createMock(SerializerInterface::class);
+
+        $serializer->expects(self::once())
             ->method('decode')
             ->with(['body' => 'O:8:"stdClass":0:{}', 'headers' => []])
             ->willReturn($envelope);
 
-        $iterable = $this->receiver->get();
+        $receiver = new AmqpReceiver($connection, $serializer);
+        $iterable = $receiver->get();
 
         $envelopes = [];
 
@@ -92,7 +91,12 @@ class AmqpReceiverTest extends TestCase
 
         $envelope = new Envelope(new stdClass(), [$stamp]);
 
-        $this->receiver->ack($envelope);
+        $receiver = new AmqpReceiver(
+            $this->getTestConnectionStub(),
+            $this->createStub(SerializerInterface::class),
+        );
+
+        $receiver->ack($envelope);
     }
 
     public function testReject(): void
@@ -106,39 +110,66 @@ class AmqpReceiverTest extends TestCase
 
         $envelope = new Envelope(new stdClass(), [$stamp]);
 
-        $this->receiver->reject($envelope);
+        $receiver = new AmqpReceiver(
+            $this->getTestConnectionStub(),
+            $this->createStub(SerializerInterface::class),
+        );
+
+        $receiver->reject($envelope);
     }
 
     public function testGetMessageCount(): void
     {
-        $this->connection->expects(self::once())
+        $connection = $this->getTestConnection();
+
+        $connection->expects(self::once())
             ->method('countMessagesInQueues')
             ->willReturn(10);
 
-        self::assertSame(10, $this->receiver->getMessageCount());
+        $receiver = new AmqpReceiver(
+            $connection,
+            $this->createStub(SerializerInterface::class),
+        );
+
+        self::assertSame(10, $receiver->getMessageCount());
     }
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->logger = $this->createMock(LoggerInterface::class);
+        $this->logger = $this->createStub(LoggerInterface::class);
 
         $this->retryFactory = new RetryFactory($this->logger);
 
-        $amqpConnectionFactory = new AmqpConnectionFactory();
-        $connectionConfig      = new ConnectionConfig();
+        $this->amqpConnectionFactory = $this->createStub(AmqpConnectionFactory::class);
 
-        $this->connection = $this->getMockBuilder(Connection::class)
+        $this->connectionConfig = new ConnectionConfig();
+    }
+
+    private function getTestConnectionStub(): Connection&Stub
+    {
+        return self::getStubBuilder(Connection::class)
             ->onlyMethods(['getQueueNames', 'consume', 'countMessagesInQueues'])
-            ->setConstructorArgs([$this->retryFactory, $amqpConnectionFactory, $connectionConfig])
+            ->setConstructorArgs([
+                $this->retryFactory,
+                $this->amqpConnectionFactory,
+                $this->connectionConfig,
+                $this->logger,
+            ])
+            ->getStub();
+    }
+
+    private function getTestConnection(): Connection&MockObject
+    {
+        return $this->getMockBuilder(Connection::class)
+            ->onlyMethods(['getQueueNames', 'consume', 'countMessagesInQueues'])
+            ->setConstructorArgs([
+                $this->retryFactory,
+                $this->amqpConnectionFactory,
+                $this->connectionConfig,
+                $this->logger,
+            ])
             ->getMock();
-
-        $this->serializer = $this->createMock(SerializerInterface::class);
-
-        $this->receiver = new AmqpReceiver(
-            $this->connection,
-            $this->serializer,
-        );
     }
 }

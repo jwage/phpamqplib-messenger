@@ -63,14 +63,14 @@ class AmqpEnvelope
         return $this->amqpMessage->getContentEncoding();
     }
 
-    /** @return array<string, mixed> */
+    /** @return array<string, string> */
     public function getHeaders(): array
     {
         $applicationHeaders = $this->get('application_headers');
         assert($applicationHeaders instanceof AMQPTable || $applicationHeaders === null);
 
         if ($applicationHeaders instanceof AMQPTable) {
-            /** @var array<string, mixed> $headers */
+            /** @var array<string, string> $headers */
             $headers = $applicationHeaders->getNativeData();
 
             return $headers;
