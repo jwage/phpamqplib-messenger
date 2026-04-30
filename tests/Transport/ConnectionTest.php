@@ -384,6 +384,43 @@ class ConnectionTest extends TestCase
         $connection->publish(body: 'test body', headers: $headers);
     }
 
+    public function testPublishWithDelayDeclaresDurableDelayQueue(): void
+    {
+        // RabbitMQ 4.3+ deprecates the `transient_nonexcl_queues` feature
+        // (durable=false + exclusive=false). The delay queue must therefore
+        // be declared as durable.
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        $amqpChannel->expects(self::once())
+            ->method('exchange_declare');
+
+        $declaredArgs = [];
+        $amqpChannel->expects(self::once())
+            ->method('queue_declare')
+            ->willReturnCallback(static function (...$args) use (&$declaredArgs): array {
+                $declaredArgs = $args;
+
+                return [$args[0] ?? '', 0];
+            });
+
+        $amqpChannel->expects(self::once())
+            ->method('queue_bind');
+
+        $amqpChannel->expects(self::once())
+            ->method('basic_publish');
+
+        $amqpChannel->expects(self::once())
+            ->method('wait_for_pending_acks');
+
+        $connection->publish(body: 'test body', delayInMs: 5000);
+
+        // queue_declare positional signature: (queue, passive, durable, exclusive, auto_delete, nowait, arguments, ticket)
+        self::assertTrue($declaredArgs[2] ?? false, 'Delay queue must be declared with durable=true');
+    }
+
     public function testPublishWithConfirmDisabled(): void
     {
         [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(

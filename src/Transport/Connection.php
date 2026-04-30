@@ -445,8 +445,13 @@ class Connection
             $delayQueueName = $this->connectionConfig
                 ->getDelayQueueName($delay, $routingKey, $isRetryAttempt);
 
+            // Declare the delay queue as durable. The queue is still auto-cleaned via the
+            // x-expires argument; durability is required because RabbitMQ 4.3+ deprecates the
+            // `transient_nonexcl_queues` feature (durable=false + exclusive=false), and avoids
+            // losing in-flight retry messages across broker restarts.
             $this->channel()->queue_declare(
                 queue: $delayQueueName,
+                durable: true,
                 nowait: false,
                 arguments: new AMQPTable([
                     'x-message-ttl' => $delay,
