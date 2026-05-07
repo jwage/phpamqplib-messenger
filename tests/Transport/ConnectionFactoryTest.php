@@ -14,6 +14,8 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\DsnParser;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use ReflectionClass;
 
+use function array_keys;
+
 class ConnectionFactoryTest extends TestCase
 {
     private DsnParser $dsnParser;
@@ -117,9 +119,7 @@ class ConnectionFactoryTest extends TestCase
         self::assertNotSame($keys[0], $keys[1]);
     }
 
-    /**
-     * @return list<string>
-     */
+    /** @return list<string> */
     private function registryEntryKeyStrings(AmqpConnectionRegistry $registry): array
     {
         $property = (new ReflectionClass(AmqpConnectionRegistry::class))->getProperty('entries');
