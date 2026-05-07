@@ -8,6 +8,8 @@ use Closure;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionIdentity;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionRegistry;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConsumer;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
@@ -18,7 +20,6 @@ use PhpAmqpLib\Exception\AMQPProtocolChannelException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
-use PHPUnit\Framework\MockObject\Stub;
 use Psr\Log\LoggerInterface;
 use Traversable;
 
@@ -31,6 +32,8 @@ class AmqpConsumerTest extends TestCase
     private RetryFactory $retryFactory;
 
     private AmqpConnectionFactory $amqpConnectionFactory;
+
+    private AmqpConnectionRegistry $amqpConnectionRegistry;
 
     private ConnectionConfig $connectionConfig;
 
@@ -299,7 +302,8 @@ class AmqpConsumerTest extends TestCase
 
         $this->retryFactory = new RetryFactory($this->logger);
 
-        $this->amqpConnectionFactory = $this->createStub(AmqpConnectionFactory::class);
+        $this->amqpConnectionFactory  = $this->createStub(AmqpConnectionFactory::class);
+        $this->amqpConnectionRegistry = new AmqpConnectionRegistry($this->amqpConnectionFactory);
 
         $this->connectionConfig = new ConnectionConfig(
             queues: [
@@ -324,17 +328,20 @@ class AmqpConsumerTest extends TestCase
         );
     }
 
-    private function getTestConnectionStub(ConnectionConfig|null $connectionConfig = null): Connection&Stub
+    private function getTestConnectionStub(ConnectionConfig|null $connectionConfig = null): Connection&MockObject
     {
-        return self::getStubBuilder(Connection::class)
+        $connectionConfig ??= $this->connectionConfig;
+
+        return $this->getMockBuilder(Connection::class)
             ->onlyMethods(['channel', 'getQueueNames', 'close'])
             ->setConstructorArgs([
                 $this->retryFactory,
-                $this->amqpConnectionFactory,
-                $connectionConfig ?? $this->connectionConfig,
+                $this->amqpConnectionRegistry,
+                AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+                $connectionConfig,
                 $this->logger,
             ])
-            ->getStub();
+            ->getMock();
     }
 
     /** @param list<non-empty-string> $onlyMethods */
@@ -342,12 +349,15 @@ class AmqpConsumerTest extends TestCase
         ConnectionConfig|null $connectionConfig = null,
         array $onlyMethods = ['channel', 'getQueueNames', 'close'],
     ): Connection&MockObject {
+        $connectionConfig ??= $this->connectionConfig;
+
         return $this->getMockBuilder(Connection::class)
             ->onlyMethods($onlyMethods)
             ->setConstructorArgs([
                 $this->retryFactory,
-                $this->amqpConnectionFactory,
-                $connectionConfig ?? $this->connectionConfig,
+                $this->amqpConnectionRegistry,
+                AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+                $connectionConfig,
                 $this->logger,
             ])
             ->getMock();

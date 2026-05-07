@@ -7,6 +7,8 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionIdentity;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionRegistry;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceiver;
@@ -14,7 +16,6 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
-use PHPUnit\Framework\MockObject\Stub;
 use Psr\Log\LoggerInterface;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
@@ -30,6 +31,8 @@ class AmqpReceiverTest extends TestCase
     private RetryFactory $retryFactory;
 
     private AmqpConnectionFactory $amqpConnectionFactory;
+
+    private AmqpConnectionRegistry $amqpConnectionRegistry;
 
     private ConnectionConfig $connectionConfig;
 
@@ -142,22 +145,24 @@ class AmqpReceiverTest extends TestCase
 
         $this->retryFactory = new RetryFactory($this->logger);
 
-        $this->amqpConnectionFactory = $this->createStub(AmqpConnectionFactory::class);
+        $this->amqpConnectionFactory  = $this->createStub(AmqpConnectionFactory::class);
+        $this->amqpConnectionRegistry = new AmqpConnectionRegistry($this->amqpConnectionFactory);
 
         $this->connectionConfig = new ConnectionConfig();
     }
 
-    private function getTestConnectionStub(): Connection&Stub
+    private function getTestConnectionStub(): Connection&MockObject
     {
-        return self::getStubBuilder(Connection::class)
+        return $this->getMockBuilder(Connection::class)
             ->onlyMethods(['getQueueNames', 'consume', 'countMessagesInQueues'])
             ->setConstructorArgs([
                 $this->retryFactory,
-                $this->amqpConnectionFactory,
+                $this->amqpConnectionRegistry,
+                AmqpConnectionIdentity::fromConnectionConfig($this->connectionConfig),
                 $this->connectionConfig,
                 $this->logger,
             ])
-            ->getStub();
+            ->getMock();
     }
 
     private function getTestConnection(): Connection&MockObject
@@ -166,7 +171,8 @@ class AmqpReceiverTest extends TestCase
             ->onlyMethods(['getQueueNames', 'consume', 'countMessagesInQueues'])
             ->setConstructorArgs([
                 $this->retryFactory,
-                $this->amqpConnectionFactory,
+                $this->amqpConnectionRegistry,
+                AmqpConnectionIdentity::fromConnectionConfig($this->connectionConfig),
                 $this->connectionConfig,
                 $this->logger,
             ])

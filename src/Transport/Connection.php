@@ -11,7 +11,6 @@ use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use PhpAmqpLib\Channel\AMQPChannel;
-use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
@@ -26,9 +25,9 @@ use function assert;
 
 class Connection
 {
-    private AMQPStreamConnection|null $connection = null;
-
     private AMQPChannel|null $channel = null;
+
+    private int|null $channelGeneration = null;
 
     private AmqpConsumer|null $consumer = null;
 
@@ -40,7 +39,8 @@ class Connection
 
     public function __construct(
         private RetryFactory $retryFactory,
-        private AmqpConnectionFactory $amqpConnectionFactory,
+        private AmqpConnectionRegistry $amqpConnectionRegistry,
+        private AmqpConnectionIdentity $connectionIdentity,
         private ConnectionConfig $connectionConfig,
         private LoggerInterface|null $logger = null,
     ) {
@@ -55,9 +55,8 @@ class Connection
         } catch (TransportException) {
         }
 
-        $this->connection = null;
-        $this->channel    = null;
-        $this->consumer   = null;
+        $this->clearChannelState();
+        $this->consumer = null;
     }
 
     public function getConfig(): ConnectionConfig
@@ -67,22 +66,25 @@ class Connection
 
     public function isConnected(): bool
     {
-        return $this->connection !== null && $this->connection->isConnected();
+        return $this->amqpConnectionRegistry
+            ->get($this->connectionIdentity, $this->connectionConfig)
+            ->isConnected();
     }
 
     public function close(): void
     {
         $this->consumer?->stop();
-        $this->connection?->close();
-        $this->channel = null;
+        $this->consumer = null;
+        $this->clearChannelState();
     }
 
     /** @throws AMQPExceptionInterface */
     public function reconnect(): void
     {
-        $this->connection?->reconnect();
-        $this->channel = null;
+        $this->amqpConnectionRegistry->reconnect($this->connectionIdentity, $this->connectionConfig);
+        $this->clearChannelState();
         $this->consumer?->stop();
+        $this->consumer = null;
     }
 
     /**
@@ -101,19 +103,20 @@ class Connection
     /** @throws TransportException */
     public function channel(): AMQPChannel
     {
-        if ($this->channel === null) {
+        $generation = $this->amqpConnectionRegistry->generation($this->connectionIdentity);
+
+        if ($this->channel === null || $this->channelGeneration !== $generation) {
+            if ($this->channelGeneration !== $generation) {
+                $this->clearChannelState();
+            }
+
             $channel = $this->retryWithReconnect(function (): AMQPChannel {
-                $channel = $this->connection()->channel();
-
-                if ($this->connectionConfig->confirmEnabled) {
-                    $channel->confirm_select();
-                }
-
-                return $channel;
+                return $this->createInitializedChannel();
             })->run();
             assert($channel instanceof AMQPChannel);
 
-            $this->channel = $channel;
+            $this->channel           = $channel;
+            $this->channelGeneration = $this->amqpConnectionRegistry->generation($this->connectionIdentity);
         }
 
         return $this->channel;
@@ -468,13 +471,24 @@ class Connection
     }
 
     /** @throws AMQPExceptionInterface */
-    private function connection(): AMQPStreamConnection
+    private function createInitializedChannel(): AMQPChannel
     {
-        if ($this->connection === null) {
-            $this->connection = $this->amqpConnectionFactory->create($this->connectionConfig);
+        $channel = $this->amqpConnectionRegistry
+            ->get($this->connectionIdentity, $this->connectionConfig)
+            ->channel();
+
+        if ($this->connectionConfig->confirmEnabled) {
+            $channel->confirm_select();
         }
 
-        return $this->connection;
+        return $channel;
+    }
+
+    private function clearChannelState(): void
+    {
+        $this->channel           = null;
+        $this->channelGeneration = null;
+        $this->batchCount        = 0;
     }
 
     /**

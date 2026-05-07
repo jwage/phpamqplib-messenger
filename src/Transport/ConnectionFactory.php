@@ -14,7 +14,7 @@ class ConnectionFactory
     public function __construct(
         private DsnParser $dsnParser,
         private RetryFactory $retryFactory,
-        private AmqpConnectionFactory $amqpConnectionFactory,
+        private AmqpConnectionRegistry $amqpConnectionRegistry,
         private LoggerInterface|null $logger = null,
     ) {
     }
@@ -29,10 +29,13 @@ class ConnectionFactory
         string $dsn,
         array $options = [],
     ): Connection {
+        $connectionConfig = $this->dsnParser->parseDsn($dsn, $options);
+
         return new Connection(
             $this->retryFactory,
-            $this->amqpConnectionFactory,
-            $this->dsnParser->parseDsn($dsn, $options),
+            $this->amqpConnectionRegistry,
+            AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+            $connectionConfig,
             $this->logger,
         );
     }

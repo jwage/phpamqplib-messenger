@@ -7,6 +7,7 @@ namespace Symfony\Component\DependencyInjection\Loader\Configurator;
 use Jwage\PhpAmqpLibMessengerBundle\Middleware\DeduplicationPluginMiddleware;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionRegistry;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransportFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\DsnParser;
@@ -26,11 +27,10 @@ return static function (ContainerConfigurator $container): void {
                         ->args([
                             service(LoggerInterface::class),
                         ]),
-                    inline_service(AmqpConnectionFactory::class),
-                    service(LoggerInterface::class),
-                ]),
-            inline_service(RetryFactory::class)
-                ->args([
+                    inline_service(AmqpConnectionRegistry::class)
+                        ->args([
+                            inline_service(AmqpConnectionFactory::class),
+                        ]),
                     service(LoggerInterface::class),
                 ]),
         ])

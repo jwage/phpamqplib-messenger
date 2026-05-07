@@ -7,6 +7,8 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionIdentity;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionRegistry;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
@@ -38,17 +40,20 @@ class ConnectionTest extends TestCase
      */
     private function createConnectionWithStubs(ConnectionConfig|null $connectionConfig = null): Connection
     {
-        $factory        = $this->createStub(AmqpConnectionFactory::class);
-        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
-        $amqpChannel    = $this->createStub(AMQPChannel::class);
+        $connectionConfig ??= $this->getDefaultConfig();
+        $factory            = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection     = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel        = $this->createStub(AMQPChannel::class);
+        $registry           = new AmqpConnectionRegistry($factory);
 
         $factory->method('create')->willReturn($amqpConnection);
         $amqpConnection->method('channel')->willReturn($amqpChannel);
 
         return new Connection(
             retryFactory: $this->retryFactory,
-            amqpConnectionFactory: $factory,
-            connectionConfig: $connectionConfig ?? $this->getDefaultConfig(),
+            amqpConnectionRegistry: $registry,
+            connectionIdentity: AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+            connectionConfig: $connectionConfig,
         );
     }
 
@@ -59,9 +64,11 @@ class ConnectionTest extends TestCase
      */
     private function createConnectionWithChannelMock(ConnectionConfig|null $connectionConfig = null): array
     {
-        $factory        = $this->createStub(AmqpConnectionFactory::class);
-        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
-        $amqpChannel    = $this->createMock(AMQPChannel::class);
+        $connectionConfig ??= $this->getDefaultConfig();
+        $factory            = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection     = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel        = $this->createMock(AMQPChannel::class);
+        $registry           = new AmqpConnectionRegistry($factory);
 
         $factory->method('create')->willReturn($amqpConnection);
         $amqpConnection->method('channel')->willReturn($amqpChannel);
@@ -69,8 +76,9 @@ class ConnectionTest extends TestCase
 
         $connection = new Connection(
             retryFactory: $this->retryFactory,
-            amqpConnectionFactory: $factory,
-            connectionConfig: $connectionConfig ?? $this->getDefaultConfig(),
+            amqpConnectionRegistry: $registry,
+            connectionIdentity: AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+            connectionConfig: $connectionConfig,
         );
 
         return [$connection, $amqpChannel];
@@ -83,17 +91,20 @@ class ConnectionTest extends TestCase
      */
     private function createConnectionWithConnectionMock(ConnectionConfig|null $connectionConfig = null): array
     {
-        $factory        = $this->createStub(AmqpConnectionFactory::class);
-        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
-        $amqpChannel    = $this->createStub(AMQPChannel::class);
+        $connectionConfig ??= $this->getDefaultConfig();
+        $factory            = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection     = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel        = $this->createStub(AMQPChannel::class);
+        $registry           = new AmqpConnectionRegistry($factory);
 
         $factory->method('create')->willReturn($amqpConnection);
         $amqpConnection->method('channel')->willReturn($amqpChannel);
 
         $connection = new Connection(
             retryFactory: $this->retryFactory,
-            amqpConnectionFactory: $factory,
-            connectionConfig: $connectionConfig ?? $this->getDefaultConfig(),
+            amqpConnectionRegistry: $registry,
+            connectionIdentity: AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+            connectionConfig: $connectionConfig,
         );
 
         return [$connection, $amqpConnection];
@@ -107,16 +118,19 @@ class ConnectionTest extends TestCase
      */
     private function createConnectionWithAllMocks(ConnectionConfig|null $connectionConfig = null): array
     {
-        $factory        = $this->createStub(AmqpConnectionFactory::class);
-        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
-        $amqpChannel    = $this->createMock(AMQPChannel::class);
+        $connectionConfig ??= $this->getDefaultConfig();
+        $factory            = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection     = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel        = $this->createMock(AMQPChannel::class);
+        $registry           = new AmqpConnectionRegistry($factory);
 
         $factory->method('create')->willReturn($amqpConnection);
 
         $connection = new Connection(
             retryFactory: $this->retryFactory,
-            amqpConnectionFactory: $factory,
-            connectionConfig: $connectionConfig ?? $this->getDefaultConfig(),
+            amqpConnectionRegistry: $registry,
+            connectionIdentity: AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+            connectionConfig: $connectionConfig,
         );
 
         return [$connection, $amqpConnection, $amqpChannel];
@@ -146,7 +160,7 @@ class ConnectionTest extends TestCase
     {
         [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();
 
-        $amqpConnection->expects(self::once())
+        $amqpConnection->expects(self::never())
             ->method('close');
 
         $connection->channel();
@@ -161,9 +175,80 @@ class ConnectionTest extends TestCase
         $connection->channel();
 
         $amqpConnection->expects(self::once())
-            ->method('reconnect');
+            ->method('close');
 
         $connection->reconnect();
+    }
+
+    public function testReconnectInvalidatesStaleChannelAcrossConnections(): void
+    {
+        $connectionConfig     = $this->getDefaultConfig();
+        $identity             = AmqpConnectionIdentity::fromConnectionConfig($connectionConfig);
+        $factory              = $this->createMock(AmqpConnectionFactory::class);
+        $registry             = new AmqpConnectionRegistry($factory);
+        $firstAmqpConnection  = $this->createMock(AMQPStreamConnection::class);
+        $secondAmqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $firstChannelA        = $this->createStub(AMQPChannel::class);
+        $firstChannelB        = $this->createStub(AMQPChannel::class);
+        $secondChannel        = $this->createStub(AMQPChannel::class);
+
+        $factory->expects(self::exactly(2))
+            ->method('create')
+            ->willReturnOnConsecutiveCalls($firstAmqpConnection, $secondAmqpConnection);
+
+        $firstAmqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($firstChannelA, $firstChannelB);
+        $secondAmqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($secondChannel);
+        $firstAmqpConnection->expects(self::once())
+            ->method('close');
+
+        $connectionA = new Connection($this->retryFactory, $registry, $identity, $connectionConfig);
+        $connectionB = new Connection($this->retryFactory, $registry, $identity, $connectionConfig);
+
+        self::assertSame($firstChannelA, $connectionA->channel());
+        self::assertSame($firstChannelB, $connectionB->channel());
+
+        $connectionA->reconnect();
+
+        self::assertSame($secondChannel, $connectionB->channel());
+    }
+
+    public function testPublishFailureReconnectsAndRetriesPublish(): void
+    {
+        $connectionConfig     = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: ''),
+            queues: [],
+        );
+        $identity             = AmqpConnectionIdentity::fromConnectionConfig($connectionConfig);
+        $factory              = $this->createMock(AmqpConnectionFactory::class);
+        $registry             = new AmqpConnectionRegistry($factory);
+        $firstAmqpConnection  = $this->createMock(AMQPStreamConnection::class);
+        $secondAmqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $firstChannel         = $this->createMock(AMQPChannel::class);
+        $secondChannel        = $this->createMock(AMQPChannel::class);
+
+        $factory->expects(self::exactly(2))
+            ->method('create')
+            ->willReturnOnConsecutiveCalls($firstAmqpConnection, $secondAmqpConnection);
+
+        $firstAmqpConnection->method('channel')->willReturn($firstChannel);
+        $secondAmqpConnection->method('channel')->willReturn($secondChannel);
+
+        $firstChannel->expects(self::once())
+            ->method('basic_publish')
+            ->willThrowException(new AMQPConnectionClosedException('failed publish'));
+        $secondChannel->expects(self::once())
+            ->method('basic_publish');
+        $firstAmqpConnection->expects(self::once())
+            ->method('close');
+
+        $connection = new Connection($this->retryFactory, $registry, $identity, $connectionConfig);
+        $connection->publish('test');
     }
 
     public function testSetup(): void
