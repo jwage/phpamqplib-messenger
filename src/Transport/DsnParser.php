@@ -26,8 +26,6 @@ class DsnParser
 {
     /**
      * Options consumed by {@see ConnectionFactory}, not part of {@see ConnectionConfig}.
-     *
-     * @var list<string>
      */
     private const array MESSENGER_TRANSPORT_ONLY_OPTIONS = [
         'connection_reuse',

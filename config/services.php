@@ -13,8 +13,6 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\ConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\DsnParser;
 use Psr\Log\LoggerInterface;
 
-use function Symfony\Component\DependencyInjection\Loader\Configurator\param;
-
 return static function (ContainerConfigurator $container): void {
     $services = $container->services();
 

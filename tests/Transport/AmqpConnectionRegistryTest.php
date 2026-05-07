@@ -18,10 +18,10 @@ final class AmqpConnectionRegistryTest extends TestCase
 {
     public function testGetReusesConnectionForSameRegistryKey(): void
     {
-        $config   = new ConnectionConfig();
-        $key      = $this->registryKey($config, AmqpConnectionReuse::ALL, AmqpConnectionRole::MIXED);
-        $stream   = $this->createStub(AMQPStreamConnection::class);
-        $factory  = $this->createMock(AmqpConnectionFactory::class);
+        $config  = new ConnectionConfig();
+        $key     = $this->registryKey($config, AmqpConnectionReuse::ALL, AmqpConnectionRole::MIXED);
+        $stream  = $this->createStub(AMQPStreamConnection::class);
+        $factory = $this->createMock(AmqpConnectionFactory::class);
 
         $factory->expects(self::once())
             ->method('create')
@@ -39,11 +39,11 @@ final class AmqpConnectionRegistryTest extends TestCase
 
     public function testReconnectReplacesConnectionAndIncrementsGeneration(): void
     {
-        $config          = new ConnectionConfig();
-        $key             = $this->registryKey($config, AmqpConnectionReuse::ALL, AmqpConnectionRole::MIXED);
-        $firstConnection = $this->createMock(AMQPStreamConnection::class);
+        $config           = new ConnectionConfig();
+        $key              = $this->registryKey($config, AmqpConnectionReuse::ALL, AmqpConnectionRole::MIXED);
+        $firstConnection  = $this->createMock(AMQPStreamConnection::class);
         $secondConnection = $this->createStub(AMQPStreamConnection::class);
-        $factory         = $this->createMock(AmqpConnectionFactory::class);
+        $factory          = $this->createMock(AmqpConnectionFactory::class);
 
         $factory->expects(self::exactly(2))
             ->method('create')
@@ -85,12 +85,12 @@ final class AmqpConnectionRegistryTest extends TestCase
 
     public function testNoneModeWithDifferentDedicatedIdsDoesNotReuse(): void
     {
-        $config        = new ConnectionConfig();
-        $keyA          = $this->registryKey($config, AmqpConnectionReuse::NONE, AmqpConnectionRole::MIXED, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
-        $keyB          = $this->registryKey($config, AmqpConnectionReuse::NONE, AmqpConnectionRole::MIXED, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
-        $streamA       = $this->createStub(AMQPStreamConnection::class);
-        $streamB       = $this->createStub(AMQPStreamConnection::class);
-        $factory       = $this->createMock(AmqpConnectionFactory::class);
+        $config  = new ConnectionConfig();
+        $keyA    = $this->registryKey($config, AmqpConnectionReuse::NONE, AmqpConnectionRole::MIXED, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+        $keyB    = $this->registryKey($config, AmqpConnectionReuse::NONE, AmqpConnectionRole::MIXED, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+        $streamA = $this->createStub(AMQPStreamConnection::class);
+        $streamB = $this->createStub(AMQPStreamConnection::class);
+        $factory = $this->createMock(AmqpConnectionFactory::class);
 
         $factory->expects(self::exactly(2))
             ->method('create')
@@ -103,11 +103,11 @@ final class AmqpConnectionRegistryTest extends TestCase
 
     public function testProducerConsumerSharesAmongSameRole(): void
     {
-        $config   = new ConnectionConfig();
-        $key1     = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::PRODUCER);
-        $key2     = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::PRODUCER);
-        $stream   = $this->createStub(AMQPStreamConnection::class);
-        $factory  = $this->createMock(AmqpConnectionFactory::class);
+        $config  = new ConnectionConfig();
+        $key1    = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::PRODUCER);
+        $key2    = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::PRODUCER);
+        $stream  = $this->createStub(AMQPStreamConnection::class);
+        $factory = $this->createMock(AmqpConnectionFactory::class);
 
         $factory->expects(self::once())
             ->method('create')
@@ -120,12 +120,12 @@ final class AmqpConnectionRegistryTest extends TestCase
 
     public function testProducerConsumerDoesNotShareProducerWithConsumer(): void
     {
-        $config    = new ConnectionConfig();
-        $keyProd   = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::PRODUCER);
-        $keyCons   = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::CONSUMER);
-        $streamA   = $this->createStub(AMQPStreamConnection::class);
-        $streamB   = $this->createStub(AMQPStreamConnection::class);
-        $factory   = $this->createMock(AmqpConnectionFactory::class);
+        $config  = new ConnectionConfig();
+        $keyProd = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::PRODUCER);
+        $keyCons = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::CONSUMER);
+        $streamA = $this->createStub(AMQPStreamConnection::class);
+        $streamB = $this->createStub(AMQPStreamConnection::class);
+        $factory = $this->createMock(AmqpConnectionFactory::class);
 
         $factory->expects(self::exactly(2))
             ->method('create')
@@ -138,11 +138,11 @@ final class AmqpConnectionRegistryTest extends TestCase
 
     public function testAllSharesAcrossProducerAndConsumerRoles(): void
     {
-        $config    = new ConnectionConfig();
-        $keyProd   = $this->registryKey($config, AmqpConnectionReuse::ALL, AmqpConnectionRole::PRODUCER);
-        $keyCons   = $this->registryKey($config, AmqpConnectionReuse::ALL, AmqpConnectionRole::CONSUMER);
-        $stream    = $this->createStub(AMQPStreamConnection::class);
-        $factory   = $this->createMock(AmqpConnectionFactory::class);
+        $config  = new ConnectionConfig();
+        $keyProd = $this->registryKey($config, AmqpConnectionReuse::ALL, AmqpConnectionRole::PRODUCER);
+        $keyCons = $this->registryKey($config, AmqpConnectionReuse::ALL, AmqpConnectionRole::CONSUMER);
+        $stream  = $this->createStub(AMQPStreamConnection::class);
+        $factory = $this->createMock(AmqpConnectionFactory::class);
 
         $factory->expects(self::once())
             ->method('create')
@@ -155,13 +155,13 @@ final class AmqpConnectionRegistryTest extends TestCase
 
     public function testReconnectOnlyAffectsMatchingRegistryKey(): void
     {
-        $config    = new ConnectionConfig();
-        $keyA      = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::PRODUCER);
-        $keyB      = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::CONSUMER);
-        $streamA1  = $this->createMock(AMQPStreamConnection::class);
-        $streamB   = $this->createStub(AMQPStreamConnection::class);
-        $streamA2  = $this->createStub(AMQPStreamConnection::class);
-        $factory   = $this->createMock(AmqpConnectionFactory::class);
+        $config   = new ConnectionConfig();
+        $keyA     = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::PRODUCER);
+        $keyB     = $this->registryKey($config, AmqpConnectionReuse::PRODUCER_CONSUMER, AmqpConnectionRole::CONSUMER);
+        $streamA1 = $this->createMock(AMQPStreamConnection::class);
+        $streamB  = $this->createStub(AMQPStreamConnection::class);
+        $streamA2 = $this->createStub(AMQPStreamConnection::class);
+        $factory  = $this->createMock(AmqpConnectionFactory::class);
 
         $factory->expects(self::exactly(3))
             ->method('create')

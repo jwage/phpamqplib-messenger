@@ -54,8 +54,8 @@ class ConnectionFactory
             ? AmqpConnectionRole::fromConfigString((string) $rawRole)
             : AmqpConnectionRole::MIXED;
 
-        $connectionConfig  = $this->dsnParser->parseDsn($dsn, $options);
-        $brokerIdentity    = AmqpConnectionIdentity::fromConnectionConfig($connectionConfig);
+        $connectionConfig = $this->dsnParser->parseDsn($dsn, $options);
+        $brokerIdentity   = AmqpConnectionIdentity::fromConnectionConfig($connectionConfig);
 
         $dedicatedInstanceId = '';
         if ($reuse === AmqpConnectionReuse::NONE) {

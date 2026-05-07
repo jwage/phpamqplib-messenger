@@ -31,9 +31,7 @@ enum AmqpConnectionRole: string
      */
     case MIXED = 'mixed';
 
-    /**
-     * @throws InvalidArgumentException
-     */
+    /** @throws InvalidArgumentException */
     public static function fromConfigString(string $value): self
     {
         $normalized = self::tryFrom($value);

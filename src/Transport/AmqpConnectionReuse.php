@@ -34,9 +34,7 @@ enum AmqpConnectionReuse: string
      */
     case ALL = 'all';
 
-    /**
-     * @throws InvalidArgumentException
-     */
+    /** @throws InvalidArgumentException */
     public static function fromConfigString(string $value): self
     {
         $normalized = self::tryFrom($value);

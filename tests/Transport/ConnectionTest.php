@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
+use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
@@ -146,7 +147,7 @@ class ConnectionTest extends TestCase
         string $dedicatedInstanceId = '',
     ): AmqpConnectionRegistryKey {
         if ($reuse === AmqpConnectionReuse::NONE && $dedicatedInstanceId === '') {
-            throw new \InvalidArgumentException('Tests must pass a non-empty dedicated id for connection_reuse=none.');
+            throw new InvalidArgumentException('Tests must pass a non-empty dedicated id for connection_reuse=none.');
         }
 
         return AmqpConnectionRegistryKey::create(
@@ -275,13 +276,13 @@ class ConnectionTest extends TestCase
     public function testReconnectDoesNotInvalidateOtherRegistryKey(): void
     {
         $connectionConfig = $this->getDefaultConfig();
-        $factory            = $this->createMock(AmqpConnectionFactory::class);
-        $registry           = new AmqpConnectionRegistry($factory);
-        $streamA            = $this->createMock(AMQPStreamConnection::class);
-        $streamB            = $this->createMock(AMQPStreamConnection::class);
-        $streamA2           = $this->createMock(AMQPStreamConnection::class);
-        $channelA1          = $this->createStub(AMQPChannel::class);
-        $channelB           = $this->createStub(AMQPChannel::class);
+        $factory          = $this->createMock(AmqpConnectionFactory::class);
+        $registry         = new AmqpConnectionRegistry($factory);
+        $streamA          = $this->createMock(AMQPStreamConnection::class);
+        $streamB          = $this->createMock(AMQPStreamConnection::class);
+        $streamA2         = $this->createMock(AMQPStreamConnection::class);
+        $channelA1        = $this->createStub(AMQPChannel::class);
+        $channelB         = $this->createStub(AMQPChannel::class);
 
         $factory->expects(self::exactly(3))
             ->method('create')

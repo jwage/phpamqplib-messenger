@@ -48,8 +48,8 @@ class ConnectionFactoryTest extends TestCase
 
     public function testConnectionReuseNoneProducesDistinctRegistryKeysPerFromDsn(): void
     {
-        $stream  = $this->createStub(AMQPStreamConnection::class);
-        $keys    = [];
+        $stream   = $this->createStub(AMQPStreamConnection::class);
+        $keys     = [];
         $registry = $this->createMock(AmqpConnectionRegistry::class);
         $registry->method('get')->willReturnCallback(
             static function (AmqpConnectionRegistryKey $key) use ($stream, &$keys): AMQPStreamConnection {
