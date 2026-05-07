@@ -14,6 +14,12 @@ use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
 /** @psalm-suppress InternalClass */
 class PhpAmqpLibMessengerExtension extends Extension
 {
+    #[Override]
+    public function getAlias(): string
+    {
+        return 'php_amqp_lib_messenger';
+    }
+
     /**
      * @param array<array-key, array<array-key, mixed>> $configs
      *
@@ -24,6 +30,11 @@ class PhpAmqpLibMessengerExtension extends Extension
     #[Override]
     public function load(array $configs, ContainerBuilder $container): void
     {
+        $configuration = new Configuration();
+        $config        = $this->processConfiguration($configuration, $configs);
+
+        $container->setParameter('php_amqp_lib_messenger.connection_reuse', $config['connection_reuse']);
+
         $loader = new PhpFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.php');
     }

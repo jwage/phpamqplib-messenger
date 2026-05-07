@@ -24,6 +24,16 @@ use function urldecode;
 
 class DsnParser
 {
+    /**
+     * Options consumed by {@see ConnectionFactory}, not part of {@see ConnectionConfig}.
+     *
+     * @var list<string>
+     */
+    private const array MESSENGER_TRANSPORT_ONLY_OPTIONS = [
+        'connection_reuse',
+        'connection_role',
+    ];
+
     private const array INTEGER_ARGUMENTS = [
         'x-delay',
         'x-expires',
@@ -147,6 +157,10 @@ class DsnParser
 
         if ($useAmqps && ! self::hasSslConfigured($connectionConfig)) {
             throw new InvalidArgumentException('No ssl configuration has been provided. Alternatively, you can use phpamqplib:// to use without SSL.');
+        }
+
+        foreach (self::MESSENGER_TRANSPORT_ONLY_OPTIONS as $messengerOnlyKey) {
+            unset($connectionConfig[$messengerOnlyKey]);
         }
 
         return ConnectionConfig::fromArray($connectionConfig);

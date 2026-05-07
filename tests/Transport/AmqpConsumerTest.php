@@ -10,6 +10,9 @@ use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionIdentity;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionRegistry;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionRegistryKey;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionReuse;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionRole;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConsumer;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
@@ -337,7 +340,12 @@ class AmqpConsumerTest extends TestCase
             ->setConstructorArgs([
                 $this->retryFactory,
                 $this->amqpConnectionRegistry,
-                AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+                AmqpConnectionRegistryKey::create(
+                    AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+                    AmqpConnectionReuse::ALL,
+                    AmqpConnectionRole::MIXED,
+                    '',
+                ),
                 $connectionConfig,
                 $this->logger,
             ])
@@ -356,7 +364,12 @@ class AmqpConsumerTest extends TestCase
             ->setConstructorArgs([
                 $this->retryFactory,
                 $this->amqpConnectionRegistry,
-                AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+                AmqpConnectionRegistryKey::create(
+                    AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+                    AmqpConnectionReuse::ALL,
+                    AmqpConnectionRole::MIXED,
+                    '',
+                ),
                 $connectionConfig,
                 $this->logger,
             ])

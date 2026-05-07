@@ -14,6 +14,14 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
 use function str_starts_with;
 
 /**
+ * Messenger transport factory for php-amqplib.
+ *
+ * Per-transport options (merged with DSN query and passed to {@see ConnectionFactory::fromDsn}):
+ * - connection_reuse: optional override of bundle default `php_amqp_lib_messenger.connection_reuse`
+ *   (`none`, `producer-consumer`, `all`).
+ * - connection_role: `producer`, `consumer`, or `mixed` — used when `connection_reuse` is
+ *   `producer-consumer` to decide which pool shares TCP connections.
+ *
  * @implements TransportFactoryInterface<AMQPTransport>
  * @psalm-suppress TooManyTemplateParams
  */

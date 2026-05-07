@@ -40,7 +40,7 @@ class Connection
     public function __construct(
         private RetryFactory $retryFactory,
         private AmqpConnectionRegistry $amqpConnectionRegistry,
-        private AmqpConnectionIdentity $connectionIdentity,
+        private AmqpConnectionRegistryKey $registryKey,
         private ConnectionConfig $connectionConfig,
         private LoggerInterface|null $logger = null,
     ) {
@@ -67,7 +67,7 @@ class Connection
     public function isConnected(): bool
     {
         return $this->amqpConnectionRegistry
-            ->get($this->connectionIdentity, $this->connectionConfig)
+            ->get($this->registryKey, $this->connectionConfig)
             ->isConnected();
     }
 
@@ -81,7 +81,7 @@ class Connection
     /** @throws AMQPExceptionInterface */
     public function reconnect(): void
     {
-        $this->amqpConnectionRegistry->reconnect($this->connectionIdentity, $this->connectionConfig);
+        $this->amqpConnectionRegistry->reconnect($this->registryKey, $this->connectionConfig);
         $this->clearChannelState();
         $this->consumer?->stop();
         $this->consumer = null;
@@ -103,7 +103,7 @@ class Connection
     /** @throws TransportException */
     public function channel(): AMQPChannel
     {
-        $generation = $this->amqpConnectionRegistry->generation($this->connectionIdentity);
+        $generation = $this->amqpConnectionRegistry->generation($this->registryKey);
 
         if ($this->channel === null || $this->channelGeneration !== $generation) {
             if ($this->channelGeneration !== $generation) {
@@ -116,7 +116,7 @@ class Connection
             assert($channel instanceof AMQPChannel);
 
             $this->channel           = $channel;
-            $this->channelGeneration = $this->amqpConnectionRegistry->generation($this->connectionIdentity);
+            $this->channelGeneration = $this->amqpConnectionRegistry->generation($this->registryKey);
         }
 
         return $this->channel;
@@ -474,7 +474,7 @@ class Connection
     private function createInitializedChannel(): AMQPChannel
     {
         $channel = $this->amqpConnectionRegistry
-            ->get($this->connectionIdentity, $this->connectionConfig)
+            ->get($this->registryKey, $this->connectionConfig)
             ->channel();
 
         if ($this->connectionConfig->confirmEnabled) {

@@ -8,6 +8,15 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use Throwable;
 
+/**
+ * Process-local registry for shared {@see AMQPStreamConnection} instances.
+ *
+ * Whether connections are shared is controlled by {@see AmqpConnectionRegistryKey} (bundle default
+ * {@see AmqpConnectionReuse::NONE} for production isolation; CloudAMQP-style setups often use
+ * separate producer and consumer TCP connections — use {@see AmqpConnectionReuse::PRODUCER_CONSUMER}
+ * or {@see AmqpConnectionReuse::NONE}). Sharing reduces TCP/TLS overhead but producer and consumer
+ * can cross-impact under broker flow control or connection alarms.
+ */
 final class AmqpConnectionRegistry
 {
     /** @var array<string, array{connection: AMQPStreamConnection, generation: int}> */
@@ -18,9 +27,9 @@ final class AmqpConnectionRegistry
     ) {
     }
 
-    public function get(AmqpConnectionIdentity $identity, ConnectionConfig $connectionConfig): AMQPStreamConnection
+    public function get(AmqpConnectionRegistryKey $registryKey, ConnectionConfig $connectionConfig): AMQPStreamConnection
     {
-        $key = $identity->toString();
+        $key = $registryKey->toString();
 
         if (! isset($this->entries[$key])) {
             $this->entries[$key] = [
@@ -32,16 +41,16 @@ final class AmqpConnectionRegistry
         return $this->entries[$key]['connection'];
     }
 
-    public function generation(AmqpConnectionIdentity $identity): int
+    public function generation(AmqpConnectionRegistryKey $registryKey): int
     {
-        $entry = $this->entries[$identity->toString()] ?? null;
+        $entry = $this->entries[$registryKey->toString()] ?? null;
 
         return $entry['generation'] ?? 0;
     }
 
-    public function reconnect(AmqpConnectionIdentity $identity, ConnectionConfig $connectionConfig): void
+    public function reconnect(AmqpConnectionRegistryKey $registryKey, ConnectionConfig $connectionConfig): void
     {
-        $key = $identity->toString();
+        $key = $registryKey->toString();
 
         if (isset($this->entries[$key])) {
             try {

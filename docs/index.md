@@ -1,4 +1,4 @@
-# PhpAmqpLibMessengerBundle Documentations
+# PhpAmqpLibMessengerBundle Documentation
 
 This bundle adds support for `php-amqplib/php-amqplib` to Symfony Messenger, providing an alternative way to connect to RabbitMQ using a pure PHP library instead of the [php-amqp](https://github.com/php-amqp/php-amqp) C extension.
 
@@ -8,7 +8,7 @@ This bundle adds support for `php-amqplib/php-amqplib` to Symfony Messenger, pro
 composer require jwage/phpamqplib-messenger
 ```
 
-Make sure the bundled is enabled in `config/bundles.php`:
+Make sure the bundle is enabled in `config/bundles.php`:
 
 ```php
 return [
@@ -22,7 +22,7 @@ return [
 It is easy to configure the bundle using a DSN and the `config/packages/messenger.yaml` file. The DSN format for the transport is:
 
 ```
-phpamqplib://username:password@localhost[:post]/vhost[/exchange]
+phpamqplib://username:password@localhost[:port]/vhost[/exchange]
 ```
 
 For SSL/TLS connections, use:
@@ -62,6 +62,47 @@ framework:
 ```
 
 The configuration above will create an exchange named `orders` and bind a queue named `orders` to it within the vhost `myvhost`.
+
+## Connection sharing (TCP reuse)
+
+The bundle uses an in-process registry of low-level AMQP TCP connections. Each Messenger `Connection` still has its own AMQP channel; sharing only controls whether multiple transport wrappers reuse the same TCP socket to the broker.
+
+### Bundle default
+
+Set the default reuse policy in `config/packages/php_amqp_lib_messenger.yaml` (create the file if needed):
+
+```yaml
+php_amqp_lib_messenger:
+    connection_reuse: none   # none (default) | producer-consumer | all
+```
+
+- **none** (default): Same behavior as before the connection registry: one TCP connection per transport `Connection` wrapper, with no cross-transport sharing. Strongest isolation (for example CloudAMQP-style separate producer and consumer connections when you define multiple transports).
+- **producer-consumer**: Transports that target the same broker share TCP only when they use the same [`connection_role`](#per-transport-options) (`producer`, `consumer`, or `mixed`). Producer-side transports never share a socket with consumer-side transports.
+- **all**: One shared TCP connection per broker identity for the whole process, regardless of role. Fewest connections and lowest isolation.
+
+### Per-transport options
+
+You can override the bundle default per transport using `options` in `messenger.yaml` (or the corresponding DSN query parameters). These are Messenger transport options, not AMQP broker options:
+
+```yaml
+# config/packages/messenger.yaml
+framework:
+    messenger:
+        transports:
+            async_worker:
+                dsn: 'phpamqplib://guest:guest@localhost:5672/%2f'
+                options:
+                    connection_reuse: producer-consumer
+                    connection_role: consumer
+            async_dispatch:
+                dsn: 'phpamqplib://guest:guest@localhost:5672/%2f'
+                options:
+                    connection_reuse: producer-consumer
+                    connection_role: producer
+```
+
+- **connection_reuse**: `none`, `producer-consumer`, or `all`. Omit to use `php_amqp_lib_messenger.connection_reuse`.
+- **connection_role**: `producer`, `consumer`, or `mixed` (default). When `connection_reuse` is `producer-consumer`, this selects which pool shares TCP connections. Use `mixed` when a single transport both consumes and publishes on one `Connection` (one channel). When `connection_reuse` is `all`, the role does not affect sharing.
 
 ## Advanced Configuration
 
@@ -113,6 +154,11 @@ framework:
                     
                     # Connection name (optional for easier identification in server logs and management UI)
                     connection_name: ''
+
+                    # Optional: override php_amqp_lib_messenger.connection_reuse (none | producer-consumer | all)
+                    # connection_reuse: none
+                    # Optional: producer | consumer | mixed — used when connection_reuse is producer-consumer (default: mixed)
+                    # connection_role: mixed
 
                     # SSL/TLS configuration
                     ssl:

@@ -13,6 +13,8 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\ConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\DsnParser;
 use Psr\Log\LoggerInterface;
 
+use function Symfony\Component\DependencyInjection\Loader\Configurator\param;
+
 return static function (ContainerConfigurator $container): void {
     $services = $container->services();
 
@@ -31,6 +33,7 @@ return static function (ContainerConfigurator $container): void {
                         ->args([
                             inline_service(AmqpConnectionFactory::class),
                         ]),
+                    param('php_amqp_lib_messenger.connection_reuse'),
                     service(LoggerInterface::class),
                 ]),
         ])
