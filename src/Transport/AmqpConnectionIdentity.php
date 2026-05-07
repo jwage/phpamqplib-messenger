@@ -6,10 +6,13 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 
+use function hash;
 use function json_encode;
 use function ksort;
 
 use const JSON_THROW_ON_ERROR;
+use const JSON_UNESCAPED_SLASHES;
+use const JSON_UNESCAPED_UNICODE;
 
 final readonly class AmqpConnectionIdentity
 {
@@ -67,6 +70,11 @@ final readonly class AmqpConnectionIdentity
             'ssl' => $normalizedSsl,
         ];
 
-        return json_encode($normalized, JSON_THROW_ON_ERROR);
+        $canonicalJson = json_encode(
+            $normalized,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        );
+
+        return hash('sha256', $canonicalJson);
     }
 }
