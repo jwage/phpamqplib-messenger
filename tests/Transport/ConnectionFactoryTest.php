@@ -8,11 +8,11 @@ use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionRegistry;
-use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionRegistryKey;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\SslConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\DsnParser;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
+use ReflectionClass;
 
 class ConnectionFactoryTest extends TestCase
 {
@@ -48,17 +48,11 @@ class ConnectionFactoryTest extends TestCase
 
     public function testConnectionReuseNoneProducesDistinctRegistryKeysPerFromDsn(): void
     {
-        $stream   = $this->createStub(AMQPStreamConnection::class);
-        $keys     = [];
-        $registry = $this->createMock(AmqpConnectionRegistry::class);
-        $registry->method('get')->willReturnCallback(
-            static function (AmqpConnectionRegistryKey $key) use ($stream, &$keys): AMQPStreamConnection {
-                $keys[] = $key->toString();
-
-                return $stream;
-            },
-        );
-        $registry->method('generation')->willReturn(0);
+        $stream = $this->createStub(AMQPStreamConnection::class);
+        $stream->method('isConnected')->willReturn(false);
+        $amqpFactory = $this->createStub(AmqpConnectionFactory::class);
+        $amqpFactory->method('create')->willReturn($stream);
+        $registry = new AmqpConnectionRegistry($amqpFactory);
 
         $factory = new ConnectionFactory(
             $this->dsnParser,
@@ -68,26 +62,21 @@ class ConnectionFactoryTest extends TestCase
         );
 
         $dsn = 'phpamqplib://guest:guest@localhost/%2f/messages';
-        $factory->fromDsn($dsn);
-        $factory->fromDsn($dsn);
+        $factory->fromDsn($dsn)->isConnected();
+        $factory->fromDsn($dsn)->isConnected();
 
+        $keys = $this->registryEntryKeyStrings($registry);
         self::assertCount(2, $keys);
         self::assertNotSame($keys[0], $keys[1]);
     }
 
     public function testConnectionReuseAllProducesSameRegistryKeyForSameBroker(): void
     {
-        $stream   = $this->createStub(AMQPStreamConnection::class);
-        $keys     = [];
-        $registry = $this->createMock(AmqpConnectionRegistry::class);
-        $registry->method('get')->willReturnCallback(
-            static function (AmqpConnectionRegistryKey $key) use ($stream, &$keys): AMQPStreamConnection {
-                $keys[] = $key->toString();
-
-                return $stream;
-            },
-        );
-        $registry->method('generation')->willReturn(0);
+        $stream = $this->createStub(AMQPStreamConnection::class);
+        $stream->method('isConnected')->willReturn(false);
+        $amqpFactory = $this->createStub(AmqpConnectionFactory::class);
+        $amqpFactory->method('create')->willReturn($stream);
+        $registry = new AmqpConnectionRegistry($amqpFactory);
 
         $factory = new ConnectionFactory(
             $this->dsnParser,
@@ -97,25 +86,20 @@ class ConnectionFactoryTest extends TestCase
         );
 
         $dsn = 'phpamqplib://guest:guest@localhost/%2f/messages';
-        $factory->fromDsn($dsn);
-        $factory->fromDsn($dsn);
+        $factory->fromDsn($dsn)->isConnected();
+        $factory->fromDsn($dsn)->isConnected();
 
-        self::assertSame($keys[0], $keys[1]);
+        $keys = $this->registryEntryKeyStrings($registry);
+        self::assertCount(1, $keys);
     }
 
     public function testConnectionReuseProducerConsumerSeparatesRoles(): void
     {
-        $stream   = $this->createStub(AMQPStreamConnection::class);
-        $keys     = [];
-        $registry = $this->createMock(AmqpConnectionRegistry::class);
-        $registry->method('get')->willReturnCallback(
-            static function (AmqpConnectionRegistryKey $key) use ($stream, &$keys): AMQPStreamConnection {
-                $keys[] = $key->toString();
-
-                return $stream;
-            },
-        );
-        $registry->method('generation')->willReturn(0);
+        $stream = $this->createStub(AMQPStreamConnection::class);
+        $stream->method('isConnected')->willReturn(false);
+        $amqpFactory = $this->createStub(AmqpConnectionFactory::class);
+        $amqpFactory->method('create')->willReturn($stream);
+        $registry = new AmqpConnectionRegistry($amqpFactory);
 
         $factory = new ConnectionFactory(
             $this->dsnParser,
@@ -125,10 +109,25 @@ class ConnectionFactoryTest extends TestCase
         );
 
         $dsn = 'phpamqplib://guest:guest@localhost/%2f/messages';
-        $factory->fromDsn($dsn, ['connection_role' => 'producer']);
-        $factory->fromDsn($dsn, ['connection_role' => 'consumer']);
+        $factory->fromDsn($dsn, ['connection_role' => 'producer'])->isConnected();
+        $factory->fromDsn($dsn, ['connection_role' => 'consumer'])->isConnected();
 
+        $keys = $this->registryEntryKeyStrings($registry);
+        self::assertCount(2, $keys);
         self::assertNotSame($keys[0], $keys[1]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function registryEntryKeyStrings(AmqpConnectionRegistry $registry): array
+    {
+        $property = (new ReflectionClass(AmqpConnectionRegistry::class))->getProperty('entries');
+        $property->setAccessible(true);
+        /** @var array<string, mixed> $entries */
+        $entries = $property->getValue($registry);
+
+        return array_keys($entries);
     }
 
     protected function setUp(): void
