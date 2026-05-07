@@ -22,7 +22,7 @@ final class AmqpConnectionRegistryKeyTest extends TestCase
             AmqpConnectionIdentity::fromConnectionConfig(new ConnectionConfig()),
             AmqpConnectionReuse::NONE,
             AmqpConnectionRole::MIXED,
-            '',
+            null,
         );
     }
 

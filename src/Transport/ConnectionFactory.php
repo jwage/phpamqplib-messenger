@@ -43,8 +43,12 @@ class ConnectionFactory
         string $dsn,
         array $options = [],
     ): Connection {
+        /** @var mixed|null $rawReuse */
         $rawReuse = $options['connection_reuse'] ?? null;
-        $rawRole  = $options['connection_role'] ?? null;
+
+        /** @var mixed|null $rawRole */
+        $rawRole = $options['connection_role'] ?? null;
+
         unset($options['connection_reuse'], $options['connection_role']);
 
         $reuse = $rawReuse !== null
@@ -57,7 +61,7 @@ class ConnectionFactory
         $connectionConfig = $this->dsnParser->parseDsn($dsn, $options);
         $brokerIdentity   = AmqpConnectionIdentity::fromConnectionConfig($connectionConfig);
 
-        $dedicatedInstanceId = '';
+        $dedicatedInstanceId = null;
         if ($reuse === AmqpConnectionReuse::NONE) {
             $dedicatedInstanceId = bin2hex(random_bytes(16));
         }

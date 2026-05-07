@@ -11,6 +11,9 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
 
+use function assert;
+use function is_string;
+
 /** @psalm-suppress InternalClass */
 class PhpAmqpLibMessengerExtension extends Extension
 {
@@ -32,6 +35,8 @@ class PhpAmqpLibMessengerExtension extends Extension
     {
         $configuration = new Configuration();
         $config        = $this->processConfiguration($configuration, $configs);
+
+        assert(isset($config['connection_reuse']) && is_string($config['connection_reuse']));
 
         $container->setParameter('php_amqp_lib_messenger.connection_reuse', $config['connection_reuse']);
 

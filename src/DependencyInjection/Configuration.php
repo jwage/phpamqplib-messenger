@@ -16,20 +16,19 @@ final class Configuration implements ConfigurationInterface
         $treeBuilder = new TreeBuilder('php_amqp_lib_messenger');
         $rootNode    = $treeBuilder->getRootNode();
 
-        $rootNode
-            ->children()
-                ->enumNode('connection_reuse')
-                    ->values(['none', 'producer-consumer', 'all'])
-                    ->defaultValue('none')
-                    ->info(
-                        'Default none matches behavior before the connection registry: one TCP connection ' .
-                        'per Connection wrapper (no cross-transport sharing). ' .
-                        'none: same as that legacy default (best isolation, e.g. CloudAMQP). ' .
-                        'producer-consumer: share TCP only within the same connection_role. ' .
-                        'all: share TCP for the same broker identity across roles (fewest connections).',
-                    )
-                ->end()
-            ->end();
+        $children            = $rootNode->children();
+        $connectionReuseNode = $children->enumNode('connection_reuse');
+        $connectionReuseNode->values(['none', 'producer-consumer', 'all']);
+        $connectionReuseNode->defaultValue('none');
+        $connectionReuseNode->info(
+            'Default none matches behavior before the connection registry: one TCP connection ' .
+            'per Connection wrapper (no cross-transport sharing). ' .
+            'none: same as that legacy default (best isolation, e.g. CloudAMQP). ' .
+            'producer-consumer: share TCP only within the same connection_role. ' .
+            'all: share TCP for the same broker identity across roles (fewest connections).',
+        );
+        $connectionReuseNode->end();
+        $children->end();
 
         return $treeBuilder;
     }

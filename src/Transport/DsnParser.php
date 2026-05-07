@@ -126,6 +126,8 @@ class DsnParser
          *         arguments?: array<string, mixed>,
          *     }|null>,
          *     connection_name?: string,
+         *     connection_reuse?: 'none'|'producer-consumer'|'all',
+         *     connection_role?: 'producer'|'consumer'|'mixed',
          * } $connectionConfig
          */
         $connectionConfig = array_replace_recursive([

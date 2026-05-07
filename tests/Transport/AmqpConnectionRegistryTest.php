@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
+use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionIdentity;
@@ -184,13 +185,32 @@ final class AmqpConnectionRegistryTest extends TestCase
         ConnectionConfig $config,
         AmqpConnectionReuse $reuse,
         AmqpConnectionRole $role,
-        string $dedicatedInstanceId = '',
+        string|null $dedicatedInstanceId = null,
     ): AmqpConnectionRegistryKey {
+        $identity = AmqpConnectionIdentity::fromConnectionConfig($config);
+
+        if ($reuse === AmqpConnectionReuse::NONE) {
+            if ($dedicatedInstanceId === null || $dedicatedInstanceId === '') {
+                throw new InvalidArgumentException('Tests must pass a non-empty dedicated id for connection_reuse=none.');
+            }
+
+            return AmqpConnectionRegistryKey::create(
+                $identity,
+                $reuse,
+                $role,
+                $dedicatedInstanceId,
+            );
+        }
+
+        if ($dedicatedInstanceId !== null) {
+            throw new InvalidArgumentException('Tests must pass null dedicated id when connection_reuse is not none.');
+        }
+
         return AmqpConnectionRegistryKey::create(
-            AmqpConnectionIdentity::fromConnectionConfig($config),
+            $identity,
             $reuse,
             $role,
-            $dedicatedInstanceId,
+            null,
         );
     }
 }

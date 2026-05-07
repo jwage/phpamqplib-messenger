@@ -144,17 +144,32 @@ class ConnectionTest extends TestCase
         ConnectionConfig $connectionConfig,
         AmqpConnectionReuse $reuse = AmqpConnectionReuse::ALL,
         AmqpConnectionRole $role = AmqpConnectionRole::MIXED,
-        string $dedicatedInstanceId = '',
+        string|null $dedicatedInstanceId = null,
     ): AmqpConnectionRegistryKey {
-        if ($reuse === AmqpConnectionReuse::NONE && $dedicatedInstanceId === '') {
-            throw new InvalidArgumentException('Tests must pass a non-empty dedicated id for connection_reuse=none.');
+        $identity = AmqpConnectionIdentity::fromConnectionConfig($connectionConfig);
+
+        if ($reuse === AmqpConnectionReuse::NONE) {
+            if ($dedicatedInstanceId === null || $dedicatedInstanceId === '') {
+                throw new InvalidArgumentException('Tests must pass a non-empty dedicated id for connection_reuse=none.');
+            }
+
+            return AmqpConnectionRegistryKey::create(
+                $identity,
+                $reuse,
+                $role,
+                $dedicatedInstanceId,
+            );
+        }
+
+        if ($dedicatedInstanceId !== null) {
+            throw new InvalidArgumentException('Tests must pass null dedicated id when connection_reuse is not none.');
         }
 
         return AmqpConnectionRegistryKey::create(
-            AmqpConnectionIdentity::fromConnectionConfig($connectionConfig),
+            $identity,
             $reuse,
             $role,
-            $dedicatedInstanceId,
+            null,
         );
     }
 
