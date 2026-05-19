@@ -30,7 +30,8 @@ class Connection
 
     private AMQPChannel|null $channel = null;
 
-    private AmqpConsumer|null $consumer = null;
+    /** @var array<string, AmqpConsumer> */
+    private array $consumers = [];
 
     private int $batchCount = 0;
 
@@ -51,13 +52,15 @@ class Connection
     public function __destruct()
     {
         try {
-            $this->consumer?->stop();
+            foreach ($this->consumers as $consumer) {
+                $consumer->stop();
+            }
         } catch (TransportException) {
         }
 
         $this->connection = null;
         $this->channel    = null;
-        $this->consumer   = null;
+        $this->consumers  = [];
     }
 
     public function getConfig(): ConnectionConfig
@@ -72,7 +75,11 @@ class Connection
 
     public function close(): void
     {
-        $this->consumer?->stop();
+        foreach ($this->consumers as $consumer) {
+            $consumer->stop();
+        }
+
+        $this->consumers = [];
         $this->connection?->close();
         $this->channel = null;
     }
@@ -82,7 +89,12 @@ class Connection
     {
         $this->connection?->reconnect();
         $this->channel = null;
-        $this->consumer?->stop();
+
+        foreach ($this->consumers as $consumer) {
+            $consumer->stop();
+        }
+
+        $this->consumers = [];
     }
 
     /**
@@ -132,7 +144,7 @@ class Connection
             $this->setupExchangeAndQueues();
         }
 
-        return ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger))->consume($queueName);
+        return ($this->consumers[$queueName] ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger))->consume($queueName);
     }
 
     /**
