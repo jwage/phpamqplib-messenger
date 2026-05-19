@@ -98,6 +98,20 @@ class Connection
         }
     }
 
+    /**
+     * Sends an AMQP heartbeat frame if the heartbeat interval has elapsed.
+     *
+     * This prevents RabbitMQ from closing the connection during long message processing.
+     */
+    public function keepalive(): void
+    {
+        if ($this->connection === null) {
+            return;
+        }
+
+        $this->connection->checkHeartBeat();
+    }
+
     /** @throws TransportException */
     public function channel(): AMQPChannel
     {
