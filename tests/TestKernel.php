@@ -21,7 +21,11 @@ class TestKernel extends Kernel implements CompilerPassInterface
 {
     use MicroKernelTrait;
 
-    /** @inheritDoc */
+    /**
+     * @return iterable<object>
+     *
+     * @psalm-suppress LessSpecificImplementedReturnType
+     */
     public function registerBundles(): iterable
     {
         return [
@@ -84,6 +88,18 @@ class TestKernel extends Kernel implements CompilerPassInterface
                                 'exchange' => ['name' => 'test_transactions_exchange'],
                                 'queues' => [
                                     'test_transactions_queue' => ['prefetch_count' => 2],
+                                ],
+                            ],
+                        ],
+                        'with_fetch_size' => [
+                            'dsn' => '%env(MESSENGER_TRANSPORT_PHPAMQPLIB_DSN)%',
+                            'options' => [
+                                'transactions_enabled' => false,
+                                'confirm_enabled' => true,
+                                'wait_timeout' => 0.10, // lower wait_timeout for tests
+                                'exchange' => ['name' => 'test_fetch_size_exchange'],
+                                'queues' => [
+                                    'test_fetch_size_queue' => ['prefetch_count' => 5],
                                 ],
                             ],
                         ],

@@ -13,6 +13,8 @@ use PhpAmqpLib\Message\AMQPMessage;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Exception\TransportException;
 
+use function array_shift;
+
 class AmqpConsumer
 {
     /** @var array<AmqpEnvelope> */
@@ -68,11 +70,14 @@ class AmqpConsumer
                 break;
             }
 
-            $buffer = $this->buffer;
-
-            $this->buffer = [];
-
-            yield from $buffer;
+            // Drain by shifting items off $this->buffer one-by-one rather than snapshotting it
+            // into a local and clearing the instance buffer up-front. If the caller breaks
+            // mid-iteration (e.g. AmqpReceiver honoring fetchSize), only the items already
+            // yielded are removed; the rest remain on $this->buffer and are picked up by the
+            // next consume() call instead of being silently dropped from PHP memory.
+            while (($amqpEnvelope = array_shift($this->buffer)) !== null) {
+                yield $amqpEnvelope;
+            }
 
             if ($stop) {
                 break;

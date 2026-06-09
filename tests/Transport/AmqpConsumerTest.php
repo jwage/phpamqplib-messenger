@@ -231,6 +231,56 @@ class AmqpConsumerTest extends TestCase
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
     }
 
+    public function testConsumePreservesUnyieldedMessagesWhenCallerBreaksEarly(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('channel')
+            ->willReturn($channel);
+        $connection->method('getQueueNames')
+            ->willReturn(['test_queue']);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::once())
+            ->method('basic_qos');
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $channel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::exactly(2))
+            ->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        $message1 = $this->createStub(AMQPMessage::class);
+        $message2 = $this->createStub(AMQPMessage::class);
+        $message3 = $this->createStub(AMQPMessage::class);
+
+        $consumer->callback($message1);
+        $consumer->callback($message2);
+        $consumer->callback($message3);
+
+        $received = [];
+
+        foreach ($consumer->consume('test_queue') as $amqpEnvelope) {
+            $received[] = $amqpEnvelope;
+
+            break;
+        }
+
+        self::assertCount(1, $received);
+
+        $remaining = iterator_to_array($consumer->consume('test_queue'), false);
+
+        self::assertCount(2, $remaining);
+    }
+
     public function testStopConsumer(): void
     {
         $channel = $this->createMock(AMQPChannel::class);

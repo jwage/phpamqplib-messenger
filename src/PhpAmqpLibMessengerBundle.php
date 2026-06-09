@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle;
 
+use Jwage\PhpAmqpLibMessengerBundle\Compat\BundleBase;
 use Jwage\PhpAmqpLibMessengerBundle\DependencyInjection\PhpAmqpLibMessengerCompilerPass;
+use Jwage\PhpAmqpLibMessengerBundle\DependencyInjection\PhpAmqpLibMessengerExtension;
 use Override;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\HttpKernel\Bundle\Bundle;
+use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 
-/** @psalm-suppress DeprecatedInterface */
-class PhpAmqpLibMessengerBundle extends Bundle
+class PhpAmqpLibMessengerBundle extends BundleBase
 {
     #[Override]
     public function build(ContainerBuilder $container): void
@@ -18,5 +19,13 @@ class PhpAmqpLibMessengerBundle extends Bundle
         parent::build($container);
 
         $container->addCompilerPass(new PhpAmqpLibMessengerCompilerPass());
+    }
+
+    private PhpAmqpLibMessengerExtension|null $bundleExtension = null;
+
+    #[Override]
+    public function getContainerExtension(): ExtensionInterface|null
+    {
+        return $this->bundleExtension ??= new PhpAmqpLibMessengerExtension();
     }
 }
