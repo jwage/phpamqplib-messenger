@@ -132,7 +132,7 @@ class AmqpReceiverTest extends TestCase
 
         $connection->expects(self::once())
             ->method('consume')
-            ->with('queue_name')
+            ->with('queue_name', null)
             ->willReturn([
                 new AmqpEnvelope($amqpMessage1),
                 new AmqpEnvelope($amqpMessage2),
@@ -193,7 +193,7 @@ class AmqpReceiverTest extends TestCase
 
         $connection->expects(self::once())
             ->method('consume')
-            ->with('queue_name')
+            ->with('queue_name', 2)
             ->willReturn([
                 new AmqpEnvelope($amqpMessage1),
                 new AmqpEnvelope($amqpMessage2),
@@ -234,7 +234,7 @@ class AmqpReceiverTest extends TestCase
 
         $connection->expects(self::exactly(2))
             ->method('consume')
-            ->with('queue_name')
+            ->with('queue_name', 2)
             ->willReturnCallback(static function () use (&$sharedBuffer): Generator {
                 while (($amqpEnvelope = array_shift($sharedBuffer)) !== null) {
                     yield $amqpEnvelope;
@@ -309,7 +309,7 @@ class AmqpReceiverTest extends TestCase
         // Mirror Connection::consume() in production: delegate to the cached AmqpConsumer
         // so the shared buffer carries over between get() calls.
         $connection->method('consume')
-            ->willReturnCallback(static fn (string $queueName) => $consumer->consume($queueName));
+            ->willReturnCallback(static fn (string $queueName, int|null $fetchSize = null) => $consumer->consume($queueName, $fetchSize));
 
         $consumer->callback(new AMQPMessage(serialize($message), ['message_id' => '1']));
         $consumer->callback(new AMQPMessage(serialize($message), ['message_id' => '2']));

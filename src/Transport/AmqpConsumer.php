@@ -22,6 +22,8 @@ class AmqpConsumer
 
     private string|null $consumerTag = null;
 
+    private int|null $effectivePrefetchCount = null;
+
     public function __construct(
         private Connection $connection,
         private ConnectionConfig $connectionConfig,
@@ -36,9 +38,22 @@ class AmqpConsumer
      * @throws TransportException
      * @throws InvalidArgumentException
      */
-    public function consume(string $queueName): iterable
+    public function consume(string $queueName, int|null $fetchSize = null): iterable
     {
         $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
+
+        $desiredPrefetch = $fetchSize !== null && $fetchSize > $queueConfig->prefetchCount
+            ? $fetchSize
+            : $queueConfig->prefetchCount;
+
+        if ($this->effectivePrefetchCount !== $desiredPrefetch || $this->consumerTag === null) {
+            $this->connection->channel()->basic_qos(
+                prefetch_size: 0,
+                prefetch_count: $desiredPrefetch,
+                a_global: false,
+            );
+            $this->effectivePrefetchCount = $desiredPrefetch;
+        }
 
         if ($this->consumerTag === null) {
             $this->start($queueConfig);
@@ -100,7 +115,8 @@ class AmqpConsumer
                 // do nothing
             }
 
-            $this->consumerTag = null;
+            $this->consumerTag            = null;
+            $this->effectivePrefetchCount = null;
         }
     }
 
@@ -111,12 +127,6 @@ class AmqpConsumer
      */
     private function start(QueueConfig $queueConfig): void
     {
-        $this->connection->channel()->basic_qos(
-            prefetch_size: 0,
-            prefetch_count: $queueConfig->prefetchCount,
-            a_global: false,
-        );
-
         $this->consumerTag = $this->connection->channel()->basic_consume(
             queue: $queueConfig->name,
             consumer_tag: '',

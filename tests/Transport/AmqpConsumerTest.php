@@ -22,6 +22,7 @@ use PHPUnit\Framework\MockObject\Stub;
 use Psr\Log\LoggerInterface;
 use Traversable;
 
+use function array_shift;
 use function iterator_to_array;
 
 class AmqpConsumerTest extends TestCase
@@ -279,6 +280,105 @@ class AmqpConsumerTest extends TestCase
         $remaining = iterator_to_array($consumer->consume('test_queue'), false);
 
         self::assertCount(2, $remaining);
+    }
+
+    public function testConsumeWithFetchSizeGreaterThanPrefetchCountOverridesPrefetch(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('channel')
+            ->willReturn($channel);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::once())
+            ->method('basic_qos')
+            ->with(
+                prefetch_size: 0,
+                prefetch_count: 50,
+                a_global: false,
+            );
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $channel->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        iterator_to_array($consumer->consume('test_queue', 50));
+    }
+
+    public function testConsumeWithFetchSizeSmallerThanPrefetchCountDoesNotOverride(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('channel')
+            ->willReturn($channel);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::once())
+            ->method('basic_qos')
+            ->with(
+                prefetch_size: 0,
+                prefetch_count: 20,
+                a_global: false,
+            );
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $channel->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        // fetchSize=5 < prefetchCount=20 → effective prefetch stays 20
+        iterator_to_array($consumer->consume('test_queue', 5));
+    }
+
+    public function testConsumeUpdatesQosWhenFetchSizeIncreasesAbovePrefetchCount(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('channel')
+            ->willReturn($channel);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $expectedPrefetchCounts = [20, 50];
+        $channel->expects(self::exactly(2))
+            ->method('basic_qos')
+            ->willReturnCallback(static function (int $prefetchSize, int $prefetchCount, bool $aGlobal) use (&$expectedPrefetchCounts): void {
+                self::assertSame(array_shift($expectedPrefetchCounts), $prefetchCount);
+            });
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $channel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::exactly(2))
+            ->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        // First consume: no fetchSize → prefetch stays at config value (20)
+        iterator_to_array($consumer->consume('test_queue'));
+
+        // Second consume: fetchSize=50 > prefetchCount=20 → QoS updated to 50
+        iterator_to_array($consumer->consume('test_queue', 50));
     }
 
     public function testStopConsumer(): void

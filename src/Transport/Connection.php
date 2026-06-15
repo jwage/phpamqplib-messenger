@@ -134,13 +134,13 @@ class Connection
      * @throws TransportException
      * @throws InvalidArgumentException
      */
-    public function consume(string $queueName): iterable
+    public function consume(string $queueName, int|null $fetchSize = null): iterable
     {
         if ($this->autoSetup) {
             $this->setupExchangeAndQueues();
         }
 
-        return ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger))->consume($queueName);
+        return ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger))->consume($queueName, $fetchSize);
     }
 
     /**

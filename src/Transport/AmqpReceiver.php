@@ -57,7 +57,7 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
 
         if ($remaining !== null) {
             foreach ($queueNames as $queueName) {
-                foreach ($this->getEnvelopes($queueName) as $envelope) {
+                foreach ($this->getEnvelopes($queueName, $fetchSize) as $envelope) {
                     yield $envelope;
 
                     if (--$remaining <= 0) {
@@ -116,9 +116,9 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
      * @throws TransportException
      * @throws Throwable
      */
-    private function getEnvelopes(string $queueName): iterable
+    private function getEnvelopes(string $queueName, int|null $fetchSize = null): iterable
     {
-        $amqpEnvelopes = $this->connection->consume($queueName);
+        $amqpEnvelopes = $this->connection->consume($queueName, $fetchSize);
 
         foreach ($amqpEnvelopes as $amqpEnvelope) {
             $body = $amqpEnvelope->getBody();
