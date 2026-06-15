@@ -16,8 +16,6 @@ use Symfony\Component\Messenger\Transport\Receiver\QueueReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Throwable;
 
-use function func_get_arg;
-use function func_num_args;
 use function max;
 
 class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
@@ -34,10 +32,10 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
      * @psalm-suppress ImplementedReturnTypeMismatch
      */
     #[Override]
-    public function get(/* int $fetchSize = 1 */): iterable
+    public function get(int|null $fetchSize = null): iterable
     {
-        if (func_num_args() > 0) {
-            yield from $this->getFromQueues($this->connection->getQueueNames(), max(1, (int) func_get_arg(0)));
+        if ($fetchSize !== null) {
+            yield from $this->getFromQueues($this->connection->getQueueNames(), max(1, $fetchSize));
 
             return;
         }
@@ -53,9 +51,9 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
      * @psalm-suppress ImplementedReturnTypeMismatch
      */
     #[Override]
-    public function getFromQueues(array $queueNames/* , int $fetchSize = 1 */): iterable
+    public function getFromQueues(array $queueNames, int|null $fetchSize = null): iterable
     {
-        $remaining = func_num_args() > 1 ? max(1, (int) func_get_arg(1)) : null;
+        $remaining = $fetchSize !== null ? max(1, $fetchSize) : null;
 
         if ($remaining !== null) {
             foreach ($queueNames as $queueName) {

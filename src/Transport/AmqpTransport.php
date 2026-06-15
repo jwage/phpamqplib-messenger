@@ -17,9 +17,6 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\SetupableTransportInterface;
 use Throwable;
 
-use function func_get_arg;
-use function func_num_args;
-
 class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterface, SetupableTransportInterface, BatchTransportInterface
 {
     public function __construct(
@@ -41,10 +38,10 @@ class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterfac
      * @psalm-suppress ImplementedReturnTypeMismatch
      */
     #[Override]
-    public function get(/* int $fetchSize = 1 */): iterable
+    public function get(int|null $fetchSize = null): iterable
     {
-        if (func_num_args() > 0) {
-            return $this->getReceiver()->get((int) func_get_arg(0));
+        if ($fetchSize !== null) {
+            return $this->getReceiver()->get($fetchSize);
         }
 
         return $this->getReceiver()->get();
@@ -58,10 +55,10 @@ class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterfac
      * @psalm-suppress ImplementedReturnTypeMismatch
      */
     #[Override]
-    public function getFromQueues(array $queueNames/* , int $fetchSize = 1 */): iterable
+    public function getFromQueues(array $queueNames, int|null $fetchSize = null): iterable
     {
-        if (func_num_args() > 1) {
-            return $this->getReceiver()->getFromQueues($queueNames, (int) func_get_arg(1));
+        if ($fetchSize !== null) {
+            return $this->getReceiver()->getFromQueues($queueNames, $fetchSize);
         }
 
         return $this->getReceiver()->getFromQueues($queueNames);
