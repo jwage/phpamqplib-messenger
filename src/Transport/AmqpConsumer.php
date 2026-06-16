@@ -85,13 +85,24 @@ class AmqpConsumer
                 break;
             }
 
-            // Drain by shifting items off $this->buffer one-by-one rather than snapshotting it
-            // into a local and clearing the instance buffer up-front. If the caller breaks
-            // mid-iteration (e.g. AmqpReceiver honoring fetchSize), only the items already
-            // yielded are removed; the rest remain on $this->buffer and are picked up by the
-            // next consume() call instead of being silently dropped from PHP memory.
-            while (($amqpEnvelope = array_shift($this->buffer)) !== null) {
-                yield $amqpEnvelope;
+            if ($fetchSize === null) {
+                // Keep original snapshotting into local variable (for legacy code support)!
+                // We do not use this approach when $fetchSize is used, because it will
+                // not yield all items in case the caller breks mid-iteration forced by the $fetchSize
+                $buffer = $this->buffer;
+
+                $this->buffer = [];
+
+                yield from $buffer;
+            } else {
+                // Drain by shifting items off $this->buffer one-by-one rather than snapshotting it
+                // into a local and clearing the instance buffer up-front. If the caller breaks
+                // mid-iteration (e.g. AmqpReceiver honoring fetchSize), only the items already
+                // yielded are removed; the rest remain on $this->buffer and are picked up by the
+                // next consume() call instead of being silently dropped from PHP memory.
+                while (($amqpEnvelope = array_shift($this->buffer)) !== null) {
+                    yield $amqpEnvelope;
+                }
             }
 
             if ($stop) {

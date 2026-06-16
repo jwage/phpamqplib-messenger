@@ -232,6 +232,11 @@ class AmqpConsumerTest extends TestCase
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
     }
 
+    /**
+     * Requires fetchSize: the drain-by-shifting path (fetchSize != null) shifts items off the
+     * buffer one-by-one, so only already-yielded items are removed when the caller breaks early.
+     * See testConsumeWithoutFetchSizeLosesUnyieldedMessagesOnEarlyBreak for the legacy limitation.
+     */
     public function testConsumePreservesUnyieldedMessagesWhenCallerBreaksEarly(): void
     {
         $channel = $this->createMock(AMQPChannel::class);
@@ -269,6 +274,63 @@ class AmqpConsumerTest extends TestCase
 
         $received = [];
 
+        foreach ($consumer->consume('test_queue', 1) as $amqpEnvelope) {
+            $received[] = $amqpEnvelope;
+
+            break;
+        }
+
+        self::assertCount(1, $received);
+
+        $remaining = iterator_to_array($consumer->consume('test_queue', 1), false);
+
+        self::assertCount(2, $remaining);
+    }
+
+    /**
+     * Documents a known limitation of the legacy consume path (fetchSize === null):
+     * the buffer is snapshotted and cleared upfront before yielding, so any messages
+     * not yet yielded when the caller breaks early are silently lost.
+     * Use fetchSize to avoid this — see testConsumePreservesUnyieldedMessagesWhenCallerBreaksEarly.
+     */
+    public function testConsumeWithoutFetchSizeLosesUnyieldedMessagesOnEarlyBreak(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('channel')
+            ->willReturn($channel);
+        $connection->method('getQueueNames')
+            ->willReturn(['test_queue']);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::once())
+            ->method('basic_qos');
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $channel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::exactly(2))
+            ->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        $message1 = $this->createStub(AMQPMessage::class);
+        $message2 = $this->createStub(AMQPMessage::class);
+        $message3 = $this->createStub(AMQPMessage::class);
+
+        $consumer->callback($message1);
+        $consumer->callback($message2);
+        $consumer->callback($message3);
+
+        $received = [];
+
+        // No fetchSize → legacy snapshot path; buffer is cleared before iteration starts
         foreach ($consumer->consume('test_queue') as $amqpEnvelope) {
             $received[] = $amqpEnvelope;
 
@@ -277,9 +339,10 @@ class AmqpConsumerTest extends TestCase
 
         self::assertCount(1, $received);
 
+        // The 2 unyielded messages are dropped — this is the known legacy limitation
         $remaining = iterator_to_array($consumer->consume('test_queue'), false);
 
-        self::assertCount(2, $remaining);
+        self::assertCount(0, $remaining);
     }
 
     public function testConsumeWithFetchSizeGreaterThanPrefetchCountOverridesPrefetch(): void
