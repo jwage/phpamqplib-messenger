@@ -9,9 +9,7 @@ use Override;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\HttpKernel\Bundle\Bundle;
 
-/**
- * @psalm-suppress DeprecatedInterface
- */
+/** @psalm-suppress DeprecatedInterface */
 class PhpAmqpLibMessengerBundle extends Bundle
 {
     #[Override]
