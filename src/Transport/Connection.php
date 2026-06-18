@@ -428,7 +428,10 @@ class Connection
         })->run();
     }
 
-    /** @throws AMQPExceptionInterface */
+    /**
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     */
     private function setupDelayExchange(): void
     {
         $this->channel()->exchange_declare(
@@ -444,7 +447,10 @@ class Connection
         $this->autoSetupDelay = false;
     }
 
-    /** @throws AMQPExceptionInterface */
+    /**
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     */
     private function setupDelayQueue(int $delay, string|null $routingKey, bool $isRetryAttempt): void
     {
         $delayQueueName = $this->connectionConfig
