@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
+use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
@@ -317,6 +318,8 @@ class ConnectionTest extends TestCase
     {
         [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks();
 
+        $amqpConnection->method('isConnected')->willReturn(true);
+
         $amqpConnection->expects(self::once())
             ->method('channel')
             ->willReturn($amqpChannel);
@@ -333,6 +336,8 @@ class ConnectionTest extends TestCase
         [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks(
             new ConnectionConfig(confirmEnabled: false),
         );
+
+        $amqpConnection->method('isConnected')->willReturn(true);
 
         $amqpConnection->expects(self::once())
             ->method('channel')
@@ -590,6 +595,118 @@ class ConnectionTest extends TestCase
         $this->connection->retry(static function (): void {
             throw new AMQPConnectionClosedException('test');
         }, waitTime: 0)->run();
+    }
+
+    public function testChannelInvalidatesCachedChannelWhenConnectionClosed(): void
+    {
+        [$connection, $amqpConnection, $amqpChannel1] = $this->createConnectionWithAllMocks();
+
+        $amqpChannel2 = $this->createMock(AMQPChannel::class);
+
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+
+        $amqpConnection->method('isConnected')
+            ->willReturn(false);
+
+        $amqpChannel1->expects(self::once())
+            ->method('confirm_select');
+
+        $amqpChannel2->expects(self::once())
+            ->method('confirm_select');
+
+        self::assertSame($amqpChannel1, $connection->channel());
+        self::assertSame($amqpChannel2, $connection->channel());
+    }
+
+    public function testPublishWithDelayReconnectsOnStaleConnection(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            confirmTimeout: 5.0,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+        $amqpConnection->expects(self::once())
+            ->method('reconnect');
+
+        $delayQueueName = $connectionConfig->getDelayQueueName(5000, '', false);
+
+        $amqpChannel1->method('confirm_select');
+        $amqpChannel2->method('confirm_select');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $connection->channel();
+
+        $amqpChannel1->expects(self::once())
+            ->method('exchange_declare');
+
+        $amqpChannel1->expects(self::once())
+            ->method('queue_declare')
+            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+
+        $amqpChannel2->expects(self::once())
+            ->method('queue_declare')
+            ->with(
+                queue: $delayQueueName,
+                passive: false,
+                durable: false,
+                exclusive: false,
+                auto_delete: true,
+                nowait: false,
+                arguments: new AMQPTable([
+                    'x-message-ttl' => 5000,
+                    'x-expires' => 15000,
+                    'x-dead-letter-exchange' => 'exchange_name',
+                    'x-dead-letter-routing-key' => '',
+                ]),
+            )
+            ->willReturn([$delayQueueName, 0]);
+
+        $amqpChannel2->expects(self::once())
+            ->method('queue_bind')
+            ->with(
+                queue: $delayQueueName,
+                exchange: 'delays',
+                routing_key: $delayQueueName,
+                nowait: false,
+            );
+
+        $amqpChannel2->expects(self::once())
+            ->method('basic_publish');
+
+        $amqpChannel2->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->with(timeout: 5);
+
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $connection->publish(body: 'test body', delayInMs: 5000);
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
     }
 
     protected function setUp(): void
