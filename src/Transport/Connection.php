@@ -94,13 +94,21 @@ class Connection
         $this->setupExchangeAndQueues();
 
         if ($this->connectionConfig->delay->enabled) {
-            $this->setupDelayExchange();
+            try {
+                $this->setupDelayExchange();
+            } catch (AMQPExceptionInterface $e) {
+                throw new TransportException($e->getMessage(), 0, $e);
+            }
         }
     }
 
     /** @throws TransportException */
     public function channel(): AMQPChannel
     {
+        if ($this->channel !== null && ! $this->isConnected()) {
+            $this->channel = null;
+        }
+
         if ($this->channel === null) {
             $channel = $this->retryWithReconnect(function (): AMQPChannel {
                 $channel = $this->connection()->channel();
@@ -411,60 +419,60 @@ class Connection
         string|null $routingKey,
         bool $isRetryAttempt,
     ): void {
-        if ($this->autoSetupDelay) {
-            $this->setupDelayExchange();
-        }
+        $this->retryWithReconnect(function () use ($delay, $routingKey, $isRetryAttempt): void {
+            if ($this->autoSetupDelay) {
+                $this->setupDelayExchange();
+            }
 
-        $this->setupDelayQueue($delay, $routingKey, $isRetryAttempt);
+            $this->setupDelayQueue($delay, $routingKey, $isRetryAttempt);
+        })->run();
     }
 
-    /** @throws TransportException */
+    /**
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     */
     private function setupDelayExchange(): void
     {
-        try {
-            $this->channel()->exchange_declare(
-                exchange: $this->connectionConfig->delay->exchange->name,
-                type: $this->connectionConfig->delay->exchange->type,
-                passive: $this->connectionConfig->delay->exchange->passive,
-                durable: $this->connectionConfig->delay->exchange->durable,
-                auto_delete: $this->connectionConfig->delay->exchange->autoDelete,
-                nowait: false,
-                arguments: new AMQPTable($this->connectionConfig->delay->exchange->arguments),
-            );
+        $this->channel()->exchange_declare(
+            exchange: $this->connectionConfig->delay->exchange->name,
+            type: $this->connectionConfig->delay->exchange->type,
+            passive: $this->connectionConfig->delay->exchange->passive,
+            durable: $this->connectionConfig->delay->exchange->durable,
+            auto_delete: $this->connectionConfig->delay->exchange->autoDelete,
+            nowait: false,
+            arguments: new AMQPTable($this->connectionConfig->delay->exchange->arguments),
+        );
 
-            $this->autoSetupDelay = false;
-        } catch (AMQPExceptionInterface $e) {
-            throw new TransportException($e->getMessage(), 0, $e);
-        }
+        $this->autoSetupDelay = false;
     }
 
-    /** @throws TransportException */
+    /**
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     */
     private function setupDelayQueue(int $delay, string|null $routingKey, bool $isRetryAttempt): void
     {
-        try {
-            $delayQueueName = $this->connectionConfig
-                ->getDelayQueueName($delay, $routingKey, $isRetryAttempt);
+        $delayQueueName = $this->connectionConfig
+            ->getDelayQueueName($delay, $routingKey, $isRetryAttempt);
 
-            $this->channel()->queue_declare(
-                queue: $delayQueueName,
-                nowait: false,
-                arguments: new AMQPTable([
-                    'x-message-ttl' => $delay,
-                    'x-expires' => $delay + 10000,
-                    'x-dead-letter-exchange' => $isRetryAttempt ? '' : $this->connectionConfig->exchange->name,
-                    'x-dead-letter-routing-key' => $routingKey ?? '',
-                ]),
-            );
+        $this->channel()->queue_declare(
+            queue: $delayQueueName,
+            nowait: false,
+            arguments: new AMQPTable([
+                'x-message-ttl' => $delay,
+                'x-expires' => $delay + 10000,
+                'x-dead-letter-exchange' => $isRetryAttempt ? '' : $this->connectionConfig->exchange->name,
+                'x-dead-letter-routing-key' => $routingKey ?? '',
+            ]),
+        );
 
-            $this->channel()->queue_bind(
-                queue: $delayQueueName,
-                exchange: $this->connectionConfig->delay->exchange->name,
-                routing_key: $delayQueueName,
-                nowait: false,
-            );
-        } catch (AMQPExceptionInterface $e) {
-            throw new TransportException($e->getMessage(), 0, $e);
-        }
+        $this->channel()->queue_bind(
+            queue: $delayQueueName,
+            exchange: $this->connectionConfig->delay->exchange->name,
+            routing_key: $delayQueueName,
+            nowait: false,
+        );
     }
 
     /** @throws AMQPExceptionInterface */
