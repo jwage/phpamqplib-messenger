@@ -101,6 +101,11 @@ framework:
                     heartbeat: 60
                     keepalive: true
 
+                    # Keepalive receiver (opt-in, requires Symfony >= 7.2 and --keepalive flag)
+                    # When enabled, the transport sends AMQP heartbeat frames during long message
+                    # processing to prevent RabbitMQ from closing the connection.
+                    keepalive_enabled: false
+
                     # Prefetch settings
                     prefetch_count: 1
 

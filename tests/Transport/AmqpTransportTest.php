@@ -8,6 +8,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceiver;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpSender;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
@@ -118,5 +119,44 @@ class AmqpTransportTest extends TestCase
             ->method('setup');
 
         $transport->setup();
+    }
+
+    public function testKeepaliveCallsConnectionWhenEnabled(): void
+    {
+        $connectionConfig = new ConnectionConfig(keepaliveEnabled: true);
+
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getConfig')->willReturn($connectionConfig);
+        $connection->expects(self::once())->method('keepalive');
+
+        $transport = $this->createTransport(connection: $connection);
+
+        $transport->keepalive(new Envelope(new stdClass()));
+    }
+
+    public function testKeepaliveDoesNotCallConnectionWhenDisabled(): void
+    {
+        $connectionConfig = new ConnectionConfig(keepaliveEnabled: false);
+
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getConfig')->willReturn($connectionConfig);
+        $connection->expects(self::never())->method('keepalive');
+
+        $transport = $this->createTransport(connection: $connection);
+
+        $transport->keepalive(new Envelope(new stdClass()));
+    }
+
+    public function testKeepaliveDisabledByDefault(): void
+    {
+        $connectionConfig = new ConnectionConfig();
+
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getConfig')->willReturn($connectionConfig);
+        $connection->expects(self::never())->method('keepalive');
+
+        $transport = $this->createTransport(connection: $connection);
+
+        $transport->keepalive(new Envelope(new stdClass()));
     }
 }

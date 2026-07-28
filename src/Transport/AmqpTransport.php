@@ -116,9 +116,15 @@ class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterfac
      *
      * Requires Symfony >= 7.2 and the --keepalive flag on messenger:consume.
      * On older Symfony versions, this method exists but is never called by the framework.
+     *
+     * This is opt-in: set keepalive_enabled: true in transport options to activate.
      */
     public function keepalive(Envelope $envelope, ?int $seconds = null): void
     {
+        if (! $this->connection->getConfig()->keepaliveEnabled) {
+            return;
+        }
+
         $this->connection->keepalive();
     }
 
