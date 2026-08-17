@@ -12,6 +12,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\DelayStamp;
 
 class BatchTest extends TestCase
 {
@@ -46,6 +47,21 @@ class BatchTest extends TestCase
         $this->batch->dispatch($message2);
 
         $this->batch->flush();
+    }
+
+    public function testPropagateStamps(): void
+    {
+        $message = new stdClass();
+        $stamp   = new DelayStamp(1234);
+
+        $this->wrappedBus->expects(self::once())
+            ->method('dispatch')
+            ->with($this->isInstanceOf(Envelope::class))
+            ->willReturnArgument(0);
+
+        $envelope = $this->batch->dispatch($message, [$stamp]);
+
+        $this->assertSame($stamp, $envelope->last($stamp::class));
     }
 
     public function testFlushTransportOncePerBatch(): void
