@@ -19,6 +19,7 @@ class DelayConfigTest extends TestCase
         self::assertSame('delays', $delayConfig->exchange->name);
         self::assertSame(AMQPExchangeType::DIRECT, $delayConfig->exchange->type);
         self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
+        self::assertFalse($delayConfig->queueDurable);
     }
 
     public function testFromArrayWithEmptyArray(): void
@@ -28,6 +29,7 @@ class DelayConfigTest extends TestCase
         self::assertSame('delays', $delayConfig->exchange->name);
         self::assertSame(AMQPExchangeType::DIRECT, $delayConfig->exchange->type);
         self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
+        self::assertFalse($delayConfig->queueDurable);
     }
 
     public function testFromArray(): void
@@ -43,6 +45,7 @@ class DelayConfigTest extends TestCase
                 'arguments' => ['arg1' => 'val1', 'arg2' => 'val2'],
             ],
             'queue_name_pattern' => 'delay_%exchange_name%_%routing_key%_%delay%',
+            'queue_durable' => true,
             'arguments' => ['arg3' => 'val3', 'arg4' => 'val4'],
         ]);
 
@@ -54,7 +57,16 @@ class DelayConfigTest extends TestCase
         self::assertTrue($delayConfig->exchange->autoDelete);
         self::assertSame(['arg1' => 'val1', 'arg2' => 'val2'], $delayConfig->exchange->arguments);
         self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
+        self::assertTrue($delayConfig->queueDurable);
         self::assertSame(['arg3' => 'val3', 'arg4' => 'val4'], $delayConfig->arguments);
+    }
+
+    public function testFromArrayWithInvalidQueueDurableType(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Invalid type "object" for key "queue_durable" (expected boolean)');
+
+        DelayConfig::fromArray(['queue_durable' => new stdClass()]);
     }
 
     /** @psalm-suppress InvalidArgument */
