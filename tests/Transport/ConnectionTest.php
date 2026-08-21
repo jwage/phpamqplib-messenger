@@ -1302,6 +1302,63 @@ class ConnectionTest extends TestCase
         }
     }
 
+    public function testAutoFlushStillFiresAfterAFailedFlushRetainedTheBatch(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(
+            new ConnectionConfig(
+                autoSetup: false,
+                confirmEnabled: false,
+                exchange: new ExchangeConfig(name: 'exchange_name'),
+            ),
+        );
+
+        $publishBatchCalls = 0;
+
+        // First flush fails, so its two messages stay buffered. The second must still be
+        // attempted even though the buffer has grown past the batch size.
+        $amqpChannel->expects(self::exactly(2))
+            ->method('publish_batch')
+            ->willReturnCallback(
+                static function () use (&$publishBatchCalls): void {
+                    $publishBatchCalls++;
+
+                    if ($publishBatchCalls === 1) {
+                        throw new AMQPConnectionClosedException('Broken pipe or closed connection');
+                    }
+                },
+            );
+
+        // Two messages on the failed attempt, then all three on the successful one.
+        $amqpChannel->expects(self::exactly(5))
+            ->method('batch_basic_publish');
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $connection->publish(body: 'body 1', batchSize: 2);
+
+            try {
+                $connection->publish(body: 'body 2', batchSize: 2);
+                self::fail('Expected TransportException was not thrown.');
+            } catch (TransportException) {
+            }
+
+            self::assertCount(2, $this->getPendingBatchMessages($connection));
+
+            // The buffer is now at 3, past the batch size of 2. With an == threshold this
+            // publish would buffer silently and never flush again.
+            $connection->publish(body: 'body 3', batchSize: 2);
+
+            self::assertSame([], $this->getPendingBatchMessages($connection));
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+    }
+
     public function testPublishDoesNotTouchChannelUntilBatchFlush(): void
     {
         [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks(

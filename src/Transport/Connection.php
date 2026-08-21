@@ -212,7 +212,10 @@ class Connection
                 $publishRoutingKey ?? '',
             ];
 
-            if (count($this->batchMessages) === $batchSize) {
+            // Compare with >= rather than ==: a flush that throws keeps its messages
+            // buffered, so an == threshold would be stepped over by the next publish and
+            // auto-flush would never fire again, growing the buffer without bound.
+            if (count($this->batchMessages) >= $batchSize) {
                 $this->flush();
             }
         } else {
