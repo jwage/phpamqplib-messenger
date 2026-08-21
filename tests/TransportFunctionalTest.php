@@ -14,6 +14,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Connection\AbstractConnection;
 use PhpAmqpLib\Wire\AMQPTable;
+use PhpAmqpLib\Wire\IO\AbstractIO;
 use ReflectionProperty;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Envelope;
@@ -478,7 +479,7 @@ class TransportFunctionalTest extends KernelTestCase
         // reflecting the protected $io over deprecated AbstractConnection::getIO().
         $ioProperty = new ReflectionProperty(AbstractConnection::class, 'io');
         $io         = $ioProperty->getValue($amqpConnection);
-        self::assertNotNull($io);
+        self::assertInstanceOf(AbstractIO::class, $io);
         $io->close();
     }
 }
