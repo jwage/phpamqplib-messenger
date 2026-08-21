@@ -1,0 +1,14 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4.0
+    ports:
+      # 5673 avoids clashing with other local brokers commonly bound to 5672.
+      - '5673:5672'
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 12

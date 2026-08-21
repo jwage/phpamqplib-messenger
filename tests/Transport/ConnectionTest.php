@@ -340,6 +340,45 @@ class ConnectionTest extends TestCase
         $connection->close();
     }
 
+    public function testCloseClearsConnectionSoNextChannelOpensFresh(): void
+    {
+        $factory         = $this->createMock(AmqpConnectionFactory::class);
+        $amqpConnection1 = $this->createMock(AMQPStreamConnection::class);
+        $amqpConnection2 = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1    = $this->createStub(AMQPChannel::class);
+        $amqpChannel2    = $this->createStub(AMQPChannel::class);
+
+        $factory->expects(self::exactly(2))
+            ->method('create')
+            ->willReturnOnConsecutiveCalls($amqpConnection1, $amqpConnection2);
+
+        $amqpConnection1->method('isConnected')->willReturn(true);
+        $amqpConnection2->method('isConnected')->willReturn(true);
+        $amqpConnection1->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel1);
+        $amqpConnection2->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel2);
+        $amqpConnection1->expects(self::once())
+            ->method('close');
+
+        $amqpChannel1->method('confirm_select');
+        $amqpChannel2->method('confirm_select');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: new ConnectionConfig(confirmEnabled: true),
+        );
+
+        self::assertSame($amqpChannel1, $connection->channel());
+
+        $connection->close();
+
+        self::assertSame($amqpChannel2, $connection->channel());
+    }
+
     public function testReconnect(): void
     {
         [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();

@@ -76,7 +76,9 @@ class Connection
     {
         $this->consumer?->stop();
         $this->connection?->close();
-        $this->channel = null;
+        $this->connection = null;
+        $this->channel    = null;
+        $this->consumer   = null;
     }
 
     /** @throws AMQPExceptionInterface */

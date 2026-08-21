@@ -20,7 +20,6 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
-use Throwable;
 use Traversable;
 
 use function assert;
@@ -71,10 +70,6 @@ class TransportFunctionalTest extends KernelTestCase
 
     public function testTransportWithTransactions(): void
     {
-        if (! $this->canPublishAndConsumeTransactionMessage()) {
-            self::markTestSkipped('AMQP transactions are not usable on this broker.');
-        }
-
         $envelopes = $this->getEnvelopes($this->transactionsTransport, 0);
 
         self::assertCount(0, $envelopes);
@@ -305,10 +300,6 @@ class TransportFunctionalTest extends KernelTestCase
 
     public function testTransactionsBatchFlushRecoversAfterBrokerSocketIsDropped(): void
     {
-        if (! $this->canPublishAndConsumeTransactionMessage()) {
-            self::markTestSkipped('AMQP transactions are not usable on this broker.');
-        }
-
         $this->drainTransport($this->transactionsTransport);
 
         $connection = $this->transactionsTransport->getConnection();
@@ -387,14 +378,10 @@ class TransportFunctionalTest extends KernelTestCase
 
         $this->transactionsTransport = $transactionsTransport;
 
-        try {
-            $this->confirmsTransport->setup();
-            $this->transactionsTransport->setup();
-            $this->drainTransport($this->confirmsTransport);
-            $this->drainTransport($this->transactionsTransport);
-        } catch (Throwable $exception) {
-            self::markTestSkipped(sprintf('AMQP broker is not available: %s', $exception->getMessage()));
-        }
+        $this->confirmsTransport->setup();
+        $this->transactionsTransport->setup();
+        $this->drainTransport($this->confirmsTransport);
+        $this->drainTransport($this->transactionsTransport);
     }
 
     protected function tearDown(): void
@@ -489,18 +476,5 @@ class TransportFunctionalTest extends KernelTestCase
         // Close the TCP stream without going through a clean AMQP close so the next
         // publish_batch write fails with a broken pipe, matching the production failure.
         $amqpConnection->getIO()->close();
-    }
-
-    private function canPublishAndConsumeTransactionMessage(): bool
-    {
-        try {
-            $this->drainTransport($this->transactionsTransport);
-            $this->bus->dispatch(new TransactionMessage(999_001));
-            $envelopes = $this->getEnvelopes($this->transactionsTransport, 1, maxEmptyPolls: 5);
-
-            return $envelopes !== [] && $envelopes[0]->getMessage()->count === 999_001;
-        } catch (Throwable) {
-            return false;
-        }
     }
 }
