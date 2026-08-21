@@ -23,6 +23,7 @@ use function array_map;
 use function array_merge;
 use function array_sum;
 use function assert;
+use function count;
 
 class Connection
 {
@@ -32,7 +33,8 @@ class Connection
 
     private AmqpConsumer|null $consumer = null;
 
-    private int $batchCount = 0;
+    /** @var list<array{0: AMQPMessage, 1: string, 2: string}> */
+    private array $batchMessages = [];
 
     private bool $autoSetup;
 
@@ -197,15 +199,15 @@ class Connection
         $shouldBatchPublish = $batchSize > 1 && $isRetryAttempt === false;
 
         if ($shouldBatchPublish) {
-            $this->channel()->batch_basic_publish(
-                message: $amqpEnvelope->getAMQPMessage(),
-                exchange: $exchangeName,
-                routing_key: $publishRoutingKey ?? '',
-            );
+            // Own the batch buffer here so flush can retry with reconnect without
+            // silently dropping messages when channel() replaces a dead channel.
+            $this->batchMessages[] = [
+                $amqpEnvelope->getAMQPMessage(),
+                $exchangeName,
+                $publishRoutingKey ?? '',
+            ];
 
-            $this->batchCount++;
-
-            if ($this->batchCount === $batchSize) {
+            if (count($this->batchMessages) === $batchSize) {
                 $this->flush();
             }
         } else {
@@ -242,32 +244,45 @@ class Connection
     /** @throws TransportException */
     public function flush(): void
     {
-        // We don't want to use retryWithReconnect() here because it needs to be retried on the same connection and channel
-        $this->retry(function (): void {
+        if ($this->batchMessages === []) {
+            return;
+        }
+
+        $this->retryWithReconnect(function (): void {
+            $channel = $this->channel();
+
+            foreach ($this->batchMessages as [$message, $exchangeName, $routingKey]) {
+                $channel->batch_basic_publish(
+                    message: $message,
+                    exchange: $exchangeName,
+                    routing_key: $routingKey,
+                );
+            }
+
             if ($this->connectionConfig->transactionsEnabled) {
-                $this->channel()->tx_select();
+                $channel->tx_select();
             }
 
             try {
-                $this->channel()->publish_batch();
+                $channel->publish_batch();
             } catch (AMQPExceptionInterface $e) {
                 if ($this->connectionConfig->transactionsEnabled) {
-                    $this->channel()->tx_rollback();
+                    $channel->tx_rollback();
                 }
 
                 throw $e;
             }
 
             if ($this->connectionConfig->transactionsEnabled) {
-                $this->channel()->tx_commit();
+                $channel->tx_commit();
             }
 
             if ($this->connectionConfig->confirmEnabled) {
-                $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
             }
         })->run();
 
-        $this->batchCount = 0;
+        $this->batchMessages = [];
     }
 
     public function countMessagesInQueues(): int
