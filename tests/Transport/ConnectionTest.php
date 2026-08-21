@@ -239,8 +239,9 @@ class ConnectionTest extends TestCase
      *     3: AMQPChannel&MockObject,
      * }
      */
-    private function createConnectionForBatchFlushReconnectTest(
+    private function createConnectionForBatchFlushRetryTest(
         ConnectionConfig|null $connectionConfig = null,
+        bool $requiresReconnect = false,
     ): array {
         $connectionConfig ??= new ConnectionConfig(
             autoSetup: false,
@@ -259,11 +260,23 @@ class ConnectionTest extends TestCase
 
         $factory->method('create')->willReturn($amqpConnection);
         $amqpConnection->method('isConnected')->willReturn(true);
-        $amqpConnection->expects(self::exactly(2))
-            ->method('channel')
-            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
-        $amqpConnection->expects(self::once())
-            ->method('reconnect');
+        if ($requiresReconnect) {
+            $amqpConnection->expects(self::exactly(3))
+                ->method('channel')
+                ->willReturnOnConsecutiveCalls(
+                    $amqpChannel1,
+                    self::throwException(new AMQPConnectionClosedException('Connection is still closed')),
+                    $amqpChannel2,
+                );
+            $amqpConnection->expects(self::once())
+                ->method('reconnect');
+        } else {
+            $amqpConnection->expects(self::exactly(2))
+                ->method('channel')
+                ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+            $amqpConnection->expects(self::never())
+                ->method('reconnect');
+        }
 
         $amqpChannel1->method('confirm_select');
         $amqpChannel2->method('confirm_select');
@@ -930,7 +943,9 @@ class ConnectionTest extends TestCase
 
     public function testFlushRepublishesBatchAfterConnectionClosed(): void
     {
-        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushReconnectTest();
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushRetryTest(
+            requiresReconnect: true,
+        );
 
         $body1 = 'test body 1';
         $body2 = 'test body 2';
@@ -976,7 +991,7 @@ class ConnectionTest extends TestCase
 
     public function testFlushRepublishesBatchAfterChannelClosed(): void
     {
-        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushReconnectTest();
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushRetryTest();
 
         $body1 = 'test body 1';
         $body2 = 'test body 2';
@@ -1013,7 +1028,9 @@ class ConnectionTest extends TestCase
 
     public function testFlushRepublishesPartialBatchAfterConnectionClosed(): void
     {
-        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushReconnectTest();
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushRetryTest(
+            requiresReconnect: true,
+        );
 
         $body1 = 'partial body 1';
         $body2 = 'partial body 2';
@@ -1058,9 +1075,9 @@ class ConnectionTest extends TestCase
         self::assertSame([], $this->getPendingBatchMessages($connection));
     }
 
-    public function testFlushRepublishesBatchWhenWaitForPendingAcksFails(): void
+    public function testFlushRepublishesBatchWithoutReconnectWhenWaitForPendingAcksTimesOut(): void
     {
-        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushReconnectTest();
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushRetryTest();
 
         $body1 = 'confirm body 1';
         $body2 = 'confirm body 2';
@@ -1076,7 +1093,7 @@ class ConnectionTest extends TestCase
 
         $amqpChannel1->expects(self::once())
             ->method('wait_for_pending_acks')
-            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+            ->willThrowException(new AMQPTimeoutException('Confirm timeout'));
 
         $amqpChannel2->expects(self::exactly(2))
             ->method('batch_basic_publish')
@@ -1100,7 +1117,7 @@ class ConnectionTest extends TestCase
 
     public function testFlushWithTransactionsRepublishesBatchAfterConnectionClosed(): void
     {
-        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushReconnectTest(
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushRetryTest(
             new ConnectionConfig(
                 autoSetup: false,
                 confirmEnabled: false,
@@ -1110,6 +1127,7 @@ class ConnectionTest extends TestCase
                     'queue_name' => new QueueConfig(name: 'queue_name'),
                 ],
             ),
+            requiresReconnect: true,
         );
 
         $body1 = 'tx body 1';

@@ -256,7 +256,11 @@ class Connection
             return;
         }
 
-        $this->retryWithReconnect(function (): void {
+        // Do not reconnect proactively here: the connection is shared with the receiver,
+        // and reconnecting would invalidate acknowledgements for in-flight deliveries.
+        // A failed attempt discards its dirty channel below; channel() will reconnect
+        // lazily if the underlying connection is actually dead.
+        $this->retry(function (): void {
             try {
                 $channel = $this->channel();
 
