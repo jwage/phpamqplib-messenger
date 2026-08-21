@@ -54,7 +54,7 @@ class Connection
     public function __destruct()
     {
         try {
-            $this->consumer?->stop();
+            $this->stopConsumer();
         } catch (TransportException) {
         }
 
@@ -73,10 +73,11 @@ class Connection
         return $this->connection !== null && $this->connection->isConnected();
     }
 
+    /** @throws TransportException */
     public function close(): void
     {
         try {
-            $this->consumer?->stop();
+            $this->stopConsumer();
             $this->connection?->close();
         } finally {
             $this->connection = null;
@@ -370,6 +371,24 @@ class Connection
     {
         $this->channel = null;
         $this->consumer?->invalidate();
+    }
+
+    /** @throws TransportException */
+    private function stopConsumer(): void
+    {
+        if ($this->consumer === null) {
+            return;
+        }
+
+        if ($this->isConnected()) {
+            $this->consumer->stop();
+
+            return;
+        }
+
+        // A consumer tag belongs to its original channel. Resolving a channel after the
+        // connection dies would reconnect only to cancel that stale tag, delaying close().
+        $this->consumer->invalidate();
     }
 
     private function getRoutingKeyForMessage(AmqpStamp|null $amqpStamp): string|null

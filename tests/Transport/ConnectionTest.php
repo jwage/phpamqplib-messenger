@@ -31,6 +31,7 @@ use Symfony\Component\Messenger\Exception\TransportException;
 use Traversable;
 
 use function assert;
+use function is_array;
 use function iterator_to_array;
 
 class ConnectionTest extends TestCase
@@ -355,6 +356,74 @@ class ConnectionTest extends TestCase
         $connection->channel();
 
         $connection->close();
+    }
+
+    public function testCloseInvalidatesAConsumerWithoutOpeningAChannelWhenConnectionIsDead(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: ['queue_name' => new QueueConfig(name: 'queue_name')],
+        );
+
+        $factory        = $this->createMock(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->expects(self::once())
+            ->method('create')
+            ->willReturn($amqpConnection);
+
+        $amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel);
+        $amqpConnection->expects(self::exactly(4))
+            ->method('isConnected')
+            ->willReturnOnConsecutiveCalls(true, true, true, false);
+        $amqpConnection->expects(self::never())
+            ->method('reconnect');
+        $amqpConnection->expects(self::once())
+            ->method('close');
+
+        $amqpChannel->expects(self::once())
+            ->method('basic_qos');
+        $amqpChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag');
+        $amqpChannel->expects(self::once())
+            ->method('is_consuming')
+            ->willReturn(true);
+        $amqpChannel->expects(self::once())
+            ->method('wait')
+            ->willThrowException(new AMQPTimeoutException('poll timeout'));
+        $amqpChannel->expects(self::never())
+            ->method('basic_cancel');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        self::assertSame([], iterator_to_array($connection->consume('queue_name')));
+
+        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
+        assert($consumer instanceof AmqpConsumer);
+
+        $consumerTagProperty = new ReflectionProperty(AmqpConsumer::class, 'consumerTag');
+        self::assertSame('consumer-tag', $consumerTagProperty->getValue($consumer));
+
+        $consumer->callback(new AMQPMessage('stale delivery'));
+
+        $bufferProperty = new ReflectionProperty(AmqpConsumer::class, 'buffer');
+        $buffer         = $bufferProperty->getValue($consumer);
+        assert(is_array($buffer));
+        self::assertCount(1, $buffer);
+
+        $connection->close();
+
+        self::assertNull($consumerTagProperty->getValue($consumer));
+        self::assertSame([], $bufferProperty->getValue($consumer));
     }
 
     public function testCloseClearsConnectionSoNextChannelOpensFresh(): void
