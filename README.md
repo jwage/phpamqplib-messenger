@@ -65,21 +65,3 @@ We would like to express our sincere gratitude to [@videlalvaro](https://github.
 ## License
 
 This bundle is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Running tests
-
-Functional tests need a RabbitMQ broker. This machine often already has something on `5672` (for example another project's LavinMQ), so the test suite defaults to **port 5673**.
-
-```bash
-docker compose up -d --wait
-./vendor/bin/phpunit
-docker compose down
-```
-
-Override the DSN if needed:
-
-```bash
-MESSENGER_TRANSPORT_PHPAMQPLIB_DSN='phpamqplib://guest:guest@127.0.0.1:5673/%2f/messages' ./vendor/bin/phpunit
-```
-
-If the broker is down or unreachable, functional tests **fail** (they do not skip).
