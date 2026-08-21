@@ -1776,6 +1776,109 @@ class ConnectionTest extends TestCase
         }
     }
 
+    public function testDirectPublishWaitsForARetainedBatchToFlushFirst(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+        $amqpChannel3   = $this->createMock(AMQPChannel::class);
+        $publishStep    = 0;
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(3))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2, $amqpChannel3);
+
+        foreach ([$amqpChannel1, $amqpChannel2, $amqpChannel3] as $amqpChannel) {
+            $amqpChannel->expects(self::exactly(2))
+                ->method('batch_basic_publish');
+        }
+
+        $amqpChannel1->expects(self::once())
+            ->method('publish_batch')
+            ->willThrowException(new AMQPConnectionClosedException('Initial flush failed'));
+        $amqpChannel1->expects(self::once())
+            ->method('closeIfDisconnected')
+            ->willReturn(false);
+        $amqpChannel1->expects(self::never())
+            ->method('basic_publish');
+
+        $amqpChannel2->expects(self::once())
+            ->method('publish_batch')
+            ->willThrowException(new AMQPConnectionClosedException('Retained flush still failed'));
+        $amqpChannel2->expects(self::once())
+            ->method('closeIfDisconnected')
+            ->willReturn(false);
+        $amqpChannel2->expects(self::never())
+            ->method('basic_publish');
+
+        $amqpChannel3->expects(self::once())
+            ->method('publish_batch')
+            ->willReturnCallback(
+                static function () use (&$publishStep): void {
+                    self::assertSame(0, $publishStep);
+                    $publishStep++;
+                },
+            );
+        $amqpChannel3->expects(self::once())
+            ->method('basic_publish')
+            ->willReturnCallback(
+                static function () use (&$publishStep): void {
+                    self::assertSame(1, $publishStep);
+                    $publishStep++;
+                },
+            );
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $connection->publish(body: 'old body 1', batchSize: 3);
+        $connection->publish(body: 'old body 2', batchSize: 3);
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                $connection->flush();
+                self::fail('Expected the initial flush to fail.');
+            } catch (TransportException) {
+            }
+
+            self::assertCount(2, $this->getPendingBatchMessages($connection));
+
+            try {
+                $connection->publish(body: 'new direct body');
+                self::fail('Expected the retained batch flush to fail.');
+            } catch (TransportException) {
+            }
+
+            // The newer direct message was not attempted while the older batch still failed.
+            self::assertSame(0, $publishStep);
+            self::assertCount(2, $this->getPendingBatchMessages($connection));
+
+            $connection->publish(body: 'new direct body');
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        self::assertSame([], $this->getPendingBatchMessages($connection));
+    }
+
     public function testRepeatedFlushesWhileBrokerIsBlockedDoNotKeepOpeningChannels(): void
     {
         $connectionConfig = new ConnectionConfig(

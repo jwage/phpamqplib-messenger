@@ -164,6 +164,16 @@ class Connection
         int $batchSize = 1,
         AmqpStamp|null $amqpStamp = null,
     ): void {
+        $isRetryAttempt     = $amqpStamp && $amqpStamp->isRetryAttempt();
+        $shouldBatchPublish = $batchSize > 1 && $isRetryAttempt === false;
+
+        // Messages already accepted into the batch must reach the broker before a newer
+        // direct publish. If the retained batch still cannot flush, do not publish the
+        // newer message out of order.
+        if (! $shouldBatchPublish && $this->batchMessages !== []) {
+            $this->flush();
+        }
+
         if ($this->autoSetup) {
             $this->setupExchangeAndQueues();
         }
@@ -172,9 +182,8 @@ class Connection
 
         $amqpEnvelope = $this->createAMQPEnvelope($body, $attributes, $headers);
 
-        $isDelayed      = $delayInMs > 0;
-        $isRetryAttempt = $amqpStamp && $amqpStamp->isRetryAttempt();
-        $routingKey     = $this->getRoutingKeyForMessage($amqpStamp);
+        $isDelayed  = $delayInMs > 0;
+        $routingKey = $this->getRoutingKeyForMessage($amqpStamp);
 
         if ($isDelayed) {
             $publishRoutingKey = $this->connectionConfig->getDelayQueueName(
@@ -202,8 +211,6 @@ class Connection
          * The original message may have been published in a batch and a retry will still have a
          * batch size defined but we should not batch publish when it is a retry attempt.
          */
-        $shouldBatchPublish = $batchSize > 1 && $isRetryAttempt === false;
-
         if ($shouldBatchPublish) {
             // Own the batch buffer here so flush can retry with reconnect without
             // silently dropping messages when channel() replaces a dead channel.
