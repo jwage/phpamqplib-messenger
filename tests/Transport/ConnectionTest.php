@@ -380,7 +380,7 @@ class ConnectionTest extends TestCase
         self::assertSame($amqpChannel2, $connection->channel());
     }
 
-    public function testCloseDiscardsPendingBatchMessages(): void
+    public function testCloseRetainsPendingBatchMessagesSoALaterFlushStillPublishesThem(): void
     {
         [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(
             new ConnectionConfig(
@@ -390,10 +390,15 @@ class ConnectionTest extends TestCase
             ),
         );
 
-        $amqpChannel->expects(self::never())
-            ->method('batch_basic_publish');
+        $amqpMessage = $this->createPersistentAmqpMessage('pending body');
 
-        $amqpChannel->expects(self::never())
+        // The batch buffer is owned by this class and is not tied to any one connection,
+        // so closing must not throw away messages publish() has already accepted.
+        $amqpChannel->expects(self::once())
+            ->method('batch_basic_publish')
+            ->with($amqpMessage, 'exchange_name');
+
+        $amqpChannel->expects(self::once())
             ->method('publish_batch');
 
         $connection->publish(body: 'pending body', batchSize: 5);
@@ -402,12 +407,14 @@ class ConnectionTest extends TestCase
 
         $connection->close();
 
-        self::assertSame([], $this->getPendingBatchMessages($connection));
+        self::assertCount(1, $this->getPendingBatchMessages($connection));
 
         $connection->flush();
+
+        self::assertSame([], $this->getPendingBatchMessages($connection));
     }
 
-    public function testCloseDiscardsPendingBatchMessagesWhenConnectionCloseFails(): void
+    public function testCloseRetainsPendingBatchMessagesWhenConnectionCloseFails(): void
     {
         [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock(
             new ConnectionConfig(
@@ -435,9 +442,13 @@ class ConnectionTest extends TestCase
             self::assertSame($closeException, $exception);
         }
 
-        self::assertSame([], $this->getPendingBatchMessages($connection));
+        // A failing close() still resets the connection state, but the pending batch
+        // survives so the next flush() publishes it onto a fresh connection.
+        self::assertCount(1, $this->getPendingBatchMessages($connection));
 
         $connection->flush();
+
+        self::assertSame([], $this->getPendingBatchMessages($connection));
     }
 
     public function testReconnect(): void

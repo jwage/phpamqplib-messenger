@@ -79,10 +79,9 @@ class Connection
             $this->consumer?->stop();
             $this->connection?->close();
         } finally {
-            $this->connection    = null;
-            $this->channel       = null;
-            $this->consumer      = null;
-            $this->batchMessages = [];
+            $this->connection = null;
+            $this->channel    = null;
+            $this->consumer   = null;
         }
     }
 

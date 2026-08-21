@@ -241,7 +241,7 @@ class SomeService
 
 Batched `flush()` follows the same **at-least-once** contract as single publishes: the transport owns the pending batch and retries after connection/confirm failures. If `publish_batch()` reaches the broker but a later confirm wait fails, a retry can republish the same messages. Handlers must be idempotent (or use the deduplication plugin below).
 
-Calling `Connection::close()` discards any unflushed batch buffer; those messages are not sent later.
+The pending batch is owned by the transport rather than by a single AMQP channel, so it survives a reconnect or a `Connection::close()`: messages accepted by `publish()` stay buffered until a `flush()` succeeds.
 
 ## Deduplication Plugin
 
