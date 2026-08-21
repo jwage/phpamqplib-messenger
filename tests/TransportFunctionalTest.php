@@ -527,8 +527,11 @@ class TransportFunctionalTest extends KernelTestCase
 
         $this->bus->dispatch(new ConfirmMessage(901));
 
+        /** @var Traversable<Envelope> $receivedEnvelopes */
+        $receivedEnvelopes = $this->confirmsTransport->get();
+
         /** @var list<Envelope> $received */
-        $received = iterator_to_array($this->confirmsTransport->get(), false);
+        $received = iterator_to_array($receivedEnvelopes, false);
         self::assertCount(1, $received);
 
         $connection      = $this->confirmsTransport->getConnection();

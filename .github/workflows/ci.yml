@@ -70,7 +70,6 @@ jobs:
         run: ./vendor/bin/phpcs
 
       - name: Psalm
-        if: matrix.dependencies == 'highest'
         run: ./vendor/bin/psalm
 
       - name: PHPUnit

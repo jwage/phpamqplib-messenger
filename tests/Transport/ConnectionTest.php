@@ -412,7 +412,10 @@ class ConnectionTest extends TestCase
             connectionConfig: $connectionConfig,
         );
 
-        self::assertSame([], iterator_to_array($connection->consume('queue_name')));
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+
+        self::assertSame([], iterator_to_array($envelopes));
 
         $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
         assert($consumer instanceof AmqpConsumer);
@@ -592,7 +595,10 @@ class ConnectionTest extends TestCase
         );
 
         // Register a consumer on its dedicated channel.
-        self::assertSame([], iterator_to_array($connection->consume('queue_name')));
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+
+        self::assertSame([], iterator_to_array($envelopes));
 
         $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
         assert($consumer instanceof AmqpConsumer);
@@ -613,7 +619,10 @@ class ConnectionTest extends TestCase
         }
 
         // The original consumer remains registered and its delivery remains usable.
-        self::assertSame([$bufferedEnvelope], iterator_to_array($connection->consume('queue_name')));
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+
+        self::assertSame([$bufferedEnvelope], iterator_to_array($envelopes));
         self::assertSame([], $bufferProperty->getValue($consumer));
 
         // Leave no live registration behind: __destruct() would otherwise call stop(),
@@ -685,11 +694,17 @@ class ConnectionTest extends TestCase
             connectionConfig: $connectionConfig,
         );
 
-        self::assertSame([], iterator_to_array($connection->consume('queue_name')));
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+
+        self::assertSame([], iterator_to_array($envelopes));
 
         $connected = false;
 
-        self::assertSame([], iterator_to_array($connection->consume('queue_name')));
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+
+        self::assertSame([], iterator_to_array($envelopes));
 
         $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
         assert($consumer instanceof AmqpConsumer);
