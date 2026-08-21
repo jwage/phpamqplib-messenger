@@ -407,6 +407,39 @@ class ConnectionTest extends TestCase
         $connection->flush();
     }
 
+    public function testCloseDiscardsPendingBatchMessagesWhenConnectionCloseFails(): void
+    {
+        [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock(
+            new ConnectionConfig(
+                autoSetup: false,
+                confirmEnabled: false,
+                exchange: new ExchangeConfig(name: 'exchange_name'),
+            ),
+        );
+
+        $connection->channel();
+        $connection->publish(body: 'pending body', batchSize: 5);
+
+        self::assertCount(1, $this->getPendingBatchMessages($connection));
+
+        $closeException = new AMQPConnectionClosedException('Connection close failed');
+
+        $amqpConnection->expects(self::once())
+            ->method('close')
+            ->willThrowException($closeException);
+
+        try {
+            $connection->close();
+            self::fail('Expected connection close to fail.');
+        } catch (AMQPConnectionClosedException $exception) {
+            self::assertSame($closeException, $exception);
+        }
+
+        self::assertSame([], $this->getPendingBatchMessages($connection));
+
+        $connection->flush();
+    }
+
     public function testReconnect(): void
     {
         [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();

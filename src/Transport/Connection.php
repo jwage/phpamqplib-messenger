@@ -75,12 +75,15 @@ class Connection
 
     public function close(): void
     {
-        $this->consumer?->stop();
-        $this->connection?->close();
-        $this->connection    = null;
-        $this->channel       = null;
-        $this->consumer      = null;
-        $this->batchMessages = [];
+        try {
+            $this->consumer?->stop();
+            $this->connection?->close();
+        } finally {
+            $this->connection    = null;
+            $this->channel       = null;
+            $this->consumer      = null;
+            $this->batchMessages = [];
+        }
     }
 
     /** @throws AMQPExceptionInterface */
