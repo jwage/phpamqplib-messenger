@@ -239,6 +239,10 @@ class SomeService
 }
 ```
 
+Batched `flush()` follows the same **at-least-once** contract as single publishes: the transport owns the pending batch and retries after connection/confirm failures. If `publish_batch()` reaches the broker but a later confirm wait fails, a retry can republish the same messages. Handlers must be idempotent (or use the deduplication plugin below).
+
+Calling `Connection::close()` discards any unflushed batch buffer; those messages are not sent later.
+
 ## Deduplication Plugin
 
 This bundle prioritizes message reliability over raw performance. By default, confirms are enabled to ensure that messages are acknowledged by the server. In the event of a connection exception, publishes are retried if there is uncertainty about whether a message was received by the server. This approach ensures that messages are not lost, but it also means that a message could potentially be published twice. Therefore, it is crucial to ensure that your message handlers are 100% idempotent to handle such scenarios gracefully.

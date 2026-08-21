@@ -13,6 +13,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Connection\AbstractConnection;
+use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use PhpAmqpLib\Wire\IO\AbstractIO;
 use ReflectionProperty;
@@ -359,6 +360,51 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertSame(0, $connection->countMessagesInQueues());
     }
 
+    public function testBatchFlushCanDuplicateWhenConfirmsFailAfterPublishReachesBroker(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $connection = $this->confirmsTransport->getConnection();
+        $connection->channel();
+
+        $body1 = 'confirm-fail-after-write-501';
+        $body2 = 'confirm-fail-after-write-502';
+
+        $connection->publish(body: $body1, batchSize: 3);
+        $connection->publish(body: $body2, batchSize: 3);
+
+        $pendingBatchMessages = $this->getPendingBatchMessages($connection);
+
+        self::assertCount(2, $pendingBatchMessages);
+
+        // Match the proven reconnect publish path so the first write reaches the broker.
+        $this->dropUnderlyingAmqpSocket($connection);
+
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $connection->flush();
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        self::assertSame(2, $connection->countMessagesInQueues());
+        self::assertSame([], $this->getPendingBatchMessages($connection));
+
+        // Restore the owned buffer as if confirm wait had failed after publish_batch
+        // (batchMessages would still be retained) and flush again — at-least-once republish.
+        $this->setPendingBatchMessages($connection, $pendingBatchMessages);
+        $connection->flush();
+
+        self::assertSame(4, $connection->countMessagesInQueues());
+        self::assertSame([], $this->getPendingBatchMessages($connection));
+
+        $connection->channel()->queue_purge('test_confirms_queue');
+
+        self::assertSame(0, $connection->countMessagesInQueues());
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -481,5 +527,23 @@ class TransportFunctionalTest extends KernelTestCase
         $io         = $ioProperty->getValue($amqpConnection);
         self::assertInstanceOf(AbstractIO::class, $io);
         $io->close();
+    }
+
+    /** @return list<array{0: AMQPMessage, 1: string, 2: string}> */
+    private function getPendingBatchMessages(Connection $connection): array
+    {
+        $batchMessagesProperty = new ReflectionProperty(Connection::class, 'batchMessages');
+
+        /** @var list<array{0: AMQPMessage, 1: string, 2: string}> $batchMessages */
+        $batchMessages = $batchMessagesProperty->getValue($connection);
+
+        return $batchMessages;
+    }
+
+    /** @param list<array{0: AMQPMessage, 1: string, 2: string}> $batchMessages */
+    private function setPendingBatchMessages(Connection $connection, array $batchMessages): void
+    {
+        $batchMessagesProperty = new ReflectionProperty(Connection::class, 'batchMessages');
+        $batchMessagesProperty->setValue($connection, $batchMessages);
     }
 }

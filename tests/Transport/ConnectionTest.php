@@ -380,6 +380,33 @@ class ConnectionTest extends TestCase
         self::assertSame($amqpChannel2, $connection->channel());
     }
 
+    public function testCloseDiscardsPendingBatchMessages(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(
+            new ConnectionConfig(
+                autoSetup: false,
+                confirmEnabled: false,
+                exchange: new ExchangeConfig(name: 'exchange_name'),
+            ),
+        );
+
+        $amqpChannel->expects(self::never())
+            ->method('batch_basic_publish');
+
+        $amqpChannel->expects(self::never())
+            ->method('publish_batch');
+
+        $connection->publish(body: 'pending body', batchSize: 5);
+
+        self::assertCount(1, $this->getPendingBatchMessages($connection));
+
+        $connection->close();
+
+        self::assertSame([], $this->getPendingBatchMessages($connection));
+
+        $connection->flush();
+    }
+
     public function testReconnect(): void
     {
         [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();
