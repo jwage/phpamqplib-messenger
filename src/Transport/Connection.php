@@ -88,9 +88,8 @@ class Connection
     /** @throws AMQPExceptionInterface */
     public function reconnect(): void
     {
+        $this->discardChannel();
         $this->connection?->reconnect();
-        $this->channel = null;
-        $this->consumer?->stop();
     }
 
     /**
@@ -291,7 +290,7 @@ class Connection
                 // A failed publish_batch can leave messages in php-amqplib's per-channel
                 // batch buffer. Drop the cached channel so a later flush() cannot append
                 // onto that leftover buffer and duplicate when the broker recovers.
-                $this->channel = null;
+                $this->discardChannel();
 
                 throw $e;
             }
@@ -350,6 +349,20 @@ class Connection
             $waitTime,
             $jitter,
         );
+    }
+
+    /**
+     * Drops the cached channel and anything registered on it.
+     *
+     * The channel is shared by publishing and consuming, so a consumer registered on the
+     * discarded channel must forget its registration too, otherwise consume() would skip
+     * re-registering and then poll a replacement channel that has no consumer on it --
+     * receiving nothing, forever, without raising anything.
+     */
+    private function discardChannel(): void
+    {
+        $this->channel = null;
+        $this->consumer?->invalidate();
     }
 
     private function getRoutingKeyForMessage(AmqpStamp|null $amqpStamp): string|null

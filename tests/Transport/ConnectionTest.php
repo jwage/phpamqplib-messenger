@@ -8,6 +8,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConsumer;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
@@ -21,6 +22,7 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPChannelClosedException;
 use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
+use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -28,6 +30,7 @@ use ReflectionProperty;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Traversable;
 
+use function assert;
 use function iterator_to_array;
 
 class ConnectionTest extends TestCase
@@ -449,6 +452,88 @@ class ConnectionTest extends TestCase
         $connection->flush();
 
         self::assertSame([], $this->getPendingBatchMessages($connection));
+    }
+
+    public function testConsumerResumesOnANewChannelAfterANonRetryableFlushFailure(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            queues: ['queue_name' => new QueueConfig(name: 'queue_name')],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        // A blocked connection is still connected, so channel() only replaces the cached
+        // channel because the failed flush discarded it -- not because of a disconnect.
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+        // AMQPConnectionBlockedException is not retryable, so nothing reconnects.
+        $amqpConnection->expects(self::never())
+            ->method('reconnect');
+
+        $staleEnvelope = new AmqpEnvelope(new AMQPMessage('stale delivery'));
+
+        $amqpChannel1->method('is_consuming')->willReturn(true);
+        $amqpChannel1->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag-1');
+        $amqpChannel1->method('wait')->willThrowException(new AMQPTimeoutException('poll timeout'));
+        $amqpChannel1->expects(self::once())
+            ->method('publish_batch')
+            ->willThrowException(new AMQPConnectionBlockedException('Connection blocked'));
+
+        $amqpChannel2->method('is_consuming')->willReturn(true);
+        $amqpChannel2->method('wait')->willThrowException(new AMQPTimeoutException('poll timeout'));
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        // 1. Register a consumer on channel1.
+        self::assertSame([], iterator_to_array($connection->consume('queue_name')));
+
+        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
+        assert($consumer instanceof AmqpConsumer);
+
+        // A delivery buffered on channel1, whose delivery tag dies with that channel.
+        $bufferProperty = new ReflectionProperty(AmqpConsumer::class, 'buffer');
+        $bufferProperty->setValue($consumer, [$staleEnvelope]);
+
+        // 2. The batch flush fails with a non-retryable error, discarding channel1.
+        $connection->publish(body: 'body 1', batchSize: 3);
+        $connection->publish(body: 'body 2', batchSize: 3);
+
+        try {
+            $connection->flush();
+            self::fail('Expected AMQPConnectionBlockedException was not thrown.');
+        } catch (AMQPConnectionBlockedException $exception) {
+            self::assertSame('Connection blocked', $exception->getMessage());
+        }
+
+        // 4. basic_consume is issued on channel2, so consumption resumes rather than
+        //    silently polling a channel that has no consumer registered on it.
+        $amqpChannel2->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag-2');
+
+        // 3. and 5. The next consume() re-registers and yields nothing, because the stale
+        //    envelope buffered against the discarded channel was dropped with it.
+        self::assertSame([], iterator_to_array($connection->consume('queue_name')));
+        self::assertSame([], $bufferProperty->getValue($consumer));
+
+        // Leave no live registration behind: __destruct() would otherwise call stop(),
+        // which resolves a channel against a mock PHPUnit has already torn down.
+        $consumer->invalidate();
     }
 
     public function testReconnect(): void

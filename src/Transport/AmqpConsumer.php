@@ -100,6 +100,25 @@ class AmqpConsumer
     }
 
     /**
+     * Forgets the consumer registration without talking to the broker.
+     *
+     * Called when the channel this consumer was registered on has been discarded. Unlike
+     * stop() this issues no basic_cancel: resolving a channel to cancel on would open and
+     * cache a replacement channel, and the broker may not be readable at all (a blocked
+     * connection stops being read, so waiting for basic.cancel-ok can hang). Dropping the
+     * tag lets the next consume() re-register on the replacement channel.
+     *
+     * Buffered envelopes are dropped with it because their delivery tags belong to the
+     * discarded channel and cannot be acknowledged on its replacement. The broker only
+     * requeues those deliveries once that channel or the connection actually closes.
+     */
+    public function invalidate(): void
+    {
+        $this->consumerTag = null;
+        $this->buffer      = [];
+    }
+
+    /**
      * @throws AMQPExceptionInterface
      * @throws TransportException
      * @throws InvalidArgumentException
