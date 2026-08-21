@@ -289,3 +289,7 @@ framework:
                 middleware:
                     - 'Jwage\PhpAmqpLibMessengerBundle\Middleware\DeduplicationPluginMiddleware'
 ```
+
+## Development
+
+See [Running Tests](testing.md) for how to run the PHPUnit suite locally (including the Docker RabbitMQ broker used by functional tests).
