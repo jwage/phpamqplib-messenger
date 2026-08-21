@@ -473,8 +473,12 @@ class TransportFunctionalTest extends KernelTestCase
 
         self::assertInstanceOf(AbstractConnection::class, $amqpConnection);
 
-        // Close the TCP stream without going through a clean AMQP close so the next
-        // publish_batch write fails with a broken pipe, matching the production failure.
-        $amqpConnection->getIO()->close();
+        // Close the TCP stream without a clean AMQP close so the next publish_batch
+        // write fails with a broken pipe, matching the production failure. Prefer
+        // reflecting the protected $io over deprecated AbstractConnection::getIO().
+        $ioProperty = new ReflectionProperty(AbstractConnection::class, 'io');
+        $io         = $ioProperty->getValue($amqpConnection);
+        self::assertNotNull($io);
+        $io->close();
     }
 }
