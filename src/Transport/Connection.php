@@ -458,6 +458,10 @@ class Connection
 
         $this->channel()->queue_declare(
             queue: $delayQueueName,
+            passive: false,
+            durable: true,
+            exclusive: false,
+            auto_delete: false,
             nowait: false,
             arguments: new AMQPTable([
                 'x-message-ttl' => $delay,

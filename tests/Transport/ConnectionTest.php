@@ -184,9 +184,9 @@ class ConnectionTest extends TestCase
             ->with(
                 queue: $delayQueueName,
                 passive: false,
-                durable: false,
+                durable: true,
                 exclusive: false,
-                auto_delete: true,
+                auto_delete: false,
                 nowait: false,
                 arguments: new AMQPTable([
                     'x-message-ttl' => 5000,
