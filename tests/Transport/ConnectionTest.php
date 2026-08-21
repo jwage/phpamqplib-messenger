@@ -392,6 +392,7 @@ class ConnectionTest extends TestCase
         $amqpConnection->expects(self::once())
             ->method('close');
 
+        $amqpChannel->method('is_open')->willReturn(true);
         $amqpChannel->expects(self::once())
             ->method('basic_qos');
         $amqpChannel->expects(self::once())
@@ -571,6 +572,7 @@ class ConnectionTest extends TestCase
 
         $bufferedEnvelope = new AmqpEnvelope(new AMQPMessage('buffered delivery'));
 
+        $consumerChannel->method('is_open')->willReturn(true);
         $consumerChannel->method('is_consuming')->willReturn(true);
         $consumerChannel->expects(self::once())
             ->method('basic_consume')
@@ -653,6 +655,7 @@ class ConnectionTest extends TestCase
         $amqpConnection->expects(self::never())
             ->method('reconnect');
 
+        $consumerChannel->method('is_open')->willReturn(true);
         $consumerChannel->expects(self::exactly(2))
             ->method('is_consuming')
             ->willReturn(true);
@@ -757,6 +760,7 @@ class ConnectionTest extends TestCase
         $amqpConnection->expects(self::never())
             ->method('reconnect');
 
+        $amqpChannel1->method('is_open')->willReturn(true);
         $amqpChannel1->method('is_consuming')->willReturn(true);
         $amqpChannel1->expects(self::once())
             ->method('basic_consume')
@@ -766,6 +770,7 @@ class ConnectionTest extends TestCase
             ->method('closeIfDisconnected')
             ->willReturn(true);
 
+        $amqpChannel2->method('is_open')->willReturn(true);
         $amqpChannel2->method('is_consuming')->willReturn(true);
         $amqpChannel2->method('wait')->willThrowException(new AMQPTimeoutException('poll timeout'));
         $amqpChannel2->expects(self::once())
@@ -792,6 +797,72 @@ class ConnectionTest extends TestCase
 
         $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
         assert($consumer instanceof AmqpConsumer);
+        $consumer->invalidate();
+    }
+
+    public function testConsumerResumesWhenItsChannelClosesOnALiveConnection(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: ['queue_name' => new QueueConfig(name: 'queue_name')],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+        $channel1Open   = true;
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+        $amqpConnection->expects(self::never())
+            ->method('reconnect');
+
+        $amqpChannel1->method('is_open')->willReturnCallback(
+            static function () use (&$channel1Open): bool {
+                return $channel1Open;
+            },
+        );
+        $amqpChannel1->method('is_consuming')->willReturn(true);
+        $amqpChannel1->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag-1');
+        $amqpChannel1->method('wait')->willThrowException(new AMQPTimeoutException('poll timeout'));
+
+        $amqpChannel2->method('is_open')->willReturn(true);
+        $amqpChannel2->method('is_consuming')->willReturn(true);
+        $amqpChannel2->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag-2');
+        $amqpChannel2->method('wait')->willThrowException(new AMQPTimeoutException('poll timeout'));
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+        self::assertSame([], iterator_to_array($envelopes));
+
+        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
+        assert($consumer instanceof AmqpConsumer);
+        $consumer->callback(new AMQPMessage('stale delivery'));
+
+        $channel1Open = false;
+
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+        self::assertSame([], iterator_to_array($envelopes));
+
+        $bufferProperty = new ReflectionProperty(AmqpConsumer::class, 'buffer');
+        self::assertSame([], $bufferProperty->getValue($consumer));
+
         $consumer->invalidate();
     }
 

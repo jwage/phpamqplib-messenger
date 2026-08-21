@@ -176,6 +176,11 @@ class Connection
             $this->forgetChannels();
         }
 
+        if ($this->consumerChannel !== null && ! $this->consumerChannel->is_open()) {
+            $this->consumerChannel = null;
+            $this->consumer?->invalidate();
+        }
+
         if ($this->consumerChannel === null) {
             $channel = $this->retryWithReconnect(
                 fn (): AMQPChannel => $this->connection()->channel(),
