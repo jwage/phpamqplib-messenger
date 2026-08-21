@@ -38,6 +38,8 @@ class Connection
     /** @var list<array{0: AMQPMessage, 1: string, 2: string}> */
     private array $batchMessages = [];
 
+    private AMQPChannel|null $pendingBatchConfirmChannel = null;
+
     private bool $autoSetup;
 
     private bool $autoSetupDelay;
@@ -59,6 +61,8 @@ class Connection
         $this->connection = null;
         $this->channel    = null;
         $this->consumer   = null;
+
+        $this->pendingBatchConfirmChannel = null;
     }
 
     public function getConfig(): ConnectionConfig
@@ -83,6 +87,8 @@ class Connection
             $this->connection = null;
             $this->channel    = null;
             $this->consumer   = null;
+
+            $this->pendingBatchConfirmChannel = null;
         }
     }
 
@@ -166,6 +172,12 @@ class Connection
     ): void {
         $isRetryAttempt     = $amqpStamp && $amqpStamp->isRetryAttempt();
         $shouldBatchPublish = $batchSize > 1 && $isRetryAttempt === false;
+
+        // Do not accept another message into a batch whose publish outcome is still
+        // waiting on confirms. Re-wait the original channel before mutating the buffer.
+        if ($this->pendingBatchConfirmChannel !== null) {
+            $this->flush();
+        }
 
         // Messages already accepted into the batch must reach the broker before a newer
         // direct publish. If the retained batch still cannot flush, do not publish the
@@ -288,6 +300,13 @@ class Connection
             $this->throwIfConnectionBlocked();
 
             try {
+                if ($this->pendingBatchConfirmChannel !== null) {
+                    $this->waitForBatchConfirm($this->pendingBatchConfirmChannel);
+                    $this->pendingBatchConfirmChannel = null;
+
+                    return;
+                }
+
                 $channel = $this->channel();
 
                 foreach ($this->batchMessages as [$message, $exchangeName, $routingKey]) {
@@ -310,7 +329,9 @@ class Connection
                     }
 
                     if ($this->connectionConfig->confirmEnabled) {
-                        $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                        $this->pendingBatchConfirmChannel = $channel;
+                        $this->waitForBatchConfirm($channel);
+                        $this->pendingBatchConfirmChannel = null;
                     }
                 } catch (AMQPExceptionInterface $e) {
                     if ($this->connectionConfig->transactionsEnabled) {
@@ -319,6 +340,14 @@ class Connection
 
                     throw $e;
                 }
+            } catch (TransportException $e) {
+                // Exhausting live confirm timeouts leaves the original channel and batch
+                // pending so a later flush can re-wait without republishing either message.
+                if ($this->pendingBatchConfirmChannel === null) {
+                    $this->discardChannel();
+                }
+
+                throw $e;
             } catch (Throwable $e) {
                 // A failed publish_batch can leave messages in php-amqplib's per-channel
                 // batch buffer. Drop the cached channel so a later flush() cannot append
@@ -398,6 +427,10 @@ class Connection
         $this->channel = null;
         $this->consumer?->invalidate();
 
+        if ($this->pendingBatchConfirmChannel === $channel) {
+            $this->pendingBatchConfirmChannel = null;
+        }
+
         // This performs only local cleanup when the connection is already dead. It does
         // not wait for channel.close-ok or deregister a live broker-side channel.
         $channel?->closeIfDisconnected();
@@ -415,6 +448,16 @@ class Connection
                 'exception' => $rollbackException,
             ]);
         }
+    }
+
+    /** @throws TransportException */
+    private function waitForBatchConfirm(AMQPChannel $channel): void
+    {
+        $this->retry(function () use ($channel): void {
+            $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+        })
+            ->catch(AMQPTimeoutException::class)
+            ->run();
     }
 
     /** @throws AMQPConnectionBlockedException */

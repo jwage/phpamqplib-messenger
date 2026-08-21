@@ -243,6 +243,7 @@ class ConnectionTest extends TestCase
     private function createConnectionForBatchFlushRetryTest(
         ConnectionConfig|null $connectionConfig = null,
         bool $requiresReconnect = false,
+        bool $usesSingleChannel = false,
     ): array {
         $connectionConfig ??= new ConnectionConfig(
             autoSetup: false,
@@ -261,7 +262,13 @@ class ConnectionTest extends TestCase
 
         $factory->method('create')->willReturn($amqpConnection);
         $amqpConnection->method('isConnected')->willReturn(true);
-        if ($requiresReconnect) {
+        if ($usesSingleChannel) {
+            $amqpConnection->expects(self::once())
+                ->method('channel')
+                ->willReturn($amqpChannel1);
+            $amqpConnection->expects(self::never())
+                ->method('reconnect');
+        } elseif ($requiresReconnect) {
             $amqpConnection->expects(self::exactly(3))
                 ->method('channel')
                 ->willReturnOnConsecutiveCalls(
@@ -1435,9 +1442,69 @@ class ConnectionTest extends TestCase
         self::assertSame([], $this->getPendingBatchMessages($connection));
     }
 
-    public function testFlushRepublishesBatchWithoutReconnectWhenWaitForPendingAcksTimesOut(): void
+    public function testFlushWaitsAgainWithoutRepublishingWhenPendingAcksTimeOut(): void
     {
-        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushRetryTest();
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushRetryTest(
+            usesSingleChannel: true,
+        );
+
+        $body1 = 'confirm body 1';
+        $body2 = 'confirm body 2';
+
+        $amqpChannel1->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+
+        $amqpChannel1->expects(self::once())
+            ->method('publish_batch');
+
+        $amqpChannel1->expects(self::exactly(2))
+            ->method('wait_for_pending_acks')
+            ->willReturnOnConsecutiveCalls(
+                self::throwException(new AMQPTimeoutException('Confirm timeout')),
+                true,
+            );
+
+        $amqpChannel2->expects(self::never())
+            ->method('batch_basic_publish');
+
+        $amqpChannel2->expects(self::never())
+            ->method('publish_batch');
+
+        $amqpChannel2->expects(self::never())
+            ->method('wait_for_pending_acks');
+
+        $connection->publish(body: $body1, batchSize: 3);
+        $connection->publish(body: $body2, batchSize: 3);
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                $connection->flush();
+                self::fail('Expected the first confirm wait to time out.');
+            } catch (TransportException $exception) {
+                self::assertInstanceOf(AMQPTimeoutException::class, $exception->getPrevious());
+            }
+
+            self::assertCount(2, $this->getPendingBatchMessages($connection));
+
+            $connection->flush();
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        self::assertSame([], $this->getPendingBatchMessages($connection));
+    }
+
+    public function testFlushRepublishesBatchWhenConnectionClosesWhileWaitingForPendingAcks(): void
+    {
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushRetryTest(
+            requiresReconnect: true,
+        );
 
         $body1 = 'confirm body 1';
         $body2 = 'confirm body 2';
@@ -1447,13 +1514,11 @@ class ConnectionTest extends TestCase
 
         $amqpChannel1->expects(self::exactly(2))
             ->method('batch_basic_publish');
-
         $amqpChannel1->expects(self::once())
             ->method('publish_batch');
-
         $amqpChannel1->expects(self::once())
             ->method('wait_for_pending_acks')
-            ->willThrowException(new AMQPTimeoutException('Confirm timeout'));
+            ->willThrowException(new AMQPConnectionClosedException('Connection closed while waiting for confirms'));
 
         $amqpChannel2->expects(self::exactly(2))
             ->method('batch_basic_publish')
@@ -1461,10 +1526,8 @@ class ConnectionTest extends TestCase
                 [$amqpMessage1, 'exchange_name'],
                 [$amqpMessage2, 'exchange_name'],
             ));
-
         $amqpChannel2->expects(self::once())
             ->method('publish_batch');
-
         $amqpChannel2->expects(self::once())
             ->method('wait_for_pending_acks')
             ->with(timeout: 5);
