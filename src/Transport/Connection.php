@@ -128,6 +128,12 @@ class Connection
     }
 
     /**
+     * Returns the channel reserved for publishing and topology operations.
+     *
+     * Consumers managed by this transport use a separate channel so publisher failure
+     * and retirement cannot invalidate their delivery tags. Use consume() rather than
+     * registering a consumer directly on this channel.
+     *
      * @throws AMQPExceptionInterface
      * @throws TransportException
      */
@@ -157,7 +163,13 @@ class Connection
         return $this->channel;
     }
 
-    /** @throws TransportException */
+    /**
+     * Returns the channel reserved for the transport-managed consumer.
+     *
+     * @internal AmqpConsumer owns registrations and local state on this channel.
+     *
+     * @throws TransportException
+     */
     public function consumerChannel(): AMQPChannel
     {
         if ($this->connection !== null && ! $this->isConnected()) {

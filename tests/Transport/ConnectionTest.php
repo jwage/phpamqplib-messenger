@@ -1986,11 +1986,13 @@ class ConnectionTest extends TestCase
             exchange: new ExchangeConfig(name: 'exchange_name'),
         );
 
-        $factory        = $this->createStub(AmqpConnectionFactory::class);
-        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
-        $amqpChannel1   = $this->createMock(AMQPChannel::class);
-        $amqpChannel2   = $this->createMock(AMQPChannel::class);
-        $blocked        = false;
+        $factory         = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection  = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1    = $this->createMock(AMQPChannel::class);
+        $amqpChannel2    = $this->createMock(AMQPChannel::class);
+        $amqpChannel3    = $this->createMock(AMQPChannel::class);
+        $blocked         = false;
+        $channel2Flushes = 0;
 
         $factory->method('create')->willReturn($amqpConnection);
         $amqpConnection->method('isConnected')->willReturn(true);
@@ -1999,9 +2001,9 @@ class ConnectionTest extends TestCase
                 return $blocked;
             },
         );
-        $amqpConnection->expects(self::exactly(2))
+        $amqpConnection->expects(self::exactly(3))
             ->method('channel')
-            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2, $amqpChannel3);
 
         $amqpChannel1->expects(self::exactly(2))
             ->method('batch_basic_publish');
@@ -2017,10 +2019,33 @@ class ConnectionTest extends TestCase
         $amqpChannel1->expects(self::once())
             ->method('closeIfDisconnected')
             ->willReturn(false);
+        $amqpChannel1->expects(self::once())
+            ->method('close');
 
-        $amqpChannel2->expects(self::exactly(2))
+        $amqpChannel2->expects(self::exactly(4))
             ->method('batch_basic_publish');
+        $amqpChannel2->expects(self::exactly(2))
+            ->method('publish_batch')
+            ->willReturnCallback(
+                static function () use (&$blocked, &$channel2Flushes): void {
+                    $channel2Flushes++;
+
+                    if ($channel2Flushes === 2) {
+                        $blocked = true;
+
+                        throw new AMQPConnectionBlockedException('Connection blocked again');
+                    }
+                },
+            );
         $amqpChannel2->expects(self::once())
+            ->method('closeIfDisconnected')
+            ->willReturn(false);
+        $amqpChannel2->expects(self::once())
+            ->method('close');
+
+        $amqpChannel3->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+        $amqpChannel3->expects(self::once())
             ->method('publish_batch');
 
         $connection = new Connection(
@@ -2033,6 +2058,31 @@ class ConnectionTest extends TestCase
         $connection->publish(body: 'body 2', batchSize: 3);
 
         for ($attempt = 0; $attempt < 3; $attempt++) {
+            try {
+                $connection->flush();
+                self::fail('Expected the blocked flush to fail.');
+            } catch (AMQPConnectionBlockedException) {
+            }
+
+            self::assertCount(2, $this->getPendingBatchMessages($connection));
+        }
+
+        $blocked = false;
+
+        $connection->flush();
+
+        self::assertSame([], $this->getPendingBatchMessages($connection));
+
+        $connection->publish(body: 'body 3', batchSize: 3);
+        $connection->publish(body: 'body 4', batchSize: 3);
+
+        try {
+            $connection->flush();
+            self::fail('Expected the second blocked flush to fail.');
+        } catch (AMQPConnectionBlockedException) {
+        }
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
             try {
                 $connection->flush();
                 self::fail('Expected the blocked flush to fail.');

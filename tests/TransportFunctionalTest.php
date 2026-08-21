@@ -12,13 +12,16 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
+use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AbstractConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use PhpAmqpLib\Wire\IO\AbstractIO;
+use ReflectionMethod;
 use ReflectionProperty;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\TransportException;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
@@ -26,6 +29,7 @@ use Traversable;
 
 use function assert;
 use function count;
+use function iterator_to_array;
 use function sprintf;
 
 class TransportFunctionalTest extends KernelTestCase
@@ -361,7 +365,7 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertSame(0, $connection->countMessagesInQueues());
     }
 
-    public function testBatchFlushCanDuplicateWhenConfirmsFailAfterPublishReachesBroker(): void
+    public function testBatchReplayCanDuplicateWhenAConnectionOutcomeIsUnknown(): void
     {
         $this->drainTransport($this->confirmsTransport);
 
@@ -390,9 +394,11 @@ class TransportFunctionalTest extends KernelTestCase
             self::assertSame(2, $connection->countMessagesInQueues());
             self::assertSame([], $this->getPendingBatchMessages($connection));
 
-            // Restore the owned buffer as if confirm wait had failed after publish_batch
-            // (batchMessages would still be retained) and flush again — at-least-once republish.
+            // Simulate losing the connection after RabbitMQ accepted the write but before
+            // the client could prove its outcome. At-least-once recovery retains and replays
+            // the owned batch on a fresh connection, so duplicates are allowed here.
             $this->setPendingBatchMessages($connection, $pendingBatchMessages);
+            $connection->close();
             $connection->flush();
 
             self::assertSame(4, $connection->countMessagesInQueues());
@@ -406,6 +412,149 @@ class TransportFunctionalTest extends KernelTestCase
         }
 
         self::assertSame(0, $connection->countMessagesInQueues());
+    }
+
+    public function testRetainedBatchFlushesBeforeANewerDirectPublishAfterTerminalFailure(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $connection = $this->confirmsTransport->getConnection();
+        $connection->channel();
+
+        $batch = Batch::new($this->bus, 3);
+        $batch->dispatch(new ConfirmMessage(601));
+        $batch->dispatch(new ConfirmMessage(602));
+
+        $this->dropUnderlyingAmqpSocket($connection);
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                $batch->flush();
+                self::fail('Expected the batch flush against the dropped socket to fail.');
+            } catch (TransportException) {
+            }
+
+            self::assertCount(2, $this->getPendingBatchMessages($connection));
+
+            // A direct publish must recover and flush the two older messages first.
+            $this->bus->dispatch(new ConfirmMessage(603));
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 3);
+
+        self::assertSame(601, $envelopes[0]->getMessage()->count);
+        self::assertSame(602, $envelopes[1]->getMessage()->count);
+        self::assertSame(603, $envelopes[2]->getMessage()->count);
+    }
+
+    public function testAutoFlushRecoversWhenAFailedBatchAlreadyReachedTheThreshold(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $connection = $this->confirmsTransport->getConnection();
+        $connection->channel();
+
+        $batch = Batch::new($this->bus, 2);
+        $batch->dispatch(new ConfirmMessage(701));
+
+        $this->dropUnderlyingAmqpSocket($connection);
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                // This fills the batch, attempts auto-flush, and retains both messages.
+                $batch->dispatch(new ConfirmMessage(702));
+                self::fail('Expected auto-flush against the dropped socket to fail.');
+            } catch (TransportException) {
+            }
+
+            self::assertCount(2, $this->getPendingBatchMessages($connection));
+
+            // The third message moves the buffer beyond batchSize. The >= threshold must
+            // auto-flush all three instead of silently leaving the batch stuck forever.
+            $batch->dispatch(new ConfirmMessage(703));
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 3);
+
+        self::assertSame(701, $envelopes[0]->getMessage()->count);
+        self::assertSame(702, $envelopes[1]->getMessage()->count);
+        self::assertSame(703, $envelopes[2]->getMessage()->count);
+    }
+
+    public function testPendingBatchSurvivesConnectionCloseAndFlushesOnAFreshConnection(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $connection = $this->confirmsTransport->getConnection();
+
+        $batch = Batch::new($this->bus, 3);
+        $batch->dispatch(new ConfirmMessage(801));
+        $batch->dispatch(new ConfirmMessage(802));
+
+        self::assertCount(2, $this->getPendingBatchMessages($connection));
+
+        $connection->close();
+
+        self::assertCount(2, $this->getPendingBatchMessages($connection));
+
+        $batch->flush();
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 2);
+
+        self::assertSame(801, $envelopes[0]->getMessage()->count);
+        self::assertSame(802, $envelopes[1]->getMessage()->count);
+    }
+
+    public function testPublisherChannelRetirementDoesNotInvalidateAConsumerAcknowledgement(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $this->bus->dispatch(new ConfirmMessage(901));
+
+        /** @var list<Envelope> $received */
+        $received = iterator_to_array($this->confirmsTransport->get(), false);
+        self::assertCount(1, $received);
+
+        $connection      = $this->confirmsTransport->getConnection();
+        $publisherBefore = $connection->channel();
+
+        $consumerChannelProperty = new ReflectionProperty(Connection::class, 'consumerChannel');
+        $consumerChannel         = $consumerChannelProperty->getValue($connection);
+        self::assertInstanceOf(AMQPChannel::class, $consumerChannel);
+        self::assertNotSame($publisherBefore, $consumerChannel);
+
+        // Fault-inject the state produced by a live publisher failure. Recovery must close
+        // and replace only that publisher channel, leaving the delivery tag above valid.
+        $discardChannel = new ReflectionMethod(Connection::class, 'discardChannel');
+        $discardChannel->invoke($connection);
+
+        $this->bus->dispatch(new ConfirmMessage(902));
+
+        $publisherAfter = $connection->channel();
+        self::assertNotSame($publisherBefore, $publisherAfter);
+        self::assertSame($consumerChannel, $consumerChannelProperty->getValue($connection));
+
+        $this->confirmsTransport->ack($received[0]);
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 1);
+
+        self::assertSame(902, $envelopes[0]->getMessage()->count);
     }
 
     protected function setUp(): void
