@@ -56,7 +56,7 @@ In summary, `php-amqplib` provides a more robust and flexible solution for conne
 
 ## Message Reliability
 
-This bundle prioritizes message reliability over raw performance. By default, confirms are enabled to ensure that messages are acknowledged by the server. In the event of a connection exception, publishes are retried if there is uncertainty about whether a message was received by the server. This approach ensures that messages are not lost, but it also means that a message could potentially be published twice. Therefore, it is crucial to ensure that your message handlers are 100% idempotent to handle such scenarios gracefully.
+This bundle prioritizes message reliability over raw performance. By default, confirms are enabled to ensure that messages are acknowledged by the server. If a connection or channel fails while the publish outcome is unknown, the transport retries and a message may be published twice. A live publisher-confirm timeout re-waits on the same channel instead of republishing. Message handlers must be idempotent; see the [documentation](docs/index.md#batch-dispatching) for the batch `flush()` contract and the optional [deduplication plugin](docs/index.md#deduplication-plugin).
 
 ## Acknowledgements
 
