@@ -358,7 +358,7 @@ class ConnectionTest extends TestCase
         $connection->close();
     }
 
-    public function testCloseInvalidatesAConsumerWithoutOpeningAChannelWhenConnectionIsDead(): void
+    public function testCloseInvalidatesAConsumerWithoutCancellingItThroughTheBroker(): void
     {
         $connectionConfig = new ConnectionConfig(
             autoSetup: false,
@@ -377,9 +377,9 @@ class ConnectionTest extends TestCase
         $amqpConnection->expects(self::once())
             ->method('channel')
             ->willReturn($amqpChannel);
-        $amqpConnection->expects(self::exactly(4))
-            ->method('isConnected')
-            ->willReturnOnConsecutiveCalls(true, true, true, false);
+        // A broker-blocked connection still reports itself as connected. close() must not
+        // wait for basic.cancel-ok before closing the connection that owns the consumer.
+        $amqpConnection->method('isConnected')->willReturn(true);
         $amqpConnection->expects(self::never())
             ->method('reconnect');
         $amqpConnection->expects(self::once())
