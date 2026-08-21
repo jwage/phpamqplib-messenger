@@ -23,7 +23,9 @@ use Throwable;
 
 use function array_map;
 use function array_merge;
+use function array_shift;
 use function array_sum;
+use function array_unshift;
 use function assert;
 use function count;
 
@@ -32,6 +34,11 @@ class Connection
     private AMQPStreamConnection|null $connection = null;
 
     private AMQPChannel|null $channel = null;
+
+    private AMQPChannel|null $consumerChannel = null;
+
+    /** @var list<AMQPChannel> */
+    private array $retiredPublisherChannels = [];
 
     private AmqpConsumer|null $consumer = null;
 
@@ -58,11 +65,13 @@ class Connection
     {
         $this->consumer?->invalidate();
 
-        $this->connection = null;
-        $this->channel    = null;
-        $this->consumer   = null;
+        $this->connection      = null;
+        $this->channel         = null;
+        $this->consumerChannel = null;
+        $this->consumer        = null;
 
         $this->pendingBatchConfirmChannel = null;
+        $this->retiredPublisherChannels   = [];
     }
 
     public function getConfig(): ConnectionConfig
@@ -84,18 +93,20 @@ class Connection
             $this->consumer?->invalidate();
             $this->connection?->close();
         } finally {
-            $this->connection = null;
-            $this->channel    = null;
-            $this->consumer   = null;
+            $this->connection      = null;
+            $this->channel         = null;
+            $this->consumerChannel = null;
+            $this->consumer        = null;
 
             $this->pendingBatchConfirmChannel = null;
+            $this->retiredPublisherChannels   = [];
         }
     }
 
     /** @throws AMQPExceptionInterface */
     public function reconnect(): void
     {
-        $this->discardChannel();
+        $this->forgetChannels();
         $this->connection?->reconnect();
     }
 
@@ -116,14 +127,19 @@ class Connection
         }
     }
 
-    /** @throws TransportException */
+    /**
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     */
     public function channel(): AMQPChannel
     {
-        if ($this->channel !== null && ! $this->isConnected()) {
-            $this->discardChannel();
+        if ($this->connection !== null && ! $this->isConnected()) {
+            $this->forgetChannels();
         }
 
         if ($this->channel === null) {
+            $this->closeRetiredPublisherChannels();
+
             $channel = $this->retryWithReconnect(function (): AMQPChannel {
                 $channel = $this->connection()->channel();
 
@@ -139,6 +155,25 @@ class Connection
         }
 
         return $this->channel;
+    }
+
+    /** @throws TransportException */
+    public function consumerChannel(): AMQPChannel
+    {
+        if ($this->connection !== null && ! $this->isConnected()) {
+            $this->forgetChannels();
+        }
+
+        if ($this->consumerChannel === null) {
+            $channel = $this->retryWithReconnect(
+                fn (): AMQPChannel => $this->connection()->channel(),
+            )->run();
+            assert($channel instanceof AMQPChannel);
+
+            $this->consumerChannel = $channel;
+        }
+
+        return $this->consumerChannel;
     }
 
     /**
@@ -413,27 +448,82 @@ class Connection
         );
     }
 
-    /**
-     * Drops the cached channel and anything registered on it.
-     *
-     * The channel is shared by publishing and consuming, so a consumer registered on the
-     * discarded channel must forget its registration too, otherwise consume() would skip
-     * re-registering and then poll a replacement channel that has no consumer on it --
-     * receiving nothing, forever, without raising anything.
-     */
+    /** Drops a failed publisher channel without disturbing a consumer on this connection. */
     private function discardChannel(): void
     {
         $channel       = $this->channel;
         $this->channel = null;
-        $this->consumer?->invalidate();
 
         if ($this->pendingBatchConfirmChannel === $channel) {
             $this->pendingBatchConfirmChannel = null;
         }
 
-        // This performs only local cleanup when the connection is already dead. It does
-        // not wait for channel.close-ok or deregister a live broker-side channel.
-        $channel?->closeIfDisconnected();
+        if ($channel === null || $channel->closeIfDisconnected()) {
+            return;
+        }
+
+        // Closing while a broker alarm is active can block waiting for channel.close-ok.
+        // Keep the publisher-only channel aside and close it before opening its replacement
+        // once the connection is readable again. This bounds channel usage across repeated
+        // alarm episodes without invalidating deliveries on the separate consumer channel.
+        $this->retiredPublisherChannels[] = $channel;
+    }
+
+    /**
+     * Forgets every channel before the underlying connection is replaced or found dead.
+     * Delivery tags are scoped to the old consumer channel, so its local state goes too.
+     */
+    private function forgetChannels(): void
+    {
+        $channels = [
+            $this->channel,
+            $this->consumerChannel,
+            ...$this->retiredPublisherChannels,
+        ];
+
+        $this->channel                    = null;
+        $this->consumerChannel            = null;
+        $this->pendingBatchConfirmChannel = null;
+        $this->retiredPublisherChannels   = [];
+        $this->consumer?->invalidate();
+
+        foreach ($channels as $channel) {
+            $channel?->closeIfDisconnected();
+        }
+    }
+
+    /** @throws AMQPExceptionInterface */
+    private function closeRetiredPublisherChannels(): void
+    {
+        if ($this->retiredPublisherChannels === []) {
+            return;
+        }
+
+        if (! $this->isConnected()) {
+            foreach ($this->retiredPublisherChannels as $channel) {
+                $channel->closeIfDisconnected();
+            }
+
+            $this->retiredPublisherChannels = [];
+
+            return;
+        }
+
+        $this->throwIfConnectionBlocked();
+
+        while ($this->retiredPublisherChannels !== []) {
+            $channel = array_shift($this->retiredPublisherChannels);
+
+            try {
+                $channel->close();
+            } catch (AMQPExceptionInterface $e) {
+                if (! $channel->closeIfDisconnected()) {
+                    array_unshift($this->retiredPublisherChannels, $channel);
+                }
+
+                throw $e;
+            }
+        }
     }
 
     private function rollbackTransaction(AMQPChannel $channel): void
@@ -501,6 +591,7 @@ class Connection
     }
 
     /**
+     * @throws AMQPExceptionInterface
      * @throws AMQPTimeoutException
      * @throws TransportException
      */

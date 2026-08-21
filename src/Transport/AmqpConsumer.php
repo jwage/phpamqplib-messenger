@@ -40,7 +40,7 @@ class AmqpConsumer
 
         // Resolve the channel first. A dead cached channel must be discarded (and this
         // consumer invalidated) before we decide whether the tag is still valid.
-        $this->connection->channel();
+        $this->connection->consumerChannel();
 
         if ($this->consumerTag === null) {
             $this->start($queueConfig);
@@ -48,9 +48,9 @@ class AmqpConsumer
 
         $stop = false;
 
-        while ($this->connection->channel()->is_consuming()) {
+        while ($this->connection->consumerChannel()->is_consuming()) {
             try {
-                $this->connection->channel()->wait(
+                $this->connection->consumerChannel()->wait(
                     allowed_methods: null,
                     non_blocking: false,
                     timeout: $queueConfig->waitTimeout,
@@ -94,7 +94,7 @@ class AmqpConsumer
     {
         if ($this->consumerTag !== null) {
             try {
-                $this->connection->channel()->basic_cancel(consumer_tag: $this->consumerTag);
+                $this->connection->consumerChannel()->basic_cancel(consumer_tag: $this->consumerTag);
             } catch (AMQPExceptionInterface) {
                 // do nothing
             }
@@ -129,13 +129,13 @@ class AmqpConsumer
      */
     private function start(QueueConfig $queueConfig): void
     {
-        $this->connection->channel()->basic_qos(
+        $this->connection->consumerChannel()->basic_qos(
             prefetch_size: 0,
             prefetch_count: $queueConfig->prefetchCount,
             a_global: false,
         );
 
-        $this->consumerTag = $this->connection->channel()->basic_consume(
+        $this->consumerTag = $this->connection->consumerChannel()->basic_consume(
             queue: $queueConfig->name,
             consumer_tag: '',
             no_local: false,

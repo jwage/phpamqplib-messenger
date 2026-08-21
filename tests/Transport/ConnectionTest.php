@@ -543,7 +543,7 @@ class ConnectionTest extends TestCase
         self::assertSame([], $this->getPendingBatchMessages($connection));
     }
 
-    public function testConsumerResumesOnANewChannelAfterANonRetryableFlushFailure(): void
+    public function testPublisherFailureDoesNotInvalidateConsumerOnSharedConnection(): void
     {
         $connectionConfig = new ConnectionConfig(
             autoSetup: false,
@@ -552,38 +552,38 @@ class ConnectionTest extends TestCase
             queues: ['queue_name' => new QueueConfig(name: 'queue_name')],
         );
 
-        $factory        = $this->createStub(AmqpConnectionFactory::class);
-        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
-        $amqpChannel1   = $this->createMock(AMQPChannel::class);
-        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+        $factory          = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection   = $this->createMock(AMQPStreamConnection::class);
+        $consumerChannel  = $this->createMock(AMQPChannel::class);
+        $publisherChannel = $this->createMock(AMQPChannel::class);
 
         $factory->method('create')->willReturn($amqpConnection);
-        // A blocked connection is still connected, so channel() only replaces the cached
-        // channel because the failed flush discarded it -- not because of a disconnect.
         $amqpConnection->method('isConnected')->willReturn(true);
         $amqpConnection->expects(self::exactly(2))
             ->method('channel')
-            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+            ->willReturnOnConsecutiveCalls($consumerChannel, $publisherChannel);
         // AMQPConnectionBlockedException is not retryable, so nothing reconnects.
         $amqpConnection->expects(self::never())
             ->method('reconnect');
 
-        $staleEnvelope = new AmqpEnvelope(new AMQPMessage('stale delivery'));
+        $bufferedEnvelope = new AmqpEnvelope(new AMQPMessage('buffered delivery'));
 
-        $amqpChannel1->method('is_consuming')->willReturn(true);
-        $amqpChannel1->expects(self::once())
+        $consumerChannel->method('is_consuming')->willReturn(true);
+        $consumerChannel->expects(self::once())
             ->method('basic_consume')
             ->willReturn('consumer-tag-1');
-        $amqpChannel1->method('wait')->willThrowException(new AMQPTimeoutException('poll timeout'));
-        $amqpChannel1->expects(self::once())
-            ->method('closeIfDisconnected')
-            ->willReturn(false);
-        $amqpChannel1->expects(self::once())
+        $consumerChannel->method('wait')->willThrowException(new AMQPTimeoutException('poll timeout'));
+        $consumerChannel->expects(self::never())
+            ->method('closeIfDisconnected');
+
+        $publisherChannel->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+        $publisherChannel->expects(self::once())
             ->method('publish_batch')
             ->willThrowException(new AMQPConnectionBlockedException('Connection blocked'));
-
-        $amqpChannel2->method('is_consuming')->willReturn(true);
-        $amqpChannel2->method('wait')->willThrowException(new AMQPTimeoutException('poll timeout'));
+        $publisherChannel->expects(self::once())
+            ->method('closeIfDisconnected')
+            ->willReturn(false);
 
         $connection = new Connection(
             retryFactory: new RetryFactory(),
@@ -591,17 +591,17 @@ class ConnectionTest extends TestCase
             connectionConfig: $connectionConfig,
         );
 
-        // 1. Register a consumer on channel1.
+        // Register a consumer on its dedicated channel.
         self::assertSame([], iterator_to_array($connection->consume('queue_name')));
 
         $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
         assert($consumer instanceof AmqpConsumer);
 
-        // A delivery buffered on channel1, whose delivery tag dies with that channel.
+        // Simulate a delivery already received on the consumer channel.
         $bufferProperty = new ReflectionProperty(AmqpConsumer::class, 'buffer');
-        $bufferProperty->setValue($consumer, [$staleEnvelope]);
+        $bufferProperty->setValue($consumer, [$bufferedEnvelope]);
 
-        // 2. The batch flush fails with a non-retryable error, discarding channel1.
+        // A non-retryable publisher failure retires only the publisher channel.
         $connection->publish(body: 'body 1', batchSize: 3);
         $connection->publish(body: 'body 2', batchSize: 3);
 
@@ -612,15 +612,8 @@ class ConnectionTest extends TestCase
             self::assertSame('Connection blocked', $exception->getMessage());
         }
 
-        // 4. basic_consume is issued on channel2, so consumption resumes rather than
-        //    silently polling a channel that has no consumer registered on it.
-        $amqpChannel2->expects(self::once())
-            ->method('basic_consume')
-            ->willReturn('consumer-tag-2');
-
-        // 3. and 5. The next consume() re-registers and yields nothing, because the stale
-        //    envelope buffered against the discarded channel was dropped with it.
-        self::assertSame([], iterator_to_array($connection->consume('queue_name')));
+        // The original consumer remains registered and its delivery remains usable.
+        self::assertSame([$bufferedEnvelope], iterator_to_array($connection->consume('queue_name')));
         self::assertSame([], $bufferProperty->getValue($consumer));
 
         // Leave no live registration behind: __destruct() would otherwise call stop(),
@@ -1098,11 +1091,13 @@ class ConnectionTest extends TestCase
             exchange: new ExchangeConfig(name: 'exchange_name'),
         );
 
-        $factory        = $this->createStub(AmqpConnectionFactory::class);
-        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
-        $amqpChannel1   = $this->createMock(AMQPChannel::class);
-        $amqpChannel2   = $this->createMock(AMQPChannel::class);
-        $blocked        = false;
+        $factory           = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection    = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1      = $this->createMock(AMQPChannel::class);
+        $amqpChannel2      = $this->createMock(AMQPChannel::class);
+        $amqpChannel3      = $this->createMock(AMQPChannel::class);
+        $blocked           = false;
+        $channel2Publishes = 0;
 
         $factory->method('create')->willReturn($amqpConnection);
         $amqpConnection->method('isConnected')->willReturn(true);
@@ -1111,9 +1106,9 @@ class ConnectionTest extends TestCase
                 return $blocked;
             },
         );
-        $amqpConnection->expects(self::exactly(2))
+        $amqpConnection->expects(self::exactly(3))
             ->method('channel')
-            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2, $amqpChannel3);
 
         $amqpChannel1->expects(self::once())
             ->method('basic_publish')
@@ -1127,8 +1122,29 @@ class ConnectionTest extends TestCase
         $amqpChannel1->expects(self::once())
             ->method('closeIfDisconnected')
             ->willReturn(false);
+        $amqpChannel1->expects(self::once())
+            ->method('close');
 
+        $amqpChannel2->expects(self::exactly(2))
+            ->method('basic_publish')
+            ->willReturnCallback(
+                static function () use (&$blocked, &$channel2Publishes): void {
+                    $channel2Publishes++;
+
+                    if ($channel2Publishes === 2) {
+                        $blocked = true;
+
+                        throw new AMQPConnectionBlockedException('Connection blocked again');
+                    }
+                },
+            );
         $amqpChannel2->expects(self::once())
+            ->method('closeIfDisconnected')
+            ->willReturn(false);
+        $amqpChannel2->expects(self::once())
+            ->method('close');
+
+        $amqpChannel3->expects(self::once())
             ->method('basic_publish');
 
         $connection = new Connection(
@@ -1138,6 +1154,26 @@ class ConnectionTest extends TestCase
         );
 
         for ($attempt = 0; $attempt < 3; $attempt++) {
+            try {
+                $connection->publish(body: 'body');
+                self::fail('Expected the blocked publish to fail.');
+            } catch (AMQPConnectionBlockedException) {
+            }
+        }
+
+        $blocked = false;
+
+        $connection->publish(body: 'body');
+
+        // A second distinct alarm retires the replacement channel. Attempts during the
+        // alarm do not allocate, and recovery closes it before opening another channel.
+        try {
+            $connection->publish(body: 'body');
+            self::fail('Expected the second blocked publish to fail.');
+        } catch (AMQPConnectionBlockedException) {
+        }
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
             try {
                 $connection->publish(body: 'body');
                 self::fail('Expected the blocked publish to fail.');
