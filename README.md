@@ -8,7 +8,7 @@ This bundle adds support for `php-amqplib/php-amqplib` to Symfony Messenger, pro
 composer require jwage/phpamqplib-messenger
 ```
 
-Make sure the bundled is enabled in `config/bundles.php`:
+Make sure the bundle is enabled in `config/bundles.php`:
 
 ```php
 return [
@@ -17,7 +17,7 @@ return [
 ];
 ```
 
-The minimum configuration required is the transports name and the DSN.
+The minimum configuration requires a transport name and DSN.
 
 ```yaml
 # config/packages/messenger.yaml
@@ -32,7 +32,7 @@ The configuration above will create an exchange named `orders` and bind a queue 
 
 ## Roadmap
 
-The objective and future roadmap for this bundle is to achieve version 1.0 as a third-party Symfony bundle first, and then subsequently integrate it into the Symfony core for Symfony 7.4 LTS, as `symfony/phpamqplib-messenger`, providing an alternative to `symfony/amqp-messenger`.
+The current goal is to stabilize the public API and delivery semantics for a 1.0 release as a third-party Symfony bundle. Possible upstream integration can be evaluated after that milestone.
 
 ## Documentation
 
@@ -44,7 +44,7 @@ There are several reasons why you might prefer to use the `php-amqplib/php-amqpl
 
 1. **Asynchronous Consumers**: The `php-amqplib` library properly implements asynchronous consumers, which allows for more efficient message handling. This is particularly useful for advanced use cases where you need to handle a large number of messages concurrently.
 
-2. **Active Maintenance**: Both `php-amqplib` and `php-amqp` are actively maintained by VMware. However, `php-amqplib` is often preferred for its flexibility and ease of use in PHP applications.
+2. **Active Maintenance**: Both `php-amqplib` and `php-amqp` are actively maintained. `php-amqplib` is often preferred for its flexibility and ease of use in PHP applications.
 
 3. **PHP Version Compatibility**: Using `php-amqplib` makes upgrading PHP versions easier, as it does not rely on a C extension that may have compatibility issues with newer PHP versions.
 
@@ -56,7 +56,13 @@ In summary, `php-amqplib` provides a more robust and flexible solution for conne
 
 ## Message Reliability
 
-This bundle prioritizes message reliability over raw performance. By default, confirms are enabled to ensure that messages are acknowledged by the server. If a connection or channel fails while the publish outcome is unknown, the transport retries and a message may be published twice. A live publisher-confirm timeout re-waits on the same channel instead of republishing. Message handlers must be idempotent; see the [documentation](docs/index.md#batch-dispatching) for the batch `flush()` contract and the optional [deduplication plugin](docs/index.md#deduplication-plugin).
+This bundle prioritizes message reliability over raw performance and implements **at-least-once**, not exactly-once, publishing semantics. Publisher confirms are enabled by default. After a retryable connection or channel failure, the transport either retries messages it still owns or throws so the caller can retry; it does not turn an uncertain publish into silent success. If RabbitMQ accepted a publish before the connection failed, recovery may publish that message twice, so handlers must be idempotent.
+
+For batched publishing, a live publisher-confirm timeout re-waits on the same channel instead of republishing. Batches remain in memory until `flush()` succeeds, including across reconnect and `Connection::close()`, but they are not durable across process termination. Always call `flush()` explicitly and propagate failures.
+
+Broker-confirmed durability requires publisher confirms (the default) or transactions, persistent messages, durable topology, and appropriate RabbitMQ durability settings. If confirms and transactions are both disabled, a successful socket write cannot prove that RabbitMQ durably accepted the message.
+
+See the [batch delivery contract](docs/index.md#batch-dispatching) and the optional [deduplication plugin](docs/index.md#deduplication-plugin).
 
 ## Acknowledgements
 
