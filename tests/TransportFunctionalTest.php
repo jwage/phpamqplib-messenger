@@ -348,14 +348,15 @@ class TransportFunctionalTest extends KernelTestCase
 
         try {
             $connection->flush();
+
+            self::assertSame(2, $connection->countMessagesInQueues());
         } finally {
             Retry::$defaultWaitTime = $previousWaitTime;
+
+            // Raw bodies are not Messenger-encoded; always purge them so a failure in
+            // this test cannot cascade into decode failures in later tests.
+            $connection->channel()->queue_purge('test_confirms_queue');
         }
-
-        self::assertSame(2, $connection->countMessagesInQueues());
-
-        // Raw bodies are not Messenger-encoded; purge so later tests stay isolated.
-        $connection->channel()->queue_purge('test_confirms_queue');
 
         self::assertSame(0, $connection->countMessagesInQueues());
     }
@@ -385,22 +386,24 @@ class TransportFunctionalTest extends KernelTestCase
 
         try {
             $connection->flush();
+
+            self::assertSame(2, $connection->countMessagesInQueues());
+            self::assertSame([], $this->getPendingBatchMessages($connection));
+
+            // Restore the owned buffer as if confirm wait had failed after publish_batch
+            // (batchMessages would still be retained) and flush again — at-least-once republish.
+            $this->setPendingBatchMessages($connection, $pendingBatchMessages);
+            $connection->flush();
+
+            self::assertSame(4, $connection->countMessagesInQueues());
+            self::assertSame([], $this->getPendingBatchMessages($connection));
         } finally {
             Retry::$defaultWaitTime = $previousWaitTime;
+
+            // These bodies are deliberately not Messenger-encoded, so they must not
+            // survive a failed assertion and poison the next test's queue drain.
+            $connection->channel()->queue_purge('test_confirms_queue');
         }
-
-        self::assertSame(2, $connection->countMessagesInQueues());
-        self::assertSame([], $this->getPendingBatchMessages($connection));
-
-        // Restore the owned buffer as if confirm wait had failed after publish_batch
-        // (batchMessages would still be retained) and flush again — at-least-once republish.
-        $this->setPendingBatchMessages($connection, $pendingBatchMessages);
-        $connection->flush();
-
-        self::assertSame(4, $connection->countMessagesInQueues());
-        self::assertSame([], $this->getPendingBatchMessages($connection));
-
-        $connection->channel()->queue_purge('test_confirms_queue');
 
         self::assertSame(0, $connection->countMessagesInQueues());
     }
