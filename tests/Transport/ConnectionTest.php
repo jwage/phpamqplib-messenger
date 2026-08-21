@@ -17,6 +17,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\DelayConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ExchangeConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\PublisherNack;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPChannelClosedException;
@@ -1098,6 +1099,103 @@ class ConnectionTest extends TestCase
             ->with(timeout: 5);
 
         $connection->publish(body: 'test body', headers: $headers);
+    }
+
+    public function testDirectPublishFailsWhenTheBrokerNacksTheMessage(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        /** @var callable(AMQPMessage): void|null $nackHandler */
+        $nackHandler = null;
+
+        $amqpChannel->expects(self::once())
+            ->method('set_nack_handler')
+            ->willReturnCallback(
+                static function (callable $handler) use (&$nackHandler): void {
+                    $nackHandler = $handler;
+                },
+            );
+        $amqpChannel->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->willReturnCallback(
+                static function () use (&$nackHandler): void {
+                    /** @var callable(AMQPMessage): void $handler */
+                    $handler = $nackHandler;
+                    $handler(new AMQPMessage('nacked message'));
+                },
+            );
+
+        $previousRetries       = Retry::$defaultRetries;
+        Retry::$defaultRetries = 0;
+
+        try {
+            try {
+                $connection->publish(body: 'nacked message');
+                self::fail('Expected the NACKed publish to fail.');
+            } catch (TransportException $exception) {
+                self::assertInstanceOf(PublisherNack::class, $exception->getPrevious());
+            }
+        } finally {
+            Retry::$defaultRetries = $previousRetries;
+        }
+    }
+
+    public function testBatchRemainsBufferedWhenTheBrokerNacksAMessage(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        /** @var callable(AMQPMessage): void|null $nackHandler */
+        $nackHandler = null;
+
+        $amqpChannel->expects(self::once())
+            ->method('set_nack_handler')
+            ->willReturnCallback(
+                static function (callable $handler) use (&$nackHandler): void {
+                    $nackHandler = $handler;
+                },
+            );
+        $amqpChannel->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+        $amqpChannel->expects(self::once())
+            ->method('publish_batch');
+        $amqpChannel->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->willReturnCallback(
+                static function () use (&$nackHandler): void {
+                    /** @var callable(AMQPMessage): void $handler */
+                    $handler = $nackHandler;
+                    $handler(new AMQPMessage('nacked message'));
+                },
+            );
+
+        $connection->publish(body: 'batch body 1', batchSize: 3);
+        $connection->publish(body: 'batch body 2', batchSize: 3);
+
+        $previousRetries       = Retry::$defaultRetries;
+        Retry::$defaultRetries = 0;
+
+        try {
+            try {
+                $connection->flush();
+                self::fail('Expected the NACKed batch to fail.');
+            } catch (TransportException $exception) {
+                self::assertInstanceOf(PublisherNack::class, $exception->getPrevious());
+            }
+        } finally {
+            Retry::$defaultRetries = $previousRetries;
+        }
+
+        self::assertCount(2, $this->getPendingBatchMessages($connection));
     }
 
     public function testPublishPreservesThePublishExceptionWhenRollbackAlsoFails(): void

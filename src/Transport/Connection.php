@@ -151,6 +151,11 @@ class Connection
 
                 if ($this->connectionConfig->confirmEnabled) {
                     $channel->confirm_select();
+                    $channel->set_nack_handler(
+                        static function (AMQPMessage $_message): never {
+                            throw new PublisherNack('The broker negatively acknowledged a published message.');
+                        },
+                    );
                 }
 
                 return $channel;
