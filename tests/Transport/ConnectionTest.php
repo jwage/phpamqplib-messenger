@@ -19,6 +19,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPChannelClosedException;
+use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
@@ -1057,12 +1058,11 @@ class ConnectionTest extends TestCase
         }
     }
 
-    public function testFlushAfterFailedAttemptPublishesRetainedBatch(): void
+    public function testFlushAfterExhaustedRetriesDoesNotDuplicateBatchOnLaterFlush(): void
     {
         $connectionConfig = new ConnectionConfig(
             autoSetup: false,
-            confirmEnabled: true,
-            confirmTimeout: 5.0,
+            confirmEnabled: false,
             exchange: new ExchangeConfig(name: 'exchange_name'),
             queues: [
                 'queue_name' => new QueueConfig(name: 'queue_name'),
@@ -1076,28 +1076,30 @@ class ConnectionTest extends TestCase
 
         $factory->method('create')->willReturn($amqpConnection);
         $amqpConnection->method('isConnected')->willReturn(true);
+        // Connection stays up (e.g. blocked); retries=0 means no reconnect, but each flush
+        // attempt must still open a fresh channel so leftover batch buffers are not appended to.
         $amqpConnection->expects(self::exactly(2))
             ->method('channel')
             ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
-        $amqpConnection->expects(self::once())
+        $amqpConnection->expects(self::never())
             ->method('reconnect');
 
-        $amqpChannel1->method('confirm_select');
-        $amqpChannel2->method('confirm_select');
-
-        $body1 = 'retry later body 1';
-        $body2 = 'retry later body 2';
+        $body1 = 'blocked body 1';
+        $body2 = 'blocked body 2';
 
         $amqpMessage1 = $this->createPersistentAmqpMessage($body1);
         $amqpMessage2 = $this->createPersistentAmqpMessage($body2);
 
-        // First flush fails with no retries. Second flush retries once onto channel2.
-        $amqpChannel1->expects(self::exactly(4))
-            ->method('batch_basic_publish');
-
         $amqpChannel1->expects(self::exactly(2))
+            ->method('batch_basic_publish')
+            ->with(...self::withConsecutive(
+                [$amqpMessage1, 'exchange_name'],
+                [$amqpMessage2, 'exchange_name'],
+            ));
+
+        $amqpChannel1->expects(self::once())
             ->method('publish_batch')
-            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+            ->willThrowException(new AMQPConnectionBlockedException('Connection blocked'));
 
         $amqpChannel2->expects(self::exactly(2))
             ->method('batch_basic_publish')
@@ -1108,10 +1110,6 @@ class ConnectionTest extends TestCase
 
         $amqpChannel2->expects(self::once())
             ->method('publish_batch');
-
-        $amqpChannel2->expects(self::once())
-            ->method('wait_for_pending_acks')
-            ->with(timeout: 5);
 
         $connection = new Connection(
             retryFactory: new RetryFactory(),
@@ -1130,13 +1128,14 @@ class ConnectionTest extends TestCase
 
             try {
                 $connection->flush();
-                self::fail('Expected TransportException was not thrown.');
-            } catch (TransportException) {
+                self::fail('Expected an AMQP flush failure was not thrown.');
+            } catch (AMQPConnectionBlockedException $exception) {
+                // RetryFactory does not treat blocked connections as retryable, so the
+                // raw exception surfaces; the owned batch must still be retained.
+                self::assertSame('Connection blocked', $exception->getMessage());
             }
 
             self::assertCount(2, $this->getPendingBatchMessages($connection));
-
-            Retry::$defaultRetries = 1;
 
             $connection->flush();
 

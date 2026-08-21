@@ -18,6 +18,7 @@ use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Exception\TransportException;
+use Throwable;
 
 use function array_map;
 use function array_merge;
@@ -251,36 +252,45 @@ class Connection
         }
 
         $this->retryWithReconnect(function (): void {
-            $channel = $this->channel();
-
-            foreach ($this->batchMessages as [$message, $exchangeName, $routingKey]) {
-                $channel->batch_basic_publish(
-                    message: $message,
-                    exchange: $exchangeName,
-                    routing_key: $routingKey,
-                );
-            }
-
-            if ($this->connectionConfig->transactionsEnabled) {
-                $channel->tx_select();
-            }
-
             try {
-                $channel->publish_batch();
-            } catch (AMQPExceptionInterface $e) {
-                if ($this->connectionConfig->transactionsEnabled) {
-                    $channel->tx_rollback();
+                $channel = $this->channel();
+
+                foreach ($this->batchMessages as [$message, $exchangeName, $routingKey]) {
+                    $channel->batch_basic_publish(
+                        message: $message,
+                        exchange: $exchangeName,
+                        routing_key: $routingKey,
+                    );
                 }
 
+                if ($this->connectionConfig->transactionsEnabled) {
+                    $channel->tx_select();
+                }
+
+                try {
+                    $channel->publish_batch();
+                } catch (AMQPExceptionInterface $e) {
+                    if ($this->connectionConfig->transactionsEnabled) {
+                        $channel->tx_rollback();
+                    }
+
+                    throw $e;
+                }
+
+                if ($this->connectionConfig->transactionsEnabled) {
+                    $channel->tx_commit();
+                }
+
+                if ($this->connectionConfig->confirmEnabled) {
+                    $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                }
+            } catch (Throwable $e) {
+                // A failed publish_batch can leave messages in php-amqplib's per-channel
+                // batch buffer. Drop the cached channel so a later flush() cannot append
+                // onto that leftover buffer and duplicate when the broker recovers.
+                $this->channel = null;
+
                 throw $e;
-            }
-
-            if ($this->connectionConfig->transactionsEnabled) {
-                $channel->tx_commit();
-            }
-
-            if ($this->connectionConfig->confirmEnabled) {
-                $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
             }
         })->run();
 
