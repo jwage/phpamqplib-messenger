@@ -852,6 +852,51 @@ class ConnectionTest extends TestCase
         $connection->publish(body: 'test body', headers: $headers);
     }
 
+    public function testPublishPreservesThePublishExceptionWhenRollbackAlsoFails(): void
+    {
+        [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            transactionsEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        $publishException  = new AMQPConnectionClosedException('Publish failed');
+        $rollbackException = new AMQPConnectionClosedException('Rollback failed');
+
+        $amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel);
+
+        $amqpChannel->expects(self::once())
+            ->method('tx_select');
+        $amqpChannel->expects(self::once())
+            ->method('basic_publish')
+            ->willThrowException($publishException);
+        $amqpChannel->expects(self::once())
+            ->method('tx_rollback')
+            ->willThrowException($rollbackException);
+        $amqpChannel->expects(self::never())
+            ->method('tx_commit');
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                $connection->publish(body: 'test body');
+                self::fail('Expected publishing to fail.');
+            } catch (TransportException $exception) {
+                self::assertSame($publishException, $exception->getPrevious());
+            }
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+    }
+
     public function testPublishWithConfirmDisabled(): void
     {
         [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
@@ -1237,6 +1282,54 @@ class ConnectionTest extends TestCase
             $connection->publish(body: $body1, batchSize: 2);
             $connection->publish(body: $body2, batchSize: 2);
         });
+    }
+
+    public function testFlushPreservesThePublishExceptionWhenRollbackAlsoFails(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            transactionsEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        $publishException  = new AMQPConnectionClosedException('Batch publish failed');
+        $rollbackException = new AMQPConnectionClosedException('Batch rollback failed');
+
+        $amqpChannel->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+        $amqpChannel->expects(self::once())
+            ->method('tx_select');
+        $amqpChannel->expects(self::once())
+            ->method('publish_batch')
+            ->willThrowException($publishException);
+        $amqpChannel->expects(self::once())
+            ->method('tx_rollback')
+            ->willThrowException($rollbackException);
+        $amqpChannel->expects(self::never())
+            ->method('tx_commit');
+
+        $connection->publish(body: 'body 1', batchSize: 3);
+        $connection->publish(body: 'body 2', batchSize: 3);
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                $connection->flush();
+                self::fail('Expected batch publishing to fail.');
+            } catch (TransportException $exception) {
+                self::assertSame($publishException, $exception->getPrevious());
+            }
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        self::assertCount(2, $this->getPendingBatchMessages($connection));
     }
 
     public function testFlushPreservesBatchWhenRetriesAreExhausted(): void

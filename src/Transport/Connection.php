@@ -220,30 +220,32 @@ class Connection
             }
         } else {
             $this->retryWithReconnect(function () use ($amqpEnvelope, $exchangeName, $publishRoutingKey): void {
+                $channel = $this->channel();
+
                 if ($this->connectionConfig->transactionsEnabled) {
-                    $this->channel()->tx_select();
+                    $channel->tx_select();
                 }
 
                 try {
-                    $this->channel()->basic_publish(
+                    $channel->basic_publish(
                         msg: $amqpEnvelope->getAMQPMessage(),
                         exchange: $exchangeName,
                         routing_key: $publishRoutingKey ?? '',
                     );
                 } catch (AMQPExceptionInterface $e) {
                     if ($this->connectionConfig->transactionsEnabled) {
-                        $this->channel()->tx_rollback();
+                        $this->rollbackTransaction($channel);
                     }
 
                     throw $e;
                 }
 
                 if ($this->connectionConfig->transactionsEnabled) {
-                    $this->channel()->tx_commit();
+                    $channel->tx_commit();
                 }
 
                 if ($this->connectionConfig->confirmEnabled) {
-                    $this->channel()->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                    $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
                 }
             })->run();
         }
@@ -280,7 +282,7 @@ class Connection
                     $channel->publish_batch();
                 } catch (AMQPExceptionInterface $e) {
                     if ($this->connectionConfig->transactionsEnabled) {
-                        $channel->tx_rollback();
+                        $this->rollbackTransaction($channel);
                     }
 
                     throw $e;
@@ -370,6 +372,20 @@ class Connection
     {
         $this->channel = null;
         $this->consumer?->invalidate();
+    }
+
+    private function rollbackTransaction(AMQPChannel $channel): void
+    {
+        try {
+            $channel->tx_rollback();
+        } catch (AMQPExceptionInterface $rollbackException) {
+            // The publish failure drives retry behavior and is the useful root cause. Keep
+            // it as the thrown exception even if best-effort rollback fails on the same channel.
+            $this->logger?->warning('AMQP transaction rollback failed: {message}', [
+                'message' => $rollbackException->getMessage(),
+                'exception' => $rollbackException,
+            ]);
+        }
     }
 
     private function getRoutingKeyForMessage(AmqpStamp|null $amqpStamp): string|null
