@@ -12,6 +12,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
@@ -220,6 +221,10 @@ class Connection
             }
         } else {
             $this->retryWithReconnect(function () use ($amqpEnvelope, $exchangeName, $publishRoutingKey): void {
+                // A known broker alarm rejects publishes before they touch the channel. Do
+                // not open and then discard another channel on every caller retry.
+                $this->throwIfConnectionBlocked();
+
                 try {
                     $channel = $this->channel();
 
@@ -271,6 +276,10 @@ class Connection
         // A failed attempt discards its dirty channel below; channel() will reconnect
         // lazily if the underlying connection is actually dead.
         $this->retry(function (): void {
+            // Keep a known-blocked connection from consuming one channel ID per flush.
+            // The batch remains owned here and can be retried after the alarm clears.
+            $this->throwIfConnectionBlocked();
+
             try {
                 $channel = $this->channel();
 
@@ -378,8 +387,13 @@ class Connection
      */
     private function discardChannel(): void
     {
+        $channel       = $this->channel;
         $this->channel = null;
         $this->consumer?->invalidate();
+
+        // This performs only local cleanup when the connection is already dead. It does
+        // not wait for channel.close-ok or deregister a live broker-side channel.
+        $channel?->closeIfDisconnected();
     }
 
     private function rollbackTransaction(AMQPChannel $channel): void
@@ -393,6 +407,14 @@ class Connection
                 'message' => $rollbackException->getMessage(),
                 'exception' => $rollbackException,
             ]);
+        }
+    }
+
+    /** @throws AMQPConnectionBlockedException */
+    private function throwIfConnectionBlocked(): void
+    {
+        if ($this->connection?->isBlocked()) {
+            throw new AMQPConnectionBlockedException();
         }
     }
 
