@@ -5,21 +5,27 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use Jwage\PhpAmqpLibMessengerBundle\Batch;
+use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\ConfirmMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\TransactionMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
+use PhpAmqpLib\Connection\AbstractConnection;
 use PhpAmqpLib\Wire\AMQPTable;
+use ReflectionProperty;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
+use Throwable;
 use Traversable;
 
 use function assert;
 use function count;
+use function sprintf;
 
 class TransportFunctionalTest extends KernelTestCase
 {
@@ -65,6 +71,10 @@ class TransportFunctionalTest extends KernelTestCase
 
     public function testTransportWithTransactions(): void
     {
+        if (! $this->canPublishAndConsumeTransactionMessage()) {
+            self::markTestSkipped('AMQP transactions are not usable on this broker.');
+        }
+
         $envelopes = $this->getEnvelopes($this->transactionsTransport, 0);
 
         self::assertCount(0, $envelopes);
@@ -235,6 +245,128 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertSame('expired', $amqpEnvelope->getHeader('x-last-death-reason'));
     }
 
+    public function testBatchFlushRecoversAfterBrokerSocketIsDropped(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $connection = $this->confirmsTransport->getConnection();
+        $connection->channel();
+
+        $batch = Batch::new($this->bus, 3);
+        $batch->dispatch(new ConfirmMessage(101));
+        $batch->dispatch(new ConfirmMessage(102));
+
+        $this->dropUnderlyingAmqpSocket($connection);
+
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $batch->flush();
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 2);
+
+        self::assertCount(2, $envelopes);
+        self::assertEquals(101, $envelopes[0]->getMessage()->count);
+        self::assertEquals(102, $envelopes[1]->getMessage()->count);
+    }
+
+    public function testBatchFlushRecoversWhenSocketDropsOnAutoFlush(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $connection = $this->confirmsTransport->getConnection();
+        $connection->channel();
+
+        $batch = Batch::new($this->bus, 2);
+        $batch->dispatch(new ConfirmMessage(201));
+
+        $this->dropUnderlyingAmqpSocket($connection);
+
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            // Second dispatch fills the batch and auto-flushes against the dead socket.
+            $batch->dispatch(new ConfirmMessage(202));
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 2);
+
+        self::assertCount(2, $envelopes);
+        self::assertEquals(201, $envelopes[0]->getMessage()->count);
+        self::assertEquals(202, $envelopes[1]->getMessage()->count);
+    }
+
+    public function testTransactionsBatchFlushRecoversAfterBrokerSocketIsDropped(): void
+    {
+        if (! $this->canPublishAndConsumeTransactionMessage()) {
+            self::markTestSkipped('AMQP transactions are not usable on this broker.');
+        }
+
+        $this->drainTransport($this->transactionsTransport);
+
+        $connection = $this->transactionsTransport->getConnection();
+        $connection->channel();
+
+        $batch = Batch::new($this->bus, 3);
+        $batch->dispatch(new TransactionMessage(301));
+        $batch->dispatch(new TransactionMessage(302));
+
+        $this->dropUnderlyingAmqpSocket($connection);
+
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $batch->flush();
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        $envelopes = $this->getEnvelopes($this->transactionsTransport, 2);
+
+        self::assertCount(2, $envelopes);
+        self::assertEquals(301, $envelopes[0]->getMessage()->count);
+        self::assertEquals(302, $envelopes[1]->getMessage()->count);
+    }
+
+    public function testConnectionPublishBatchFlushRecoversAfterBrokerSocketIsDropped(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $connection = $this->confirmsTransport->getConnection();
+        $connection->channel();
+
+        $connection->publish(body: 'direct-batch-body-401', batchSize: 3);
+        $connection->publish(body: 'direct-batch-body-402', batchSize: 3);
+
+        self::assertSame(0, $connection->countMessagesInQueues());
+
+        $this->dropUnderlyingAmqpSocket($connection);
+
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $connection->flush();
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        self::assertSame(2, $connection->countMessagesInQueues());
+
+        // Raw bodies are not Messenger-encoded; purge so later tests stay isolated.
+        $connection->channel()->queue_purge('test_confirms_queue');
+
+        self::assertSame(0, $connection->countMessagesInQueues());
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -254,6 +386,15 @@ class TransportFunctionalTest extends KernelTestCase
         assert($transactionsTransport instanceof AmqpTransport);
 
         $this->transactionsTransport = $transactionsTransport;
+
+        try {
+            $this->confirmsTransport->setup();
+            $this->transactionsTransport->setup();
+            $this->drainTransport($this->confirmsTransport);
+            $this->drainTransport($this->transactionsTransport);
+        } catch (Throwable $exception) {
+            self::markTestSkipped(sprintf('AMQP broker is not available: %s', $exception->getMessage()));
+        }
     }
 
     protected function tearDown(): void
@@ -275,25 +416,91 @@ class TransportFunctionalTest extends KernelTestCase
     }
 
     /** @return array<Envelope> */
-    private function getEnvelopes(AMQPTransport $transport, int $count): array
+    private function getEnvelopes(AmqpTransport $transport, int $count, int $maxEmptyPolls = 100): array
     {
-        $collectedEnvelopes = [];
+        if ($count === 0) {
+            $this->drainTransport($transport);
 
-        while (true) {
+            return [];
+        }
+
+        $collectedEnvelopes = [];
+        $emptyPolls         = 0;
+
+        while (count($collectedEnvelopes) < $count) {
+            $receivedAny = false;
+
             /** @var Traversable<Envelope> $envelopes */
             $envelopes = $transport->get();
 
             foreach ($envelopes as $envelope) {
                 $collectedEnvelopes[] = $envelope;
-
                 $transport->ack($envelope);
+                $receivedAny = true;
+                $emptyPolls  = 0;
+
+                if (count($collectedEnvelopes) === $count) {
+                    return $collectedEnvelopes;
+                }
             }
 
-            if (count($collectedEnvelopes) === $count) {
-                break;
+            if (! $receivedAny) {
+                $emptyPolls++;
+
+                if ($emptyPolls >= $maxEmptyPolls) {
+                    self::fail(sprintf(
+                        'Timed out waiting for %d envelope(s); received %d.',
+                        $count,
+                        count($collectedEnvelopes),
+                    ));
+                }
             }
         }
 
         return $collectedEnvelopes;
+    }
+
+    private function drainTransport(AmqpTransport $transport): void
+    {
+        for ($attempt = 0; $attempt < 20; $attempt++) {
+            $drainedAny = false;
+
+            /** @var Traversable<Envelope> $envelopes */
+            $envelopes = $transport->get();
+
+            foreach ($envelopes as $envelope) {
+                $transport->ack($envelope);
+                $drainedAny = true;
+            }
+
+            if (! $drainedAny) {
+                return;
+            }
+        }
+    }
+
+    private function dropUnderlyingAmqpSocket(Connection $connection): void
+    {
+        $amqpConnectionProperty = new ReflectionProperty(Connection::class, 'connection');
+        $amqpConnection         = $amqpConnectionProperty->getValue($connection);
+
+        self::assertInstanceOf(AbstractConnection::class, $amqpConnection);
+
+        // Close the TCP stream without going through a clean AMQP close so the next
+        // publish_batch write fails with a broken pipe, matching the production failure.
+        $amqpConnection->getIO()->close();
+    }
+
+    private function canPublishAndConsumeTransactionMessage(): bool
+    {
+        try {
+            $this->drainTransport($this->transactionsTransport);
+            $this->bus->dispatch(new TransactionMessage(999_001));
+            $envelopes = $this->getEnvelopes($this->transactionsTransport, 1, maxEmptyPolls: 5);
+
+            return $envelopes !== [] && $envelopes[0]->getMessage()->count === 999_001;
+        } catch (Throwable) {
+            return false;
+        }
     }
 }

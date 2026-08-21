@@ -23,6 +23,7 @@ use PhpAmqpLib\Exception\AMQPConnectionClosedException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use PHPUnit\Framework\MockObject\MockObject;
+use ReflectionProperty;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Traversable;
 
@@ -221,6 +222,87 @@ class ConnectionTest extends TestCase
 
         try {
             $connection->publish(body: 'test body', delayInMs: 5000);
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+    }
+
+    /**
+     * @return array{
+     *     0: Connection,
+     *     1: AMQPStreamConnection&MockObject,
+     *     2: AMQPChannel&MockObject,
+     *     3: AMQPChannel&MockObject,
+     * }
+     */
+    private function createConnectionForBatchFlushReconnectTest(
+        ConnectionConfig|null $connectionConfig = null,
+    ): array {
+        $connectionConfig ??= new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            confirmTimeout: 5.0,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+        $amqpConnection->expects(self::once())
+            ->method('reconnect');
+
+        $amqpChannel1->method('confirm_select');
+        $amqpChannel2->method('confirm_select');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        return [$connection, $amqpConnection, $amqpChannel1, $amqpChannel2];
+    }
+
+    /** @return list<array{0: AMQPMessage, 1: string, 2: string}> */
+    private function getPendingBatchMessages(Connection $connection): array
+    {
+        $batchMessagesProperty = new ReflectionProperty(Connection::class, 'batchMessages');
+
+        /** @var list<array{0: AMQPMessage, 1: string, 2: string}> $batchMessages */
+        $batchMessages = $batchMessagesProperty->getValue($connection);
+
+        return $batchMessages;
+    }
+
+    private function createPersistentAmqpMessage(string $body): AMQPMessage
+    {
+        return new AMQPMessage(
+            $body,
+            [
+                'content_type' => 'text/plain',
+                'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
+                'application_headers' => new AMQPTable(),
+            ],
+        );
+    }
+
+    private function runWithZeroRetryWaitTime(callable $run): void
+    {
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $run();
         } finally {
             Retry::$defaultWaitTime = $previousWaitTime;
         }
@@ -652,52 +734,13 @@ class ConnectionTest extends TestCase
 
     public function testFlushRepublishesBatchAfterConnectionClosed(): void
     {
-        $connectionConfig = new ConnectionConfig(
-            autoSetup: false,
-            confirmEnabled: true,
-            confirmTimeout: 5.0,
-            exchange: new ExchangeConfig(name: 'exchange_name'),
-            queues: [
-                'queue_name' => new QueueConfig(name: 'queue_name'),
-            ],
-        );
-
-        $factory        = $this->createStub(AmqpConnectionFactory::class);
-        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
-        $amqpChannel1   = $this->createMock(AMQPChannel::class);
-        $amqpChannel2   = $this->createMock(AMQPChannel::class);
-
-        $factory->method('create')->willReturn($amqpConnection);
-        $amqpConnection->method('isConnected')->willReturn(true);
-        $amqpConnection->expects(self::exactly(2))
-            ->method('channel')
-            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
-        $amqpConnection->expects(self::once())
-            ->method('reconnect');
-
-        $amqpChannel1->method('confirm_select');
-        $amqpChannel2->method('confirm_select');
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushReconnectTest();
 
         $body1 = 'test body 1';
         $body2 = 'test body 2';
 
-        $amqpMessage1 = new AMQPMessage(
-            $body1,
-            [
-                'content_type' => 'text/plain',
-                'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
-                'application_headers' => new AMQPTable(),
-            ],
-        );
-
-        $amqpMessage2 = new AMQPMessage(
-            $body2,
-            [
-                'content_type' => 'text/plain',
-                'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
-                'application_headers' => new AMQPTable(),
-            ],
-        );
+        $amqpMessage1 = $this->createPersistentAmqpMessage($body1);
+        $amqpMessage2 = $this->createPersistentAmqpMessage($body2);
 
         $amqpChannel1->expects(self::exactly(2))
             ->method('batch_basic_publish')
@@ -727,21 +770,366 @@ class ConnectionTest extends TestCase
             ->method('wait_for_pending_acks')
             ->with(timeout: 5);
 
+        $this->runWithZeroRetryWaitTime(static function () use ($connection, $body1, $body2): void {
+            $connection->publish(body: $body1, batchSize: 2);
+            $connection->publish(body: $body2, batchSize: 2);
+        });
+
+        self::assertSame([], $this->getPendingBatchMessages($connection));
+    }
+
+    public function testFlushRepublishesBatchAfterChannelClosed(): void
+    {
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushReconnectTest();
+
+        $body1 = 'test body 1';
+        $body2 = 'test body 2';
+
+        $amqpMessage1 = $this->createPersistentAmqpMessage($body1);
+        $amqpMessage2 = $this->createPersistentAmqpMessage($body2);
+
+        $amqpChannel1->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+
+        $amqpChannel1->expects(self::once())
+            ->method('publish_batch')
+            ->willThrowException(new AMQPChannelClosedException('Channel connection is closed.'));
+
+        $amqpChannel2->expects(self::exactly(2))
+            ->method('batch_basic_publish')
+            ->with(...self::withConsecutive(
+                [$amqpMessage1, 'exchange_name'],
+                [$amqpMessage2, 'exchange_name'],
+            ));
+
+        $amqpChannel2->expects(self::once())
+            ->method('publish_batch');
+
+        $amqpChannel2->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->with(timeout: 5);
+
+        $this->runWithZeroRetryWaitTime(static function () use ($connection, $body1, $body2): void {
+            $connection->publish(body: $body1, batchSize: 2);
+            $connection->publish(body: $body2, batchSize: 2);
+        });
+    }
+
+    public function testFlushRepublishesPartialBatchAfterConnectionClosed(): void
+    {
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushReconnectTest();
+
+        $body1 = 'partial body 1';
+        $body2 = 'partial body 2';
+
+        $amqpMessage1 = $this->createPersistentAmqpMessage($body1);
+        $amqpMessage2 = $this->createPersistentAmqpMessage($body2);
+
+        $amqpChannel1->expects(self::exactly(2))
+            ->method('batch_basic_publish')
+            ->with(...self::withConsecutive(
+                [$amqpMessage1, 'exchange_name'],
+                [$amqpMessage2, 'exchange_name'],
+            ));
+
+        $amqpChannel1->expects(self::once())
+            ->method('publish_batch')
+            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+
+        $amqpChannel2->expects(self::exactly(2))
+            ->method('batch_basic_publish')
+            ->with(...self::withConsecutive(
+                [$amqpMessage1, 'exchange_name'],
+                [$amqpMessage2, 'exchange_name'],
+            ));
+
+        $amqpChannel2->expects(self::once())
+            ->method('publish_batch');
+
+        $amqpChannel2->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->with(timeout: 5);
+
+        $this->runWithZeroRetryWaitTime(function () use ($connection, $body1, $body2): void {
+            $connection->publish(body: $body1, batchSize: 5);
+            $connection->publish(body: $body2, batchSize: 5);
+
+            self::assertCount(2, $this->getPendingBatchMessages($connection));
+
+            $connection->flush();
+        });
+
+        self::assertSame([], $this->getPendingBatchMessages($connection));
+    }
+
+    public function testFlushRepublishesBatchWhenWaitForPendingAcksFails(): void
+    {
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushReconnectTest();
+
+        $body1 = 'confirm body 1';
+        $body2 = 'confirm body 2';
+
+        $amqpMessage1 = $this->createPersistentAmqpMessage($body1);
+        $amqpMessage2 = $this->createPersistentAmqpMessage($body2);
+
+        $amqpChannel1->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+
+        $amqpChannel1->expects(self::once())
+            ->method('publish_batch');
+
+        $amqpChannel1->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+
+        $amqpChannel2->expects(self::exactly(2))
+            ->method('batch_basic_publish')
+            ->with(...self::withConsecutive(
+                [$amqpMessage1, 'exchange_name'],
+                [$amqpMessage2, 'exchange_name'],
+            ));
+
+        $amqpChannel2->expects(self::once())
+            ->method('publish_batch');
+
+        $amqpChannel2->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->with(timeout: 5);
+
+        $this->runWithZeroRetryWaitTime(static function () use ($connection, $body1, $body2): void {
+            $connection->publish(body: $body1, batchSize: 2);
+            $connection->publish(body: $body2, batchSize: 2);
+        });
+    }
+
+    public function testFlushWithTransactionsRepublishesBatchAfterConnectionClosed(): void
+    {
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushReconnectTest(
+            new ConnectionConfig(
+                autoSetup: false,
+                confirmEnabled: false,
+                transactionsEnabled: true,
+                exchange: new ExchangeConfig(name: 'exchange_name'),
+                queues: [
+                    'queue_name' => new QueueConfig(name: 'queue_name'),
+                ],
+            ),
+        );
+
+        $body1 = 'tx body 1';
+        $body2 = 'tx body 2';
+
+        $amqpChannel1->expects(self::once())
+            ->method('tx_select');
+
+        $amqpChannel1->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+
+        $amqpChannel1->expects(self::once())
+            ->method('publish_batch')
+            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+
+        $amqpChannel1->expects(self::once())
+            ->method('tx_rollback');
+
+        $amqpChannel1->expects(self::never())
+            ->method('tx_commit');
+
+        $amqpChannel2->expects(self::once())
+            ->method('tx_select');
+
+        $amqpChannel2->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+
+        $amqpChannel2->expects(self::once())
+            ->method('publish_batch');
+
+        $amqpChannel2->expects(self::once())
+            ->method('tx_commit');
+
+        $amqpChannel2->expects(self::never())
+            ->method('wait_for_pending_acks');
+
+        $this->runWithZeroRetryWaitTime(static function () use ($connection, $body1, $body2): void {
+            $connection->publish(body: $body1, batchSize: 2);
+            $connection->publish(body: $body2, batchSize: 2);
+        });
+    }
+
+    public function testFlushPreservesBatchWhenRetriesAreExhausted(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+        $amqpChannel->method('confirm_select');
+
+        $amqpChannel->expects(self::atLeastOnce())
+            ->method('batch_basic_publish');
+
+        $amqpChannel->expects(self::atLeastOnce())
+            ->method('publish_batch')
+            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+
         $connection = new Connection(
             retryFactory: new RetryFactory(),
             amqpConnectionFactory: $factory,
             connectionConfig: $connectionConfig,
         );
 
+        $body1 = 'retained body 1';
+        $body2 = 'retained body 2';
+
+        $previousRetries        = Retry::$defaultRetries;
         $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
         Retry::$defaultWaitTime = 0;
 
         try {
             $connection->publish(body: $body1, batchSize: 2);
-            $connection->publish(body: $body2, batchSize: 2);
+
+            try {
+                $connection->publish(body: $body2, batchSize: 2);
+                self::fail('Expected TransportException was not thrown.');
+            } catch (TransportException $exception) {
+                self::assertSame('Broken pipe or closed connection', $exception->getMessage());
+            }
+
+            $pendingBatchMessages = $this->getPendingBatchMessages($connection);
+
+            self::assertCount(2, $pendingBatchMessages);
+            self::assertSame($body1, $pendingBatchMessages[0][0]->getBody());
+            self::assertSame($body2, $pendingBatchMessages[1][0]->getBody());
         } finally {
+            Retry::$defaultRetries  = $previousRetries;
             Retry::$defaultWaitTime = $previousWaitTime;
         }
+    }
+
+    public function testFlushAfterFailedAttemptPublishesRetainedBatch(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            confirmTimeout: 5.0,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+        $amqpConnection->expects(self::once())
+            ->method('reconnect');
+
+        $amqpChannel1->method('confirm_select');
+        $amqpChannel2->method('confirm_select');
+
+        $body1 = 'retry later body 1';
+        $body2 = 'retry later body 2';
+
+        $amqpMessage1 = $this->createPersistentAmqpMessage($body1);
+        $amqpMessage2 = $this->createPersistentAmqpMessage($body2);
+
+        // First flush fails with no retries. Second flush retries once onto channel2.
+        $amqpChannel1->expects(self::exactly(4))
+            ->method('batch_basic_publish');
+
+        $amqpChannel1->expects(self::exactly(2))
+            ->method('publish_batch')
+            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+
+        $amqpChannel2->expects(self::exactly(2))
+            ->method('batch_basic_publish')
+            ->with(...self::withConsecutive(
+                [$amqpMessage1, 'exchange_name'],
+                [$amqpMessage2, 'exchange_name'],
+            ));
+
+        $amqpChannel2->expects(self::once())
+            ->method('publish_batch');
+
+        $amqpChannel2->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->with(timeout: 5);
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $connection->publish(body: $body1, batchSize: 3);
+            $connection->publish(body: $body2, batchSize: 3);
+
+            try {
+                $connection->flush();
+                self::fail('Expected TransportException was not thrown.');
+            } catch (TransportException) {
+            }
+
+            self::assertCount(2, $this->getPendingBatchMessages($connection));
+
+            Retry::$defaultRetries = 1;
+
+            $connection->flush();
+
+            self::assertSame([], $this->getPendingBatchMessages($connection));
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+    }
+
+    public function testPublishDoesNotTouchChannelUntilBatchFlush(): void
+    {
+        [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks(
+            new ConnectionConfig(
+                autoSetup: false,
+                confirmEnabled: false,
+                exchange: new ExchangeConfig(name: 'exchange_name'),
+            ),
+        );
+
+        $amqpConnection->expects(self::never())
+            ->method('channel');
+
+        $amqpChannel->expects(self::never())
+            ->method('batch_basic_publish');
+
+        $amqpChannel->expects(self::never())
+            ->method('publish_batch');
+
+        $connection->publish(body: 'buffered only', batchSize: 3);
+
+        self::assertCount(1, $this->getPendingBatchMessages($connection));
     }
 
     public function testCountMessagesInQueues(): void
