@@ -718,6 +718,95 @@ class ConnectionTest extends TestCase
         $consumer->invalidate();
     }
 
+    public function testBlockedPublisherProcessesAnUnblockFrameWithoutInvalidatingConsumerDelivery(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            queues: ['queue_name' => new QueueConfig(name: 'queue_name')],
+        );
+
+        $factory          = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection   = $this->createMock(AMQPStreamConnection::class);
+        $consumerChannel  = $this->createMock(AMQPChannel::class);
+        $publisherChannel = $this->createMock(AMQPChannel::class);
+        $blocked          = false;
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->method('isBlocked')->willReturnCallback(
+            static function () use (&$blocked): bool {
+                return $blocked;
+            },
+        );
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($consumerChannel, $publisherChannel);
+        $amqpConnection->expects(self::once())
+            ->method('wait')
+            ->with(null, true)
+            ->willReturnCallback(
+                static function () use (&$blocked): void {
+                    // Model dispatching a real connection.unblocked frame: the socket
+                    // read, rather than the test itself, clears php-amqplib's flag.
+                    $blocked = false;
+                },
+            );
+        $amqpConnection->expects(self::never())
+            ->method('reconnect');
+
+        $consumerChannel->method('is_open')->willReturn(true);
+        $consumerChannel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+        $consumerChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag');
+        $consumerChannel->expects(self::exactly(2))
+            ->method('wait')
+            ->willThrowException(new AMQPTimeoutException('poll timeout'));
+        $consumerChannel->expects(self::once())
+            ->method('basic_ack')
+            ->with(1, false);
+        $consumerChannel->expects(self::never())
+            ->method('closeIfDisconnected');
+
+        $publisherChannel->expects(self::once())
+            ->method('basic_publish');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+        self::assertSame([], iterator_to_array($envelopes));
+
+        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
+        assert($consumer instanceof AmqpConsumer);
+
+        $message = new AMQPMessage('in-flight delivery');
+        $message->setChannel($consumerChannel);
+        $message->setDeliveryInfo(1, false, 'exchange_name', 'queue_name');
+        $consumer->callback($message);
+
+        $blocked = true;
+
+        $connection->publish(body: 'publish after recovery');
+
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+        $received  = iterator_to_array($envelopes);
+
+        self::assertCount(1, $received);
+        $received[0]->ack();
+
+        $consumer->invalidate();
+    }
+
     public function testConsumerResumesWhenADeadConnectionReplacesTheCachedChannel(): void
     {
         $connectionConfig = new ConnectionConfig(

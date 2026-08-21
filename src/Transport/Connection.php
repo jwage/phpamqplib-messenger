@@ -602,10 +602,22 @@ class Connection
             ->run();
     }
 
-    /** @throws AMQPConnectionBlockedException */
+    /** @throws AMQPExceptionInterface */
     private function throwIfConnectionBlocked(): void
     {
-        if ($this->connection?->isBlocked()) {
+        $connection = $this->connection;
+
+        if ($connection === null || ! $connection->isBlocked()) {
+            return;
+        }
+
+        // connection.unblocked is asynchronous. A publisher that stops writing while an
+        // alarm is active must still poll the socket so php-amqplib can dispatch that
+        // frame and clear its cached blocked flag. Non-blocking mode drains only data
+        // already available and preserves frames belonging to the consumer channel.
+        $connection->wait(allowed_methods: null, non_blocking: true);
+
+        if ($connection->isBlocked()) {
             throw new AMQPConnectionBlockedException();
         }
     }
