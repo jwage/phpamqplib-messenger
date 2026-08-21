@@ -618,6 +618,78 @@ class ConnectionTest extends TestCase
         $consumer->invalidate();
     }
 
+    public function testConsumerResumesWhenADeadConnectionReplacesTheCachedChannel(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: ['queue_name' => new QueueConfig(name: 'queue_name')],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+        $connected      = true;
+        $channelCalls   = 0;
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturnCallback(
+            static function () use (&$connected): bool {
+                return $connected;
+            },
+        );
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnCallback(
+                static function () use (&$connected, &$channelCalls, $amqpChannel1, $amqpChannel2): AMQPChannel {
+                    $channelCalls++;
+
+                    if ($channelCalls === 1) {
+                        return $amqpChannel1;
+                    }
+
+                    // php-amqplib's channel() calls connect() when disconnected, which
+                    // marks the connection live again before returning the new channel.
+                    $connected = true;
+
+                    return $amqpChannel2;
+                },
+            );
+        // php-amqplib can internally connect() when opening a channel after disconnect;
+        // Connection must not skip re-registering the consumer on that replacement channel.
+        $amqpConnection->expects(self::never())
+            ->method('reconnect');
+
+        $amqpChannel1->method('is_consuming')->willReturn(true);
+        $amqpChannel1->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag-1');
+        $amqpChannel1->method('wait')->willThrowException(new AMQPTimeoutException('poll timeout'));
+
+        $amqpChannel2->method('is_consuming')->willReturn(true);
+        $amqpChannel2->method('wait')->willThrowException(new AMQPTimeoutException('poll timeout'));
+        $amqpChannel2->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag-2');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        self::assertSame([], iterator_to_array($connection->consume('queue_name')));
+
+        $connected = false;
+
+        self::assertSame([], iterator_to_array($connection->consume('queue_name')));
+
+        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
+        assert($consumer instanceof AmqpConsumer);
+        $consumer->invalidate();
+    }
+
     public function testReconnect(): void
     {
         [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();
@@ -891,6 +963,114 @@ class ConnectionTest extends TestCase
             } catch (TransportException $exception) {
                 self::assertSame($publishException, $exception->getPrevious());
             }
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+    }
+
+    public function testPublishPreservesTheCommitExceptionWhenRollbackAlsoFails(): void
+    {
+        [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            transactionsEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        $commitException   = new AMQPConnectionClosedException('Commit failed');
+        $rollbackException = new AMQPConnectionClosedException('Rollback failed');
+
+        $amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel);
+
+        $amqpChannel->expects(self::once())
+            ->method('tx_select');
+        $amqpChannel->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel->expects(self::once())
+            ->method('tx_commit')
+            ->willThrowException($commitException);
+        $amqpChannel->expects(self::once())
+            ->method('tx_rollback')
+            ->willThrowException($rollbackException);
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                $connection->publish(body: 'test body');
+                self::fail('Expected publishing to fail.');
+            } catch (TransportException $exception) {
+                self::assertSame($commitException, $exception->getPrevious());
+            }
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+    }
+
+    public function testPublishOpensANewChannelAfterTransactionalPublishFails(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            transactionsEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+
+        $amqpChannel1->expects(self::once())
+            ->method('tx_select');
+        $amqpChannel1->expects(self::once())
+            ->method('basic_publish')
+            ->willThrowException(new AMQPConnectionClosedException('Publish failed'));
+        $amqpChannel1->expects(self::once())
+            ->method('tx_rollback')
+            ->willThrowException(new AMQPConnectionClosedException('Rollback failed'));
+        $amqpChannel1->expects(self::never())
+            ->method('tx_commit');
+
+        $amqpChannel2->expects(self::once())
+            ->method('tx_select');
+        $amqpChannel2->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel2->expects(self::once())
+            ->method('tx_commit');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                $connection->publish(body: 'first body');
+                self::fail('Expected the first publish to fail.');
+            } catch (TransportException) {
+            }
+
+            $connection->publish(body: 'second body');
         } finally {
             Retry::$defaultRetries  = $previousRetries;
             Retry::$defaultWaitTime = $previousWaitTime;
@@ -1323,6 +1503,54 @@ class ConnectionTest extends TestCase
                 self::fail('Expected batch publishing to fail.');
             } catch (TransportException $exception) {
                 self::assertSame($publishException, $exception->getPrevious());
+            }
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        self::assertCount(2, $this->getPendingBatchMessages($connection));
+    }
+
+    public function testFlushPreservesTheCommitExceptionWhenRollbackAlsoFails(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            transactionsEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        $commitException   = new AMQPConnectionClosedException('Batch commit failed');
+        $rollbackException = new AMQPConnectionClosedException('Batch rollback failed');
+
+        $amqpChannel->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+        $amqpChannel->expects(self::once())
+            ->method('tx_select');
+        $amqpChannel->expects(self::once())
+            ->method('publish_batch');
+        $amqpChannel->expects(self::once())
+            ->method('tx_commit')
+            ->willThrowException($commitException);
+        $amqpChannel->expects(self::once())
+            ->method('tx_rollback')
+            ->willThrowException($rollbackException);
+
+        $connection->publish(body: 'body 1', batchSize: 3);
+        $connection->publish(body: 'body 2', batchSize: 3);
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                $connection->flush();
+                self::fail('Expected batch publishing to fail.');
+            } catch (TransportException $exception) {
+                self::assertSame($commitException, $exception->getPrevious());
             }
         } finally {
             Retry::$defaultRetries  = $previousRetries;

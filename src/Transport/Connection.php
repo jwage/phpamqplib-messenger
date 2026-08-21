@@ -113,7 +113,7 @@ class Connection
     public function channel(): AMQPChannel
     {
         if ($this->channel !== null && ! $this->isConnected()) {
-            $this->channel = null;
+            $this->discardChannel();
         }
 
         if ($this->channel === null) {
@@ -220,32 +220,40 @@ class Connection
             }
         } else {
             $this->retryWithReconnect(function () use ($amqpEnvelope, $exchangeName, $publishRoutingKey): void {
-                $channel = $this->channel();
-
-                if ($this->connectionConfig->transactionsEnabled) {
-                    $channel->tx_select();
-                }
-
                 try {
-                    $channel->basic_publish(
-                        msg: $amqpEnvelope->getAMQPMessage(),
-                        exchange: $exchangeName,
-                        routing_key: $publishRoutingKey ?? '',
-                    );
-                } catch (AMQPExceptionInterface $e) {
+                    $channel = $this->channel();
+
                     if ($this->connectionConfig->transactionsEnabled) {
-                        $this->rollbackTransaction($channel);
+                        $channel->tx_select();
                     }
 
+                    try {
+                        $channel->basic_publish(
+                            msg: $amqpEnvelope->getAMQPMessage(),
+                            exchange: $exchangeName,
+                            routing_key: $publishRoutingKey ?? '',
+                        );
+
+                        if ($this->connectionConfig->transactionsEnabled) {
+                            $channel->tx_commit();
+                        }
+
+                        if ($this->connectionConfig->confirmEnabled) {
+                            $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                        }
+                    } catch (AMQPExceptionInterface $e) {
+                        if ($this->connectionConfig->transactionsEnabled) {
+                            $this->rollbackTransaction($channel);
+                        }
+
+                        throw $e;
+                    }
+                } catch (Throwable $e) {
+                    // A failed attempt can leave the channel in a selected/dirty transaction
+                    // (or confirm) state. Drop it so the next publish cannot reuse it.
+                    $this->discardChannel();
+
                     throw $e;
-                }
-
-                if ($this->connectionConfig->transactionsEnabled) {
-                    $channel->tx_commit();
-                }
-
-                if ($this->connectionConfig->confirmEnabled) {
-                    $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
                 }
             })->run();
         }
@@ -280,20 +288,20 @@ class Connection
 
                 try {
                     $channel->publish_batch();
+
+                    if ($this->connectionConfig->transactionsEnabled) {
+                        $channel->tx_commit();
+                    }
+
+                    if ($this->connectionConfig->confirmEnabled) {
+                        $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                    }
                 } catch (AMQPExceptionInterface $e) {
                     if ($this->connectionConfig->transactionsEnabled) {
                         $this->rollbackTransaction($channel);
                     }
 
                     throw $e;
-                }
-
-                if ($this->connectionConfig->transactionsEnabled) {
-                    $channel->tx_commit();
-                }
-
-                if ($this->connectionConfig->confirmEnabled) {
-                    $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
                 }
             } catch (Throwable $e) {
                 // A failed publish_batch can leave messages in php-amqplib's per-channel

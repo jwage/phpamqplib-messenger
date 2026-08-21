@@ -38,6 +38,10 @@ class AmqpConsumer
     {
         $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
 
+        // Resolve the channel first. A dead cached channel must be discarded (and this
+        // consumer invalidated) before we decide whether the tag is still valid.
+        $this->connection->channel();
+
         if ($this->consumerTag === null) {
             $this->start($queueConfig);
         }
