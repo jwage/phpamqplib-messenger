@@ -286,7 +286,7 @@ class Connection
                 $this->flush();
             }
         } else {
-            $this->retryWithReconnect(function () use ($amqpEnvelope, $exchangeName, $publishRoutingKey): void {
+            $this->retryPublisher(function () use ($amqpEnvelope, $exchangeName, $publishRoutingKey): void {
                 // A known broker alarm rejects publishes before they touch the channel. Do
                 // not open and then discard another channel on every caller retry.
                 $this->throwIfConnectionBlocked();
@@ -458,6 +458,36 @@ class Connection
             $waitTime,
             $jitter,
         );
+    }
+
+    /**
+     * Retries a publisher operation without replacing a healthy shared connection.
+     *
+     * The failed publisher channel is discarded by the operation before a retry. A
+     * reconnect is necessary only when the entire AMQP connection is dead; reconnecting
+     * for a channel-local failure would invalidate live consumer delivery tags.
+     *
+     * @param positive-int|0 $waitTime
+     *
+     * @throws TransportException
+     */
+    private function retryPublisher(
+        Closure $run,
+        int|null $retries = null,
+        int|null $waitTime = null,
+        bool|null $jitter = null,
+    ): Retry {
+        return $this->retryFactory->retry(
+            $run,
+            $retries,
+            $waitTime,
+            $jitter,
+        )
+            ->beforeRetry(function (): void {
+                if (! $this->isConnected()) {
+                    $this->reconnect();
+                }
+            });
     }
 
     /** Drops a failed publisher channel without disturbing a consumer on this connection. */

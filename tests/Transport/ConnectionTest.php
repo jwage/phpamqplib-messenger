@@ -630,6 +630,90 @@ class ConnectionTest extends TestCase
         $consumer->invalidate();
     }
 
+    public function testRetryablePublisherFailureDoesNotInvalidateAnOutstandingConsumerDelivery(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            queues: ['queue_name' => new QueueConfig(name: 'queue_name')],
+        );
+
+        $factory           = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection    = $this->createMock(AMQPStreamConnection::class);
+        $consumerChannel   = $this->createMock(AMQPChannel::class);
+        $publisherChannel1 = $this->createMock(AMQPChannel::class);
+        $publisherChannel2 = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(3))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($consumerChannel, $publisherChannel1, $publisherChannel2);
+        $amqpConnection->expects(self::never())
+            ->method('reconnect');
+
+        $consumerChannel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+        $consumerChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag');
+        $consumerChannel->expects(self::exactly(2))
+            ->method('wait')
+            ->willThrowException(new AMQPTimeoutException('poll timeout'));
+        $consumerChannel->expects(self::once())
+            ->method('basic_ack')
+            ->with(1, false);
+        $consumerChannel->expects(self::never())
+            ->method('closeIfDisconnected');
+
+        $publisherChannel1->expects(self::once())
+            ->method('basic_publish')
+            ->willThrowException(new AMQPChannelClosedException('Publisher channel closed'));
+        $publisherChannel1->expects(self::once())
+            ->method('closeIfDisconnected')
+            ->willReturn(false);
+        $publisherChannel1->expects(self::once())
+            ->method('close');
+
+        $publisherChannel2->expects(self::once())
+            ->method('basic_publish');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+        self::assertSame([], iterator_to_array($envelopes));
+
+        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
+        assert($consumer instanceof AmqpConsumer);
+
+        $message = new AMQPMessage('in-flight delivery');
+        $message->setChannel($consumerChannel);
+        $message->setDeliveryInfo(1, false, 'exchange_name', 'queue_name');
+        $consumer->callback($message);
+
+        $this->runWithZeroRetryWaitTime(
+            static function () use ($connection): void {
+                $connection->publish(body: 'publisher retry');
+            },
+        );
+
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+        $received  = iterator_to_array($envelopes);
+
+        self::assertCount(1, $received);
+        $received[0]->ack();
+
+        $consumer->invalidate();
+    }
+
     public function testConsumerResumesWhenADeadConnectionReplacesTheCachedChannel(): void
     {
         $connectionConfig = new ConnectionConfig(
