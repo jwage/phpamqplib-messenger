@@ -401,6 +401,12 @@ class Connection
                         $this->rollbackTransaction($channel);
                     }
 
+                    // A NACK means the broker rejected at least one confirm. php-amqplib
+                    // already dropped that delivery tag, so re-waiting this channel can
+                    // return immediately and look like success. Drop the confirm channel
+                    // and keep the batch so the caller can retry without auto-replay.
+                    $this->discardChannel();
+
                     throw new TransportException($e->getMessage(), 0, $e);
                 } catch (AMQPExceptionInterface $e) {
                     if ($this->connectionConfig->transactionsEnabled) {
