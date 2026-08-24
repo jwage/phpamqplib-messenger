@@ -76,3 +76,27 @@ jobs:
         run: ./vendor/bin/phpunit
         env:
           MESSENGER_TRANSPORT_PHPAMQPLIB_DSN: "phpamqplib://guest:guest@127.0.0.1:${{ job.services.rabbitmq.ports['5672'] }}/%2f/messages"
+
+  chaos:
+    name: Live broker chaos
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: :xdebug
+
+      - run: composer update --no-progress
+
+      # Own compose broker: these scenarios pause, restart, and stop RabbitMQ.
+      # They must not share the PHPUnit service container.
+      - run: docker compose up -d --wait
+
+      - run: php tests/bin/chaos.php
+
+      - if: always()
+        run: docker compose down

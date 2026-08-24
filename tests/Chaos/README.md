@@ -2,7 +2,7 @@
 
 PHPUnit already covers mocked unit behaviour and in-process functional cases (for example dropping the client TCP socket with reflection). It cannot honestly inject **broker-side** failures: a RabbitMQ restart, a frozen confirm path, a `basic.nack` from overflow, or a memory alarm.
 
-These scripts are for that gap. They talk to the docker compose broker, mutate it, and assert at-least-once publish behaviour. They are **not** part of `vendor/bin/phpunit` or CI.
+These scripts are for that gap. They talk to the docker compose broker, mutate it, and assert at-least-once publish behaviour. They are **not** part of `vendor/bin/phpunit`. CI runs them in a separate job so they do not pause or restart the PHPUnit broker.
 
 ## When to run them
 

@@ -346,4 +346,4 @@ php tests/bin/chaos.php --list
 php tests/bin/chaos.php
 ```
 
-See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the scenario catalog and broker commands. Do not run these in parallel with PHPUnit; they are not part of CI.
+See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the scenario catalog and broker commands. CI runs them in a separate job. Do not run them in parallel with PHPUnit; they pause and restart the broker.
