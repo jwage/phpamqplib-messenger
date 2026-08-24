@@ -1235,6 +1235,54 @@ class ConnectionTest extends TestCase
         }
     }
 
+    public function testDirectPublishDoesNotRetryWhenTheBrokerNacksTheMessage(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        /** @var callable(AMQPMessage): void|null $nackHandler */
+        $nackHandler = null;
+
+        $amqpChannel->expects(self::once())
+            ->method('set_nack_handler')
+            ->willReturnCallback(
+                static function (callable $handler) use (&$nackHandler): void {
+                    $nackHandler = $handler;
+                },
+            );
+        $amqpChannel->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->willReturnCallback(
+                static function () use (&$nackHandler): void {
+                    /** @var callable(AMQPMessage): void $handler */
+                    $handler = $nackHandler;
+                    $handler(new AMQPMessage('nacked message'));
+                },
+            );
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 3;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                $connection->publish(body: 'nacked message');
+                self::fail('Expected the NACKed publish to fail without retrying.');
+            } catch (TransportException $exception) {
+                self::assertInstanceOf(PublisherNack::class, $exception->getPrevious());
+            }
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+    }
+
     public function testDirectPublishDoesNotRepublishWhenPendingAcksTimeOut(): void
     {
         [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
