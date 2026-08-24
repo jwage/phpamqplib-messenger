@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle;
 
 use Closure;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\PublisherNack;
 use PhpAmqpLib\Exception\AMQPChannelClosedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
 use PhpAmqpLib\Exception\AMQPIOException;
@@ -32,6 +33,7 @@ class RetryFactory
                 AMQPConnectionClosedException::class,
                 AMQPIOException::class,
                 AMQPTimeoutException::class,
+                PublisherNack::class,
             ]);
     }
 }
