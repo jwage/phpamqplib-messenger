@@ -14,8 +14,14 @@ final class CollectingLogger extends AbstractLogger
     /** @var list<array{level: string, message: string}> */
     public array $records = [];
 
-    /** @param array<array-key, mixed> $context */
-    public function log(mixed $level, string|Stringable $message, array $context = []): void
+    /**
+     * Compatible with psr/log 1–3 (lowest Symfony 5.4 still uses untyped log()).
+     *
+     * @param mixed                   $level
+     * @param string|Stringable       $message
+     * @param array<array-key, mixed> $context
+     */
+    public function log($level, $message, array $context = []): void // phpcs:ignore SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
     {
         $this->records[] = [
             'level' => (string) $level,
