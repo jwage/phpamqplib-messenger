@@ -425,10 +425,10 @@ class Connection
 
                 throw $e;
             } catch (Throwable $e) {
-                // TEST BREAK: drop the owned batch on a connection error so a later
-                // flush looks successful with nothing to send.
+                // A failed publish_batch can leave messages in php-amqplib's per-channel
+                // batch buffer. Drop the cached channel so a later flush() cannot append
+                // onto that leftover buffer and duplicate when the broker recovers.
                 $this->discardChannel();
-                $this->batchMessages = [];
 
                 throw $e;
             }
