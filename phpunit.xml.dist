@@ -3,6 +3,7 @@
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
          bootstrap="tests/bootstrap.php"
          cacheDirectory=".phpunit.cache"
+         defaultTestSuite="default"
          executionOrder="depends,defects"
          requireCoverageMetadata="false"
          beStrictAboutCoverageMetadata="true"
@@ -17,6 +18,9 @@
             <directory>tests</directory>
             <exclude>tests/Chaos</exclude>
             <exclude>tests/bin</exclude>
+        </testsuite>
+        <testsuite name="chaos">
+            <file>tests/Chaos/ChaosScenariosTest.php</file>
         </testsuite>
     </testsuites>
 

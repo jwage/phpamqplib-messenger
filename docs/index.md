@@ -338,12 +338,13 @@ If the broker is down or unreachable, functional tests **fail** (they do not ski
 
 ### Live broker failure scenarios
 
-PHPUnit cannot restart, pause, or overflow the broker in the middle of a flush. For those cases there is a separate runner that talks to docker compose RabbitMQ:
+Broker mutations (restart, pause, overflow NACK, memory alarm, TLS listener) are PHPUnit tests in a **separate `chaos` testsuite**. They are excluded from `./vendor/bin/phpunit` so they do not pause the functional-test broker.
 
 ```bash
 docker compose up -d --wait
-php tests/bin/chaos.php --list
-php tests/bin/chaos.php
+./vendor/bin/phpunit --testsuite chaos
+# or: composer chaos
+# or: php tests/bin/chaos.php --list
 ```
 
-See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the scenario catalog and broker commands. CI runs them in a separate job. Do not run them in parallel with PHPUnit; they pause and restart the broker.
+See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the scenario catalog and broker commands. CI runs them in a separate job. Do not run them in parallel with the default PHPUnit suite; they pause and restart the broker.

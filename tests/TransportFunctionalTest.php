@@ -275,6 +275,30 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertEquals(102, $envelopes[1]->getMessage()->count);
     }
 
+    public function testDirectPublishRecoversAfterBrokerSocketIsDropped(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $connection = $this->confirmsTransport->getConnection();
+        $connection->channel();
+
+        $this->dropUnderlyingAmqpSocket($connection);
+
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $this->bus->dispatch(new ConfirmMessage(1001));
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 1);
+
+        self::assertCount(1, $envelopes);
+        self::assertEquals(1001, $envelopes[0]->getMessage()->count);
+    }
+
     public function testBatchFlushRecoversWhenSocketDropsOnAutoFlush(): void
     {
         $this->drainTransport($this->confirmsTransport);

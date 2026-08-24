@@ -4,9 +4,26 @@ services:
     ports:
       # 5673 avoids clashing with other local brokers commonly bound to 5672.
       - '5673:5672'
+      - '5671:5671'
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - ./tests/fixtures/ssl:/ssl-src:ro
+      - ./tests/fixtures/rabbitmq/20-ssl.conf:/etc/rabbitmq/conf.d/20-ssl.conf:ro
+    # Copy certs to a writable path and tighten the key mode. Git checkouts are often 644,
+    # and RabbitMQ refuses a world-readable TLS key.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -euo pipefail
+        mkdir -p /var/lib/rabbitmq/ssl
+        cp /ssl-src/ca.pem /ssl-src/server.pem /ssl-src/server-key.pem /var/lib/rabbitmq/ssl/
+        chown -R rabbitmq:rabbitmq /var/lib/rabbitmq/ssl
+        chmod 644 /var/lib/rabbitmq/ssl/ca.pem /var/lib/rabbitmq/ssl/server.pem
+        chmod 600 /var/lib/rabbitmq/ssl/server-key.pem
+        exec docker-entrypoint.sh rabbitmq-server
     healthcheck:
       test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
       interval: 5s

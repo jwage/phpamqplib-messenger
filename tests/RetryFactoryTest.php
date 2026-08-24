@@ -8,7 +8,13 @@ use Exception;
 use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\PublisherNack;
+use PhpAmqpLib\Exception\AMQPChannelClosedException;
+use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
+use PhpAmqpLib\Exception\AMQPIOException;
+use PhpAmqpLib\Exception\AMQPTimeoutException;
+use PHPUnit\Framework\Attributes\TestWith;
+use Symfony\Component\Messenger\Exception\TransportException;
 use Throwable;
 
 class RetryFactoryTest extends TestCase
@@ -87,6 +93,70 @@ class RetryFactoryTest extends TestCase
 
         self::assertSame(3, $count);
         self::assertSame('foo', $return);
+    }
+
+    /** @param class-string<Throwable> $exceptionClass */
+    #[TestWith([AMQPChannelClosedException::class])]
+    #[TestWith([AMQPConnectionClosedException::class])]
+    #[TestWith([AMQPIOException::class])]
+    #[TestWith([AMQPTimeoutException::class])]
+    public function testRetriesRetryableAmqpExceptions(string $exceptionClass): void
+    {
+        $count = 0;
+
+        $return = $this->retryFactory->retry(waitTime: 0)
+            ->run(static function () use (&$count, $exceptionClass): string {
+                $count++;
+
+                if ($count < 3) {
+                    throw new $exceptionClass('retry me');
+                }
+
+                return 'foo';
+            });
+
+        self::assertSame(3, $count);
+        self::assertSame('foo', $return);
+    }
+
+    public function testWillNotRetryAMQPConnectionBlockedException(): void
+    {
+        $count = 0;
+
+        try {
+            $this->retryFactory->retry(waitTime: 0)
+                ->run(static function () use (&$count): void {
+                    $count++;
+
+                    throw new AMQPConnectionBlockedException('Connection blocked');
+                });
+
+            self::fail('Expected AMQPConnectionBlockedException to propagate without retry.');
+        } catch (AMQPConnectionBlockedException $exception) {
+            self::assertSame('Connection blocked', $exception->getMessage());
+        }
+
+        self::assertSame(1, $count);
+    }
+
+    public function testWillNotRetryTransportException(): void
+    {
+        $count = 0;
+
+        try {
+            $this->retryFactory->retry(waitTime: 0)
+                ->run(static function () use (&$count): void {
+                    $count++;
+
+                    throw new TransportException('already wrapped');
+                });
+
+            self::fail('Expected TransportException to propagate without retry.');
+        } catch (TransportException $exception) {
+            self::assertSame('already wrapped', $exception->getMessage());
+        }
+
+        self::assertSame(1, $count);
     }
 
     protected function setUp(): void

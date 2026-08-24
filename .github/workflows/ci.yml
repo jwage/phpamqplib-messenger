@@ -96,7 +96,7 @@ jobs:
       # They must not share the PHPUnit service container.
       - run: docker compose up -d --wait
 
-      - run: php tests/bin/chaos.php
+      - run: ./vendor/bin/phpunit --testsuite chaos
 
       - if: always()
         run: docker compose down

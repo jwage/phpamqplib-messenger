@@ -47,6 +47,6 @@
     },
     "minimum-stability": "stable",
     "scripts": {
-        "chaos": "php tests/bin/chaos.php"
+        "chaos": "php vendor/bin/phpunit --testsuite chaos"
     }
 }

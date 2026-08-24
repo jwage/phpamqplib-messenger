@@ -7,6 +7,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos;
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\DsnParser;
@@ -29,6 +30,8 @@ use function hrtime;
 use function is_array;
 use function is_numeric;
 use function microtime;
+use function preg_match;
+use function preg_replace;
 use function proc_close;
 use function proc_open;
 use function sprintf;
@@ -36,7 +39,6 @@ use function stream_get_contents;
 use function uniqid;
 use function usleep;
 
-use const STDERR;
 use const STDOUT;
 
 final class Harness
@@ -55,7 +57,11 @@ final class Harness
 
     public function __construct(
         private CollectingLogger $logger = new CollectingLogger(),
+        private bool $verbose = false,
     ) {
+        $verboseEnv    = getenv('CHAOS_VERBOSE');
+        $this->verbose = $verbose || $verboseEnv === '1' || $verboseEnv === 'true';
+
         $this->connectionFactory = new ConnectionFactory(
             new DsnParser(),
             new RetryFactory($this->logger),
@@ -80,14 +86,31 @@ final class Harness
         return $dsn;
     }
 
+    public function sslDsn(): string
+    {
+        $dsn = getenv('MESSENGER_TRANSPORT_PHPAMQPLIB_SSL_DSN');
+
+        if ($dsn !== false && $dsn !== '') {
+            return $dsn;
+        }
+
+        $dsn = preg_replace('#^phpamqplib://#', 'phpamqplibs://', $this->dsn()) ?? $this->dsn();
+
+        if (preg_match('#:\\d+/#', $dsn) === 1) {
+            return preg_replace('#:(\\d+)/#', ':5671/', $dsn, 1) ?? $dsn;
+        }
+
+        return preg_replace('#@([^/]+)/#', '@$1:5671/', $dsn, 1) ?? $dsn;
+    }
+
     /**
      * @param array<array-key, mixed> $options
      *
      * @throws RuntimeException
      */
-    public function connect(array $options = []): Connection
+    public function connect(array $options = [], string|null $dsn = null): Connection
     {
-        $connection          = $this->connectionFactory->fromDsn($this->dsn(), $options);
+        $connection          = $this->connectionFactory->fromDsn($dsn ?? $this->dsn(), $options);
         $this->connections[] = $connection;
 
         return $connection;
@@ -118,6 +141,10 @@ final class Harness
 
     public function info(string $message): void
     {
+        if (! $this->verbose) {
+            return;
+        }
+
         fwrite(STDOUT, $message . "\n");
     }
 
@@ -171,6 +198,69 @@ final class Harness
         assert($channel instanceof AMQPChannel || $channel === null);
 
         return $channel;
+    }
+
+    public function publisherChannel(Connection $connection): AMQPChannel|null
+    {
+        $property = new ReflectionProperty(Connection::class, 'channel');
+        $channel  = $property->getValue($connection);
+
+        assert($channel instanceof AMQPChannel || $channel === null);
+
+        return $channel;
+    }
+
+    public function consumeOne(Connection $connection, string $queueName, float $timeoutSeconds = 15): AmqpEnvelope
+    {
+        $deadline      = microtime(true) + $timeoutSeconds;
+        $lastException = null;
+
+        while (microtime(true) < $deadline) {
+            try {
+                foreach ($connection->consume($queueName) as $envelope) {
+                    return $envelope;
+                }
+            } catch (Throwable $exception) {
+                $lastException = $exception;
+                $this->info('consume failed: ' . $exception->getMessage());
+            }
+
+            usleep(200_000);
+        }
+
+        $this->fail(sprintf(
+            'Timed out waiting for a delivery on %s%s',
+            $queueName,
+            $lastException !== null ? ': ' . $lastException->getMessage() : '',
+        ));
+    }
+
+    public function waitForMessageCount(Connection $connection, int $expected, float $timeoutSeconds = 10): int
+    {
+        $deadline      = microtime(true) + $timeoutSeconds;
+        $last          = 0;
+        $lastException = null;
+
+        while (microtime(true) < $deadline) {
+            try {
+                $last = $connection->countMessagesInQueues();
+
+                if ($last >= $expected) {
+                    return $last;
+                }
+            } catch (Throwable $exception) {
+                $lastException = $exception;
+            }
+
+            usleep(100_000);
+        }
+
+        $this->fail(sprintf(
+            'Timed out waiting for %d message(s); last count %d%s',
+            $expected,
+            $last,
+            $lastException !== null ? ': ' . $lastException->getMessage() : '',
+        ));
     }
 
     /**
@@ -290,7 +380,7 @@ final class Harness
             try {
                 $this->broker('unpause');
             } catch (Throwable $exception) {
-                fwrite(STDERR, 'Failed to unpause broker during cleanup: ' . $exception->getMessage() . "\n");
+                $this->info('Failed to unpause broker during cleanup: ' . $exception->getMessage());
             }
         }
 
@@ -298,7 +388,7 @@ final class Harness
             try {
                 $this->broker('memory-ok');
             } catch (Throwable $exception) {
-                fwrite(STDERR, 'Failed to reset memory alarm during cleanup: ' . $exception->getMessage() . "\n");
+                $this->info('Failed to reset memory alarm during cleanup: ' . $exception->getMessage());
             }
         }
 
@@ -313,6 +403,12 @@ final class Harness
 
                 if ($exchange !== '') {
                     $channel->exchange_delete($exchange);
+                }
+
+                $delayExchange = $connection->getConfig()->delay->exchange->name;
+
+                if ($connection->getConfig()->delay->enabled && $delayExchange !== '' && $delayExchange !== $exchange) {
+                    $channel->exchange_delete($delayExchange);
                 }
             } catch (Throwable) {
             }
@@ -351,7 +447,7 @@ final class Harness
 
         $status = proc_close($process);
 
-        if ($stdout !== false && $stdout !== '') {
+        if ($this->verbose && $stdout !== false && $stdout !== '') {
             fwrite(STDOUT, $stdout);
         }
 

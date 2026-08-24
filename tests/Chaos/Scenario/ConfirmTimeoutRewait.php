@@ -10,7 +10,7 @@ use Throwable;
 
 final class ConfirmTimeoutRewait
 {
-    public const string DESCRIPTION = 'A live confirm timeout re-waits the same channel instead of republishing.';
+    public const string DESCRIPTION = 'A live confirm timeout re-waits the same channel; a later publish must not duplicate.';
 
     public static function run(Harness $harness): void
     {
@@ -45,10 +45,10 @@ final class ConfirmTimeoutRewait
         );
 
         $harness->broker('unpause');
-        $connection->flush();
+        $connection->publish(body: 'three', batchSize: 1);
 
         $harness->assertSame(0, $harness->pendingBatchSize($connection), 'flush should clear the retained batch after confirms arrive');
-        $harness->assertSame(2, $connection->countMessagesInQueues(), 're-waiting must not duplicate the two published messages');
-        $harness->info('Re-wait confirmed both messages once');
+        $harness->assertSame(3, $connection->countMessagesInQueues(), 're-waiting must not duplicate the two published messages, and the newer publish must follow them');
+        $harness->info('Re-wait confirmed both messages once, then published a third');
     }
 }
