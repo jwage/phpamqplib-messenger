@@ -322,12 +322,6 @@ class Connection
                         if ($this->connectionConfig->confirmEnabled) {
                             $this->waitForBatchConfirm($channel);
                         }
-                    } catch (PublisherNack $e) {
-                        if ($this->connectionConfig->transactionsEnabled) {
-                            $this->rollbackTransaction($channel);
-                        }
-
-                        throw new TransportException($e->getMessage(), 0, $e);
                     } catch (AMQPExceptionInterface $e) {
                         if ($this->connectionConfig->transactionsEnabled) {
                             $this->rollbackTransaction($channel);
@@ -425,11 +419,9 @@ class Connection
                     throw $e;
                 }
             } catch (TransportException $e) {
-                // Exhausting live confirm timeouts leaves the original channel and batch
-                // pending so a later flush can re-wait without republishing either message.
-                if ($this->pendingBatchConfirmChannel === null) {
-                    $this->discardChannel();
-                }
+                // TEST BREAK: treat a live confirm timeout like a dead channel so the
+                // next flush republishes instead of re-waiting.
+                $this->discardChannel();
 
                 throw $e;
             } catch (Throwable $e) {
