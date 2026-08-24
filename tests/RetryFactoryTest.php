@@ -7,6 +7,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 use Exception;
 use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\PublisherNack;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
 use Throwable;
 
@@ -45,6 +46,26 @@ class RetryFactoryTest extends TestCase
             ->run(static function (): void {
                 throw new Exception('Did not retry');
             });
+    }
+
+    public function testWillNotRetryPublisherNack(): void
+    {
+        $count = 0;
+
+        try {
+            $this->retryFactory->retry(waitTime: 0)
+                ->run(static function () use (&$count): void {
+                    $count++;
+
+                    throw new PublisherNack('The broker negatively acknowledged a published message.');
+                });
+
+            self::fail('Expected PublisherNack to propagate without retry.');
+        } catch (PublisherNack $exception) {
+            self::assertSame('The broker negatively acknowledged a published message.', $exception->getMessage());
+        }
+
+        self::assertSame(1, $count);
     }
 
     public function testWillOnlyRetryCertainExceptions(): void

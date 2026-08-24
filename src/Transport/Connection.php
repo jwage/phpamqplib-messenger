@@ -322,6 +322,12 @@ class Connection
                         if ($this->connectionConfig->confirmEnabled) {
                             $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
                         }
+                    } catch (PublisherNack $e) {
+                        if ($this->connectionConfig->transactionsEnabled) {
+                            $this->rollbackTransaction($channel);
+                        }
+
+                        throw new TransportException($e->getMessage(), 0, $e);
                     } catch (AMQPExceptionInterface $e) {
                         if ($this->connectionConfig->transactionsEnabled) {
                             $this->rollbackTransaction($channel);
@@ -390,6 +396,12 @@ class Connection
                         $this->waitForBatchConfirm($channel);
                         $this->pendingBatchConfirmChannel = null;
                     }
+                } catch (PublisherNack $e) {
+                    if ($this->connectionConfig->transactionsEnabled) {
+                        $this->rollbackTransaction($channel);
+                    }
+
+                    throw new TransportException($e->getMessage(), 0, $e);
                 } catch (AMQPExceptionInterface $e) {
                     if ($this->connectionConfig->transactionsEnabled) {
                         $this->rollbackTransaction($channel);
