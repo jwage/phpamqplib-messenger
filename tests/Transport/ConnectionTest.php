@@ -1235,6 +1235,38 @@ class ConnectionTest extends TestCase
         }
     }
 
+    public function testDirectPublishDoesNotRepublishWhenPendingAcksTimeOut(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        $amqpChannel->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->willThrowException(new AMQPTimeoutException('Confirm timeout'));
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                $connection->publish(body: 'confirm body');
+                self::fail('Expected the confirm wait to time out.');
+            } catch (TransportException $exception) {
+                self::assertInstanceOf(AMQPTimeoutException::class, $exception->getPrevious());
+            }
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+    }
+
     public function testBatchRemainsBufferedWhenTheBrokerNacksAMessage(): void
     {
         [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(

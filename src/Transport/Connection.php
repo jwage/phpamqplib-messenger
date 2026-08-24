@@ -320,7 +320,7 @@ class Connection
                         }
 
                         if ($this->connectionConfig->confirmEnabled) {
-                            $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+                            $this->waitForBatchConfirm($channel);
                         }
                     } catch (PublisherNack $e) {
                         if ($this->connectionConfig->transactionsEnabled) {
@@ -335,6 +335,15 @@ class Connection
 
                         throw $e;
                     }
+                } catch (TransportException $e) {
+                    // Live confirm timeouts re-wait on the original channel. Discarding
+                    // it here would make retryPublisher republish a message the broker
+                    // may already have accepted.
+                    if (! $e->getPrevious() instanceof AMQPTimeoutException) {
+                        $this->discardChannel();
+                    }
+
+                    throw $e;
                 } catch (Throwable $e) {
                     // A failed attempt can leave the channel in a selected/dirty transaction
                     // (or confirm) state. Drop it so the next publish cannot reuse it.
