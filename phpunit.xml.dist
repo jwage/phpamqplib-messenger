@@ -20,7 +20,7 @@
             <exclude>tests/bin</exclude>
         </testsuite>
         <testsuite name="chaos">
-            <file>tests/Chaos/ChaosScenariosTest.php</file>
+            <directory suffix="Test.php">tests/Chaos</directory>
         </testsuite>
     </testsuites>
 

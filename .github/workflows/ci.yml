@@ -92,7 +92,7 @@ jobs:
 
       - run: composer update --no-progress
 
-      # Own compose broker: these scenarios pause, restart, and stop RabbitMQ.
+      # Own compose broker: these tests pause, restart, and stop RabbitMQ.
       # They must not share the PHPUnit service container.
       - run: docker compose up -d --wait
 

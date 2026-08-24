@@ -336,7 +336,7 @@ MESSENGER_TRANSPORT_PHPAMQPLIB_DSN='phpamqplib://guest:guest@127.0.0.1:5673/%2f/
 
 If the broker is down or unreachable, functional tests **fail** (they do not skip).
 
-### Live broker failure scenarios
+### Live broker failure tests
 
 Broker mutations (restart, pause, overflow NACK, memory alarm, TLS listener) are PHPUnit tests in a **separate `chaos` testsuite**. They are excluded from `./vendor/bin/phpunit` so they do not pause the functional-test broker.
 
@@ -347,4 +347,4 @@ docker compose up -d --wait
 # or: php tests/bin/chaos.php --list
 ```
 
-See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the scenario catalog and broker commands. CI runs them in a separate job. Do not run them in parallel with the default PHPUnit suite; they pause and restart the broker.
+See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the test catalog and broker commands. CI runs them in a separate job. Do not run them in parallel with the default PHPUnit suite; they pause and restart the broker.

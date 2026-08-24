@@ -23,12 +23,10 @@ use function dirname;
 use function escapeshellarg;
 use function fclose;
 use function fwrite;
-use function get_debug_type;
 use function getenv;
 use function getmypid;
 use function hrtime;
 use function is_array;
-use function is_numeric;
 use function microtime;
 use function preg_match;
 use function preg_replace;
@@ -116,11 +114,11 @@ final class Harness
         return $connection;
     }
 
-    public function topologyName(string $scenario): string
+    public function topologyName(string $label): string
     {
         $pid = getmypid();
 
-        return sprintf('chaos_%s_%s_%s', $scenario, $pid === false ? '0' : (string) $pid, uniqid());
+        return sprintf('chaos_%s_%s_%s', $label, $pid === false ? '0' : (string) $pid, uniqid());
     }
 
     /**
@@ -146,38 +144,6 @@ final class Harness
         }
 
         fwrite(STDOUT, $message . "\n");
-    }
-
-    public function fail(string $message): never
-    {
-        throw new RuntimeException($message);
-    }
-
-    public function assertTrue(mixed $value, string $message): void
-    {
-        if ($value) {
-            return;
-        }
-
-        $this->fail($message);
-    }
-
-    public function assertSame(mixed $expected, mixed $actual, string $message): void
-    {
-        if ($expected === $actual) {
-            return;
-        }
-
-        $this->fail(sprintf('%s (expected %s, got %s)', $message, $this->describe($expected), $this->describe($actual)));
-    }
-
-    public function assertInstanceOf(string $class, mixed $value, string $message): void
-    {
-        if ($value instanceof $class) {
-            return;
-        }
-
-        $this->fail($message);
     }
 
     public function pendingBatchSize(Connection $connection): int
@@ -461,16 +427,8 @@ final class Harness
         }
     }
 
-    private function describe(mixed $value): string
+    private function fail(string $message): never
     {
-        if ($value === null) {
-            return 'null';
-        }
-
-        if (is_numeric($value)) {
-            return (string) $value;
-        }
-
-        return get_debug_type($value);
+        throw new RuntimeException($message);
     }
 }
