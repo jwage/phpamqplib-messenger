@@ -622,9 +622,14 @@ class Connection
     /** @throws TransportException */
     private function waitForBatchConfirm(AMQPChannel $channel): void
     {
-        $this->retry(function () use ($channel): void {
-            $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
-        })
+        // Do not retry timeouts here: flush()/publish() already own retry. Nested
+        // default retries would wait confirmTimeout many extra times per call.
+        $this->retry(
+            function () use ($channel): void {
+                $channel->wait_for_pending_acks(timeout: $this->connectionConfig->confirmTimeout);
+            },
+            retries: 0,
+        )
             ->catch(AMQPTimeoutException::class)
             ->run();
     }
