@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$ROOT"
+
+COMPOSE=(docker compose)
+SERVICE=rabbitmq
+
+usage() {
+  cat <<'EOF'
+Manage the docker compose RabbitMQ broker used by chaos scenarios.
+
+Usage:
+  tests/bin/chaos-broker <command>
+
+Commands:
+  up             Start RabbitMQ and wait until it is healthy
+  down           Stop RabbitMQ
+  wait           Wait until rabbitmq-diagnostics ping succeeds
+  restart        Restart RabbitMQ and wait until it is healthy
+  stop           Stop the container without removing it
+  start          Start a stopped container and wait until healthy
+  pause          Freeze the broker process (TCP stays up, no AMQP progress)
+  unpause        Resume a paused broker
+  memory-alarm   Force a memory alarm (connection.blocked)
+  memory-ok      Restore the default memory watermark
+  status         Show docker compose status for RabbitMQ
+EOF
+}
+
+need_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "docker is required to run chaos broker commands" >&2
+    exit 1
+  fi
+}
+
+wait_ready() {
+  local timeout="${1:-60}"
+  local started
+  started="$(date +%s)"
+
+  until "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmq-diagnostics -q check_running >/dev/null 2>&1 \
+     && "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmq-diagnostics -q ping >/dev/null 2>&1; do
+    if (( "$(date +%s)" - started >= timeout )); then
+      echo "RabbitMQ did not become ready within ${timeout}s" >&2
+      exit 1
+    fi
+    sleep 1
+  done
+}
+
+need_docker
+
+cmd="${1:-}"
+case "$cmd" in
+  up)
+    "${COMPOSE[@]}" up -d --wait
+    wait_ready
+    ;;
+  down)
+    "${COMPOSE[@]}" down
+    ;;
+  wait)
+    wait_ready
+    ;;
+  restart)
+    "${COMPOSE[@]}" restart "$SERVICE"
+    "${COMPOSE[@]}" up -d --wait
+    wait_ready
+    ;;
+  stop)
+    "${COMPOSE[@]}" stop "$SERVICE"
+    ;;
+  start)
+    "${COMPOSE[@]}" start "$SERVICE"
+    "${COMPOSE[@]}" up -d --wait
+    wait_ready
+    ;;
+  pause)
+    "${COMPOSE[@]}" pause "$SERVICE"
+    ;;
+  unpause)
+    "${COMPOSE[@]}" unpause "$SERVICE"
+    wait_ready 15
+    ;;
+  memory-alarm)
+    wait_ready
+    "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmqctl set_vm_memory_high_watermark absolute 1
+    ;;
+  memory-ok)
+    wait_ready
+    "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmqctl set_vm_memory_high_watermark 0.4
+    ;;
+  status)
+    "${COMPOSE[@]}" ps "$SERVICE"
+    ;;
+  -h|--help|help|'')
+    usage
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

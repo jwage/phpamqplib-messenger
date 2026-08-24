@@ -45,5 +45,8 @@
             "dealerdirect/phpcodesniffer-composer-installer": true
         }
     },
-    "minimum-stability": "stable"
+    "minimum-stability": "stable",
+    "scripts": {
+        "chaos": "php tests/bin/chaos.php"
+    }
 }

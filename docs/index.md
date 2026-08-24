@@ -335,3 +335,15 @@ MESSENGER_TRANSPORT_PHPAMQPLIB_DSN='phpamqplib://guest:guest@127.0.0.1:5673/%2f/
 ```
 
 If the broker is down or unreachable, functional tests **fail** (they do not skip).
+
+### Live broker failure scenarios
+
+PHPUnit cannot restart, pause, or overflow the broker in the middle of a flush. For those cases there is a separate runner that talks to docker compose RabbitMQ:
+
+```bash
+docker compose up -d --wait
+php tests/bin/chaos.php --list
+php tests/bin/chaos.php
+```
+
+See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the scenario catalog and broker commands. Do not run these in parallel with PHPUnit; they are not part of CI.
