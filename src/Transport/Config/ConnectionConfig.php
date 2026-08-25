@@ -227,6 +227,7 @@ readonly class ConnectionConfig
      *             arguments?: array<string, mixed>,
      *         },
      *         queue_name_pattern?: string,
+     *         durable?: bool|mixed,
      *     },
      *     queues?: array<int|string, array{
      *         name?: string,

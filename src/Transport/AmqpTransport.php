@@ -118,8 +118,12 @@ class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterfac
      * On older Symfony versions, this method exists but is never called by the framework.
      *
      * This is opt-in: set keepalive_enabled: true in transport options to activate.
+     * TCP keepalive (`keepalive: true`) is a separate setting and does not enable this.
+     *
+     * @throws TransportException
      */
-    public function keepalive(Envelope $envelope, ?int $seconds = null): void
+    #[Override]
+    public function keepalive(Envelope $envelope, int|null $seconds = null): void
     {
         if (! $this->connection->getConfig()->keepaliveEnabled) {
             return;

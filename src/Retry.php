@@ -154,8 +154,10 @@ class Retry
 
     private function isExceptionToCatch(Throwable $e): bool
     {
+        // An empty catch list means catch nothing. The constructor default remains
+        // [Throwable::class]; RetryFactory always passes an explicit non-empty list.
         if ($this->catch === []) {
-            return true;
+            return false;
         }
 
         foreach ($this->catch as $exceptionClass) {

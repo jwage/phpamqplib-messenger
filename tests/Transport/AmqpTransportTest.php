@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpKeepaliveReceiverInterface;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceiver;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpSender;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
@@ -12,7 +13,10 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Transport\Receiver\KeepaliveReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
+
+use function interface_exists;
 
 class AmqpTransportTest extends TestCase
 {
@@ -119,6 +123,44 @@ class AmqpTransportTest extends TestCase
             ->method('setup');
 
         $transport->setup();
+    }
+
+    public function testImplementsKeepaliveReceiverInterfaceWhenAvailable(): void
+    {
+        $transport = $this->createTransport();
+
+        self::assertInstanceOf(AmqpKeepaliveReceiverInterface::class, $transport);
+
+        if (interface_exists(KeepaliveReceiverInterface::class)) {
+            self::assertInstanceOf(KeepaliveReceiverInterface::class, $transport);
+        }
+    }
+
+    public function testFlush(): void
+    {
+        $sender    = $this->createMock(AmqpSender::class);
+        $transport = $this->createTransport(sender: $sender);
+
+        $sender->expects(self::once())
+            ->method('flush');
+
+        $transport->flush();
+    }
+
+    public function testGetFromQueues(): void
+    {
+        $envelope1 = new Envelope(new stdClass());
+        $return    = [$envelope1];
+
+        $receiver  = $this->createMock(AmqpReceiver::class);
+        $transport = $this->createTransport(receiver: $receiver);
+
+        $receiver->expects(self::once())
+            ->method('getFromQueues')
+            ->with(['queue_name'])
+            ->willReturn($return);
+
+        self::assertSame($return, $transport->getFromQueues(['queue_name']));
     }
 
     public function testKeepaliveCallsConnectionWhenEnabled(): void
