@@ -96,8 +96,6 @@ class DsnParserTest extends TestCase
 
         self::assertSame(10, $connectionConfig->queues['orders']->arguments['x-message-ttl']);
         self::assertSame(5, $connectionConfig->queues['orders']->arguments['x-max-priority']);
-        self::assertIsInt($connectionConfig->queues['orders']->arguments['x-message-ttl']);
-        self::assertIsInt($connectionConfig->queues['orders']->arguments['x-max-priority']);
     }
 
     public function testParseFullDsn(): void

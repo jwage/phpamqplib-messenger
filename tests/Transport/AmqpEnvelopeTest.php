@@ -167,7 +167,6 @@ class AmqpEnvelopeTest extends TestCase
         $priority = $envelope->getPriority();
 
         self::assertSame(5, $priority);
-        self::assertIsInt($priority);
     }
 
     public function testGetCorrelationId(): void
