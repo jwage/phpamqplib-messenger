@@ -51,6 +51,36 @@ class BatchTest extends TestCase
         $this->batch->flush();
     }
 
+    public function testDestructorFlushesTransports(): void
+    {
+        $transport = $this->createMock(BatchTransportInterface::class);
+        $message   = new stdClass();
+        $envelope  = $this->createEnvelope($message, transport: $transport);
+
+        $this->wrappedBus->expects(self::once())
+            ->method('dispatch')
+            ->willReturn($envelope);
+
+        $transport->expects(self::once())
+            ->method('flush');
+
+        $batch = new Batch($this->wrappedBus, 10);
+        $batch->dispatch($message);
+        unset($batch);
+    }
+
+    public function testDispatchAcceptsAssociativeStampArrays(): void
+    {
+        $message    = new stdClass();
+        $delayStamp = new DelayStamp(1234);
+
+        $this->expectWrappedDispatchWithStamps($message, [$delayStamp]);
+
+        $envelope = $this->batch->dispatch($message, ['delay' => $delayStamp]);
+
+        $this->assertEnvelopeHasMessageAndStamps($envelope, $message, [$delayStamp]);
+    }
+
     public function testDispatchPropagatesStamps(): void
     {
         $message    = new stdClass();

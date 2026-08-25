@@ -8,6 +8,8 @@ use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use PhpAmqpLib\Message\AMQPMessage;
+use PhpAmqpLib\Wire\AMQPTable;
+use ReflectionProperty;
 
 class AmqpStampTest extends TestCase
 {
@@ -50,6 +52,86 @@ class AmqpStampTest extends TestCase
         self::assertFalse($stamp->isRetryAttempt());
     }
 
+    public function testCreateFromAMQPEnvelopeUsesEnvelopeRoutingKeyWhenPreviousStampHasNone(): void
+    {
+        $message = new AMQPMessage('test');
+        (new ReflectionProperty(AMQPMessage::class, 'routingKey'))->setValue($message, 'from-envelope');
+
+        $stamp = AmqpStamp::createFromAMQPEnvelope(
+            new AmqpEnvelope($message),
+            new AmqpStamp(),
+        );
+
+        self::assertSame('from-envelope', $stamp->getRoutingKey());
+    }
+
+    public function testCreateFromAMQPEnvelopePrefersPreviousStampRoutingKeyOverEnvelope(): void
+    {
+        $message = new AMQPMessage('test');
+        (new ReflectionProperty(AMQPMessage::class, 'routingKey'))->setValue($message, 'from-envelope');
+
+        $stamp = AmqpStamp::createFromAMQPEnvelope(
+            new AmqpEnvelope($message),
+            new AmqpStamp('from-previous'),
+        );
+
+        self::assertSame('from-previous', $stamp->getRoutingKey());
+    }
+
+    public function testCreateFromAMQPEnvelopeKeepsPreviousStampAttributes(): void
+    {
+        $previousStamp = new AmqpStamp('previous-key', [
+            'headers' => ['kept' => 'yes'],
+            'content_type' => 'application/json',
+            'content_encoding' => 'identity',
+            'delivery_mode' => 1,
+            'priority' => 1,
+            'timestamp' => 111,
+            'app_id' => 'previous-app',
+            'message_id' => 'previous-id',
+            'user_id' => 'previous-user',
+            'expiration' => 10,
+            'type' => 'previous-type',
+            'reply_to' => 'previous-reply',
+            'correlation_id' => 'previous-corr',
+        ]);
+
+        $amqpEnvelope = new AmqpEnvelope(new AMQPMessage('test', [
+            'content_type' => 'text/plain',
+            'content_encoding' => 'gzip',
+            'delivery_mode' => 2,
+            'priority' => 9,
+            'timestamp' => 222,
+            'app_id' => 'envelope-app',
+            'message_id' => 'envelope-id',
+            'user_id' => 'envelope-user',
+            'expiration' => 99,
+            'type' => 'envelope-type',
+            'reply_to' => 'envelope-reply',
+            'correlation_id' => 'envelope-corr',
+            'application_headers' => new AMQPTable(['from' => 'envelope']),
+        ]));
+
+        $stamp = AmqpStamp::createFromAMQPEnvelope($amqpEnvelope, $previousStamp);
+
+        self::assertSame('previous-key', $stamp->getRoutingKey());
+        self::assertSame([
+            'headers' => ['kept' => 'yes'],
+            'content_type' => 'application/json',
+            'content_encoding' => 'identity',
+            'delivery_mode' => 1,
+            'priority' => 1,
+            'timestamp' => 111,
+            'app_id' => 'previous-app',
+            'message_id' => 'previous-id',
+            'user_id' => 'previous-user',
+            'expiration' => 10,
+            'type' => 'previous-type',
+            'reply_to' => 'previous-reply',
+            'correlation_id' => 'previous-corr',
+        ], $stamp->getAttributes());
+    }
+
     public function testCreateWithAttributes(): void
     {
         $stamp = AmqpStamp::createWithAttributes(['test' => true]);
@@ -60,12 +142,12 @@ class AmqpStampTest extends TestCase
     public function testCreateWithAttributesAndPreviousStamp(): void
     {
         $stamp = AmqpStamp::createWithAttributes(
-            ['test1' => true, 'test2' => false],
-            new AmqpStamp('routing_key', ['test1' => true, 'test2' => false]),
+            ['added' => true],
+            new AmqpStamp('routing_key', ['kept' => 'yes']),
         );
 
         self::assertSame('routing_key', $stamp->getRoutingKey());
-        self::assertSame(['test1' => true, 'test2' => false], $stamp->getAttributes());
+        self::assertSame(['kept' => 'yes', 'added' => true], $stamp->getAttributes());
     }
 
     public function testGetRoutingKey(): void

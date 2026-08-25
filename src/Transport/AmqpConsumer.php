@@ -14,6 +14,7 @@ use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Exception\TransportException;
 
 use function array_shift;
+use function max;
 
 class AmqpConsumer
 {
@@ -46,9 +47,7 @@ class AmqpConsumer
         // consumer invalidated) before we decide whether the tag is still valid.
         $this->connection->consumerChannel();
 
-        $desiredPrefetch = $fetchSize !== null && $fetchSize > $queueConfig->prefetchCount
-            ? $fetchSize
-            : $queueConfig->prefetchCount;
+        $desiredPrefetch = max($fetchSize ?? $queueConfig->prefetchCount, $queueConfig->prefetchCount);
 
         if ($this->effectivePrefetchCount !== $desiredPrefetch || $this->consumerTag === null) {
             $this->connection->consumerChannel()->basic_qos(

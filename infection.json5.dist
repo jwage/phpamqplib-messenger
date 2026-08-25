@@ -18,11 +18,11 @@
         "summaryJson": "var/infection-summary.json"
     },
     "testFramework": "phpunit",
-    // defaultTestSuite already excludes chaos; keep that explicit so Infection never
-    // uses live-broker fault tests as the initial run or as covering tests.
-    "testFrameworkExtraArgs": "--testsuite=default",
+    // defaultTestSuite already excludes chaos. Also exclude the `live` group:
+    // PHPUnit --filter=ConnectionTest also matches LiveConnectionTest, which needs
+    // a broker and is not a useful mutation killer (slow, environment-dependent).
+    "testFrameworkExtraArgs": "--testsuite=default --exclude-group=live",
     "ignoreMsiWithNoMutations": true,
-    // Baseline from a full local run: covered MSI 78.6% (213 killed, 58 escaped).
-    "minMsi": 75,
-    "minCoveredMsi": 75
+    "minMsi": 100,
+    "minCoveredMsi": 100
 }

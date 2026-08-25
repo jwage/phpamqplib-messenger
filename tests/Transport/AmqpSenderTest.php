@@ -86,6 +86,31 @@ class AmqpSenderTest extends TestCase
         self::assertNotSame($envelope, $newEnvelope);
     }
 
+    public function testSendWithoutOptionalStampsUsesImmediatePublishDefaults(): void
+    {
+        $message    = new stdClass();
+        $envelope   = new Envelope($message);
+        $serializer = $this->createMock(SerializerInterface::class);
+        $sender     = new AmqpSender($this->connection, $serializer);
+
+        $serializer->expects(self::once())
+            ->method('encode')
+            ->with($envelope)
+            ->willReturn(['body' => 'body', 'headers' => []]);
+
+        $this->connection->expects(self::once())
+            ->method('publish')
+            ->with(
+                body: 'body',
+                headers: [],
+                delayInMs: 0,
+                batchSize: 1,
+                amqpStamp: null,
+            );
+
+        $sender->send($envelope);
+    }
+
     public function testFlush(): void
     {
         $this->connection->expects(self::once())

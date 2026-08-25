@@ -35,9 +35,9 @@ class AmqpEnvelopeTest extends TestCase
 
         $message->expects(self::once())
             ->method('get_properties')
-            ->willReturn(['test' => 'abc']);
+            ->willReturn(['test' => 'abc', 'other' => 'def']);
 
-        self::assertSame(['test' => 'abc'], $envelope->getAttributes());
+        self::assertSame(['test' => 'abc', 'other' => 'def'], $envelope->getAttributes());
     }
 
     public function testAck(): void
@@ -109,14 +109,14 @@ class AmqpEnvelopeTest extends TestCase
     {
         [$message, $envelope] = $this->createMockEnvelope();
 
-        $headers = new AMQPTable(['test' => 1]);
+        $headers = new AMQPTable(['test' => 1, 'other' => 2]);
 
         $message->expects(self::once())
             ->method('get')
             ->with('application_headers')
             ->willReturn($headers);
 
-        self::assertSame(['test' => 1], $envelope->getHeaders());
+        self::assertSame(['test' => 1, 'other' => 2], $envelope->getHeaders());
     }
 
     public function testGetHeadersEmpty(): void
@@ -153,6 +153,21 @@ class AmqpEnvelopeTest extends TestCase
             ->willReturn(1);
 
         self::assertSame(1, $envelope->getPriority());
+    }
+
+    public function testGetPriorityCastsNumericStringsToInt(): void
+    {
+        [$message, $envelope] = $this->createMockEnvelope();
+
+        $message->expects(self::once())
+            ->method('get')
+            ->with('priority')
+            ->willReturn('5');
+
+        $priority = $envelope->getPriority();
+
+        self::assertSame(5, $priority);
+        self::assertIsInt($priority);
     }
 
     public function testGetCorrelationId(): void
