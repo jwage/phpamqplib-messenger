@@ -10,11 +10,12 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransportFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConnectionFactory;
+use PHPUnit\Framework\MockObject\Stub;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class AmqpTransportFactoryTest extends TestCase
 {
-    private ConnectionFactory $connectionFactory;
+    private ConnectionFactory&Stub $connectionFactory;
 
     private AmqpTransportFactory $factory;
 

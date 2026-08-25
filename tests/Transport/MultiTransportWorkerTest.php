@@ -109,8 +109,9 @@ class MultiTransportWorkerTest extends TestCase
         $listener = new AmqpWorkerListener(new ConsumerWaitCoordinator());
         $listener->addConnection('amqp', $connection);
 
-        $polls = 0;
-        $other = $this->createStub(ReceiverInterface::class);
+        $polls   = 0;
+        $started = microtime(true);
+        $other   = $this->createStub(ReceiverInterface::class);
         $other->method('get')
             ->willReturnCallback(static function () use (&$polls): array {
                 ++$polls;
@@ -127,12 +128,32 @@ class MultiTransportWorkerTest extends TestCase
             $dispatcher,
         );
 
-        $worker->run(['sleep' => 150_000, 'time_limit' => 0.5]);
+        $dispatcher->addListener(
+            WorkerRunningEvent::class,
+            static function (WorkerRunningEvent $event) use ($worker, &$polls, $started): void {
+                if (! $event->isWorkerIdle()) {
+                    return;
+                }
+
+                // Symfony < 8.1 Worker has no time_limit; stop after enough polls.
+                if ($polls > 2 || microtime(true) - $started > 4.0) {
+                    $worker->stop();
+                }
+            },
+        );
+
+        $worker->run(['sleep' => 150_000]);
+        $elapsed = microtime(true) - $started;
 
         self::assertGreaterThan(
             2,
             $polls,
             'Non-phpamqplib receiver was starved by the AMQP idle wait',
+        );
+        self::assertLessThan(
+            $waitTimeout * 2.5,
+            $elapsed,
+            'Idle wait used the full AMQP wait_timeout instead of --sleep',
         );
     }
 

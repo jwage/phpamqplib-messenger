@@ -13,7 +13,9 @@ use Symfony\Component\Messenger\Event\WorkerStartedEvent;
 use Symfony\Component\Messenger\Event\WorkerStoppedEvent;
 
 use function count;
-use function method_exists;
+use function is_callable;
+use function is_float;
+use function is_int;
 use function microtime;
 use function min;
 
@@ -138,11 +140,16 @@ class AmqpWorkerListener implements EventSubscriberInterface
 
     private function getWorkerDeadline(WorkerStartedEvent $event): float|null
     {
-        if (! method_exists($event, 'getDeadline')) {
+        $getter = [$event, 'getDeadline'];
+
+        if (! is_callable($getter)) {
             return null;
         }
 
-        return $event->getDeadline();
+        /** @psalm-suppress MixedAssignment */
+        $deadline = $getter();
+
+        return is_float($deadline) ? $deadline : null;
     }
 
     /**
@@ -152,10 +159,19 @@ class AmqpWorkerListener implements EventSubscriberInterface
      */
     private function getWorkerIdleTimeoutSeconds(WorkerStartedEvent $event): float
     {
-        if (! method_exists($event, 'getIdleTimeout')) {
+        $getter = [$event, 'getIdleTimeout'];
+
+        if (! is_callable($getter)) {
             return 1.0;
         }
 
-        return (float) $event->getIdleTimeout() / 1_000_000.0;
+        /** @psalm-suppress MixedAssignment */
+        $idleTimeout = $getter();
+
+        if (! is_int($idleTimeout) && ! is_float($idleTimeout)) {
+            return 1.0;
+        }
+
+        return (float) $idleTimeout / 1_000_000.0;
     }
 }

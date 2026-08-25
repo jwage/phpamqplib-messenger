@@ -8,6 +8,7 @@ use Jwage\PhpAmqpLibMessengerBundle\EventListener\AmqpWorkerListener;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
+use ReflectionClass;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Component\Messenger\Event\WorkerStartedEvent;
 use Symfony\Component\Messenger\Event\WorkerStoppedEvent;
@@ -217,8 +218,11 @@ class AmqpWorkerListenerTest extends TestCase
         float|null $deadline = null,
         int $idleTimeout = 1_000_000,
     ): WorkerStartedEvent {
-        if (method_exists(WorkerStartedEvent::class, 'getIdleTimeout')) {
-            return new WorkerStartedEvent($worker, $deadline, $idleTimeout);
+        $reflection  = new ReflectionClass(WorkerStartedEvent::class);
+        $constructor = $reflection->getConstructor();
+
+        if ($constructor !== null && $constructor->getNumberOfParameters() >= 3) {
+            return $reflection->newInstance($worker, $deadline, $idleTimeout);
         }
 
         return new WorkerStartedEvent($worker);
