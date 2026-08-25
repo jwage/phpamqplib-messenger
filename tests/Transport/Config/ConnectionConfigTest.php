@@ -91,6 +91,7 @@ class ConnectionConfigTest extends TestCase
                     'name' => 'delay_exchange',
                     'type' => 'direct',
                 ],
+                'durable' => true,
             ],
             'queues' => [
                 'queue1' => [
@@ -138,6 +139,7 @@ class ConnectionConfigTest extends TestCase
                 name: 'delay_exchange',
                 type: 'direct',
             ),
+            durable: true,
         ), $connectionConfig->delay);
 
         self::assertEquals([

@@ -1336,6 +1336,61 @@ class ConnectionTest extends TestCase
         $connection->publish(body: 'test body', headers: $headers);
     }
 
+    public function testPublishWithDelayDeclaresTransientDelayQueueByDefault(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        $amqpChannel->expects(self::once())
+            ->method('queue_declare')
+            ->with(
+                queue: 'delay_exchange_name__5000_delay',
+                passive: false,
+                durable: false,
+                exclusive: false,
+                auto_delete: true,
+                nowait: false,
+                arguments: new AMQPTable([
+                    'x-message-ttl' => 5000,
+                    'x-expires' => 15000,
+                    'x-dead-letter-exchange' => 'exchange_name',
+                    'x-dead-letter-routing-key' => '',
+                ]),
+            );
+
+        $connection->publish(body: 'test body', delayInMs: 5000);
+    }
+
+    public function testPublishWithDelayDurableDeclaresDurableDelayQueue(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            delay: new DelayConfig(durable: true),
+        ));
+
+        $amqpChannel->expects(self::once())
+            ->method('queue_declare')
+            ->with(
+                queue: 'delay_exchange_name__5000_delay',
+                passive: false,
+                durable: true,
+                exclusive: false,
+                auto_delete: true,
+                nowait: false,
+                arguments: new AMQPTable([
+                    'x-message-ttl' => 5000,
+                    'x-expires' => 15000,
+                    'x-dead-letter-exchange' => 'exchange_name',
+                    'x-dead-letter-routing-key' => '',
+                ]),
+            );
+
+        $connection->publish(body: 'test body', delayInMs: 5000);
+    }
+
     public function testDirectPublishFailsWhenTheBrokerNacksTheMessage(): void
     {
         [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(

@@ -174,6 +174,12 @@ framework:
                         enabled: true
                         auto_setup: true
                         queue_name_pattern: 'delay_%exchange_name%_%routing_key%_%delay%'
+                        # Declare the delay/retry queues as durable. Defaults to false.
+                        # RabbitMQ 4.3+ denies the deprecated `transient_nonexcl_queues`
+                        # feature by default, which makes the transient delay queue
+                        # declaration fail. Set this to true when running against such a
+                        # broker. The delay queues are still cleaned up via `x-expires`.
+                        durable: false
                         arguments: []
 ```
 
