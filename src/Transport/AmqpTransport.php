@@ -38,8 +38,12 @@ class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterfac
      * @psalm-suppress ImplementedReturnTypeMismatch
      */
     #[Override]
-    public function get(): iterable
+    public function get(int|null $fetchSize = null): iterable
     {
+        if ($fetchSize !== null) {
+            return $this->getReceiver()->get($fetchSize);
+        }
+
         return $this->getReceiver()->get();
     }
 
@@ -51,8 +55,12 @@ class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterfac
      * @psalm-suppress ImplementedReturnTypeMismatch
      */
     #[Override]
-    public function getFromQueues(array $queueNames): iterable
+    public function getFromQueues(array $queueNames, int|null $fetchSize = null): iterable
     {
+        if ($fetchSize !== null) {
+            return $this->getReceiver()->getFromQueues($queueNames, $fetchSize);
+        }
+
         return $this->getReceiver()->getFromQueues($queueNames);
     }
 

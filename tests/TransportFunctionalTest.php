@@ -44,6 +44,8 @@ class TransportFunctionalTest extends KernelTestCase
 
     private AmqpTransport $transactionsTransport;
 
+    private AmqpTransport $fetchSizeTransport;
+
     private AmqpTransport $multipleQueuesTransport;
 
     public function testTransportWithConfirms(): void
@@ -283,6 +285,71 @@ class TransportFunctionalTest extends KernelTestCase
         ], $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope()?->getAttributes());
 
         self::assertSame($messageId, $envelopes[0]->last(TransportMessageIdStamp::class)?->getId());
+    }
+
+    public function testFetchSizeWithPrefetchCount(): void
+    {
+        // Queue is configured with prefetch_count=5. Dispatching 5 messages and consuming
+        // with fetchSize=2 must yield (2, 2, 1) across three get() calls — proving that
+        // the surplus messages left over after each early-return stay on the consumer
+        // buffer for the next call instead of being silently dropped.
+        $envelopes = $this->getEnvelopes($this->fetchSizeTransport, 0);
+
+        self::assertCount(0, $envelopes);
+
+        for ($i = 1; $i <= 5; $i++) {
+            $this->fetchSizeTransport->send(Envelope::wrap(new ConfirmMessage($i)));
+        }
+
+        // Recover from a reconnect inbetween dispatching and consuming, mirroring the
+        // pattern used by the other functional tests.
+        $this->fetchSizeTransport->getConnection()->reconnect();
+
+        $collected = [];
+
+        foreach ([2, 2, 1] as $expectedBatchSize) {
+            $batch = $this->collectBatch($this->fetchSizeTransport, $expectedBatchSize);
+
+            self::assertCount($expectedBatchSize, $batch);
+
+            foreach ($batch as $envelope) {
+                $collected[] = $envelope;
+            }
+        }
+
+        self::assertCount(5, $collected);
+
+        for ($i = 0; $i < 5; $i++) {
+            self::assertSame($i + 1, $collected[$i]->getMessage()->count);
+        }
+    }
+
+    public function testFetchSizeLimitsAcrossMultipleQueues(): void
+    {
+        $this->multipleQueuesTransport->send(
+            Envelope::wrap(new ConfirmMessage(1601))->with(new AmqpStamp(routingKey: 'order')),
+        );
+        $this->multipleQueuesTransport->send(
+            Envelope::wrap(new ConfirmMessage(1602))->with(new AmqpStamp(routingKey: 'quote')),
+        );
+
+        $first = $this->collectBatch($this->multipleQueuesTransport, 1);
+
+        self::assertCount(1, $first);
+        self::assertSame(1601, $first[0]->getMessage()->count);
+        self::assertSame(
+            'test_multiple_queues_order',
+            $first[0]->last(AmqpReceivedStamp::class)?->getQueueName(),
+        );
+
+        $second = $this->collectBatch($this->multipleQueuesTransport, 1);
+
+        self::assertCount(1, $second);
+        self::assertSame(1602, $second[0]->getMessage()->count);
+        self::assertSame(
+            'test_multiple_queues_quote',
+            $second[0]->last(AmqpReceivedStamp::class)?->getQueueName(),
+        );
     }
 
     public function testDelayedMessages(): void
@@ -782,6 +849,11 @@ class TransportFunctionalTest extends KernelTestCase
 
         $this->transactionsTransport = $transactionsTransport;
 
+        $fetchSizeTransport = $container->get('messenger.transport.with_fetch_size');
+        assert($fetchSizeTransport instanceof AmqpTransport);
+
+        $this->fetchSizeTransport = $fetchSizeTransport;
+
         $multipleQueuesTransport = $container->get('messenger.transport.with_multiple_queues');
         assert($multipleQueuesTransport instanceof AmqpTransport);
 
@@ -789,9 +861,11 @@ class TransportFunctionalTest extends KernelTestCase
 
         $this->confirmsTransport->setup();
         $this->transactionsTransport->setup();
+        $this->fetchSizeTransport->setup();
         $this->multipleQueuesTransport->setup();
         $this->drainTransport($this->confirmsTransport);
         $this->drainTransport($this->transactionsTransport);
+        $this->drainTransport($this->fetchSizeTransport);
         $this->drainTransport($this->multipleQueuesTransport);
     }
 
@@ -799,6 +873,7 @@ class TransportFunctionalTest extends KernelTestCase
     {
         $this->confirmsTransport->getConnection()->close();
         $this->transactionsTransport->getConnection()->close();
+        $this->fetchSizeTransport->getConnection()->close();
         $this->multipleQueuesTransport->getConnection()->close();
     }
 
@@ -812,6 +887,23 @@ class TransportFunctionalTest extends KernelTestCase
         }
 
         $batch->flush();
+    }
+
+    /** @return array<Envelope> */
+    private function collectBatch(AmqpTransport $transport, int $fetchSize): array
+    {
+        $batch = [];
+
+        /** @var Traversable<Envelope> $envelopes */
+        $envelopes = $transport->get($fetchSize);
+
+        foreach ($envelopes as $envelope) {
+            $batch[] = $envelope;
+
+            $transport->ack($envelope);
+        }
+
+        return $batch;
     }
 
     /**

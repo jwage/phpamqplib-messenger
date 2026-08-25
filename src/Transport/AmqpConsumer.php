@@ -13,12 +13,16 @@ use PhpAmqpLib\Message\AMQPMessage;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Exception\TransportException;
 
+use function array_shift;
+
 class AmqpConsumer
 {
     /** @var array<AmqpEnvelope> */
     private array $buffer = [];
 
     private string|null $consumerTag = null;
+
+    private int|null $effectivePrefetchCount = null;
 
     public function __construct(
         private Connection $connection,
@@ -34,13 +38,26 @@ class AmqpConsumer
      * @throws TransportException
      * @throws InvalidArgumentException
      */
-    public function consume(string $queueName): iterable
+    public function consume(string $queueName, int|null $fetchSize = null): iterable
     {
         $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
 
         // Resolve the channel first. A dead cached channel must be discarded (and this
         // consumer invalidated) before we decide whether the tag is still valid.
         $this->connection->consumerChannel();
+
+        $desiredPrefetch = $fetchSize !== null && $fetchSize > $queueConfig->prefetchCount
+            ? $fetchSize
+            : $queueConfig->prefetchCount;
+
+        if ($this->effectivePrefetchCount !== $desiredPrefetch || $this->consumerTag === null) {
+            $this->connection->consumerChannel()->basic_qos(
+                prefetch_size: 0,
+                prefetch_count: $desiredPrefetch,
+                a_global: false,
+            );
+            $this->effectivePrefetchCount = $desiredPrefetch;
+        }
 
         if ($this->consumerTag === null) {
             $this->start($queueConfig);
@@ -72,11 +89,25 @@ class AmqpConsumer
                 break;
             }
 
-            $buffer = $this->buffer;
+            if ($fetchSize === null) {
+                // Keep original snapshotting into local variable (for legacy code support)!
+                // We do not use this approach when $fetchSize is used, because it will
+                // not yield all items in case the caller breks mid-iteration forced by the $fetchSize
+                $buffer = $this->buffer;
 
-            $this->buffer = [];
+                $this->buffer = [];
 
-            yield from $buffer;
+                yield from $buffer;
+            } else {
+                // Drain by shifting items off $this->buffer one-by-one rather than snapshotting it
+                // into a local and clearing the instance buffer up-front. If the caller breaks
+                // mid-iteration (e.g. AmqpReceiver honoring fetchSize), only the items already
+                // yielded are removed; the rest remain on $this->buffer and are picked up by the
+                // next consume() call instead of being silently dropped from PHP memory.
+                while (($amqpEnvelope = array_shift($this->buffer)) !== null) {
+                    yield $amqpEnvelope;
+                }
+            }
 
             if ($stop) {
                 break;
@@ -99,7 +130,8 @@ class AmqpConsumer
                 // do nothing
             }
 
-            $this->consumerTag = null;
+            $this->consumerTag            = null;
+            $this->effectivePrefetchCount = null;
         }
     }
 
@@ -118,8 +150,9 @@ class AmqpConsumer
      */
     public function invalidate(): void
     {
-        $this->consumerTag = null;
-        $this->buffer      = [];
+        $this->consumerTag            = null;
+        $this->effectivePrefetchCount = null;
+        $this->buffer                 = [];
     }
 
     /**
@@ -129,12 +162,6 @@ class AmqpConsumer
      */
     private function start(QueueConfig $queueConfig): void
     {
-        $this->connection->consumerChannel()->basic_qos(
-            prefetch_size: 0,
-            prefetch_count: $queueConfig->prefetchCount,
-            a_global: false,
-        );
-
         $this->consumerTag = $this->connection->consumerChannel()->basic_consume(
             queue: $queueConfig->name,
             consumer_tag: '',

@@ -16,6 +16,8 @@ use Symfony\Component\Messenger\Transport\Receiver\QueueReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Throwable;
 
+use function max;
+
 class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
 {
     public function __construct(
@@ -30,8 +32,14 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
      * @psalm-suppress ImplementedReturnTypeMismatch
      */
     #[Override]
-    public function get(): iterable
+    public function get(int|null $fetchSize = null): iterable
     {
+        if ($fetchSize !== null) {
+            yield from $this->getFromQueues($this->connection->getQueueNames(), max(1, $fetchSize));
+
+            return;
+        }
+
         yield from $this->getFromQueues($this->connection->getQueueNames());
     }
 
@@ -43,8 +51,24 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
      * @psalm-suppress ImplementedReturnTypeMismatch
      */
     #[Override]
-    public function getFromQueues(array $queueNames): iterable
+    public function getFromQueues(array $queueNames, int|null $fetchSize = null): iterable
     {
+        $remaining = $fetchSize !== null ? max(1, $fetchSize) : null;
+
+        if ($remaining !== null) {
+            foreach ($queueNames as $queueName) {
+                foreach ($this->getEnvelopes($queueName, $fetchSize) as $envelope) {
+                    yield $envelope;
+
+                    if (--$remaining <= 0) {
+                        return;
+                    }
+                }
+            }
+
+            return;
+        }
+
         foreach ($queueNames as $queueName) {
             yield from $this->getEnvelopes($queueName);
         }
@@ -92,9 +116,9 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
      * @throws TransportException
      * @throws Throwable
      */
-    private function getEnvelopes(string $queueName): iterable
+    private function getEnvelopes(string $queueName, int|null $fetchSize = null): iterable
     {
-        $amqpEnvelopes = $this->connection->consume($queueName);
+        $amqpEnvelopes = $this->connection->consume($queueName, $fetchSize);
 
         foreach ($amqpEnvelopes as $amqpEnvelope) {
             $body = $amqpEnvelope->getBody();

@@ -1268,6 +1268,66 @@ class ConnectionTest extends TestCase
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
     }
 
+    public function testConsumeAppliesFetchSizeWhenGreaterThanPrefetchCount(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(
+                    name: 'queue_name',
+                    prefetchCount: 1,
+                ),
+            ],
+        );
+
+        $factory        = $this->createMock(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->expects(self::once())
+            ->method('create')
+            ->willReturn($amqpConnection);
+
+        $amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::once())
+            ->method('close');
+
+        $amqpChannel->method('is_open')->willReturn(true);
+        $amqpChannel->expects(self::once())
+            ->method('basic_qos')
+            ->with(
+                prefetch_size: 0,
+                prefetch_count: 50,
+                a_global: false,
+            );
+        $amqpChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag');
+        $amqpChannel->expects(self::once())
+            ->method('is_consuming')
+            ->willReturn(true);
+        $amqpChannel->expects(self::once())
+            ->method('wait')
+            ->willThrowException(new AMQPTimeoutException('poll timeout'));
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name', 50);
+
+        self::assertSame([], iterator_to_array($envelopes));
+
+        $connection->close();
+    }
+
     public function testConsumeRegistersASeparateConsumerPerQueue(): void
     {
         $connectionConfig = new ConnectionConfig(

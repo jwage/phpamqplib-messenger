@@ -22,6 +22,7 @@ use PHPUnit\Framework\MockObject\Stub;
 use Psr\Log\LoggerInterface;
 use Traversable;
 
+use function array_shift;
 use function iterator_to_array;
 
 class AmqpConsumerTest extends TestCase
@@ -283,6 +284,230 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
+    }
+
+    /**
+     * Requires fetchSize: the drain-by-shifting path (fetchSize != null) shifts items off the
+     * buffer one-by-one, so only already-yielded items are removed when the caller breaks early.
+     * See testConsumeWithoutFetchSizeLosesUnyieldedMessagesOnEarlyBreak for the legacy limitation.
+     */
+    public function testConsumePreservesUnyieldedMessagesWhenCallerBreaksEarly(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('consumerChannel')
+            ->willReturn($channel);
+        $connection->method('getQueueNames')
+            ->willReturn(['test_queue']);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::once())
+            ->method('basic_qos');
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $channel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::exactly(2))
+            ->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        $message1 = $this->createStub(AMQPMessage::class);
+        $message2 = $this->createStub(AMQPMessage::class);
+        $message3 = $this->createStub(AMQPMessage::class);
+
+        $consumer->callback($message1);
+        $consumer->callback($message2);
+        $consumer->callback($message3);
+
+        $received = [];
+
+        foreach ($consumer->consume('test_queue', 1) as $amqpEnvelope) {
+            $received[] = $amqpEnvelope;
+
+            break;
+        }
+
+        self::assertCount(1, $received);
+
+        /** @var Traversable<AmqpEnvelope> $remainingEnvelopes */
+        $remainingEnvelopes = $consumer->consume('test_queue', 1);
+        $remaining          = iterator_to_array($remainingEnvelopes, false);
+
+        self::assertCount(2, $remaining);
+    }
+
+    /**
+     * Documents a known limitation of the legacy consume path (fetchSize === null):
+     * the buffer is snapshotted and cleared upfront before yielding, so any messages
+     * not yet yielded when the caller breaks early are silently lost.
+     * Use fetchSize to avoid this — see testConsumePreservesUnyieldedMessagesWhenCallerBreaksEarly.
+     */
+    public function testConsumeWithoutFetchSizeLosesUnyieldedMessagesOnEarlyBreak(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('consumerChannel')
+            ->willReturn($channel);
+        $connection->method('getQueueNames')
+            ->willReturn(['test_queue']);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::once())
+            ->method('basic_qos');
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $channel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::exactly(2))
+            ->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        $message1 = $this->createStub(AMQPMessage::class);
+        $message2 = $this->createStub(AMQPMessage::class);
+        $message3 = $this->createStub(AMQPMessage::class);
+
+        $consumer->callback($message1);
+        $consumer->callback($message2);
+        $consumer->callback($message3);
+
+        $received = [];
+
+        // No fetchSize → legacy snapshot path; buffer is cleared before iteration starts
+        foreach ($consumer->consume('test_queue') as $amqpEnvelope) {
+            $received[] = $amqpEnvelope;
+
+            break;
+        }
+
+        self::assertCount(1, $received);
+
+        // The 2 unyielded messages are dropped — this is the known legacy limitation
+        /** @var Traversable<AmqpEnvelope> $remainingEnvelopes */
+        $remainingEnvelopes = $consumer->consume('test_queue');
+        $remaining          = iterator_to_array($remainingEnvelopes, false);
+
+        self::assertCount(0, $remaining);
+    }
+
+    public function testConsumeWithFetchSizeGreaterThanPrefetchCountOverridesPrefetch(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('consumerChannel')
+            ->willReturn($channel);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::once())
+            ->method('basic_qos')
+            ->with(
+                prefetch_size: 0,
+                prefetch_count: 50,
+                a_global: false,
+            );
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $channel->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue', 50);
+        iterator_to_array($amqpEnvelopes);
+    }
+
+    public function testConsumeWithFetchSizeSmallerThanPrefetchCountDoesNotOverride(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('consumerChannel')
+            ->willReturn($channel);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::once())
+            ->method('basic_qos')
+            ->with(
+                prefetch_size: 0,
+                prefetch_count: 20,
+                a_global: false,
+            );
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $channel->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        // fetchSize=5 < prefetchCount=20 → effective prefetch stays 20
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue', 5);
+        iterator_to_array($amqpEnvelopes);
+    }
+
+    public function testConsumeUpdatesQosWhenFetchSizeIncreasesAbovePrefetchCount(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('consumerChannel')
+            ->willReturn($channel);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $expectedPrefetchCounts = [20, 50];
+        $channel->expects(self::exactly(2))
+            ->method('basic_qos')
+            ->willReturnCallback(static function (int $prefetchSize, int $prefetchCount, bool $aGlobal) use (&$expectedPrefetchCounts): void {
+                self::assertSame(array_shift($expectedPrefetchCounts), $prefetchCount);
+            });
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $channel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::exactly(2))
+            ->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        // First consume: no fetchSize → prefetch stays at config value (20)
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+        iterator_to_array($amqpEnvelopes);
+
+        // Second consume: fetchSize=50 > prefetchCount=20 → QoS updated to 50
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue', 50);
+        iterator_to_array($amqpEnvelopes);
     }
 
     public function testStopConsumer(): void
