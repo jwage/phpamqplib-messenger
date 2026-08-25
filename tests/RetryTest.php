@@ -304,6 +304,10 @@ class RetryTest extends TestCase
 
         self::assertTrue($method->isProtected());
         self::assertFalse($method->isPrivate());
+
+        // Invoke the method body so PCOV covers the sleep line; this ensures
+        // Infection includes this test when checking ProtectedVisibility mutations.
+        $method->invoke(new Retry(), 0);
     }
 
     public function testRetryWaitsUsingUsleepBetweenAttempts(): void
