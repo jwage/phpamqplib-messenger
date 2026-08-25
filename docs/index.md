@@ -31,24 +31,35 @@ For SSL/TLS connections, use:
 phpamqplibs://username:password@localhost[:port]/vhost[/exchange]
 ```
 
-## Limitations
+## Fetch size and multiple transports
 
-You cannot consume messages from multiple transports at the same time in one `messenger:consume` process. For example, you should not do this:
+This transport honors Symfony Messenger's fetch-size hint on `ReceiverInterface::get()`. That is how many envelopes one Worker `get()` yields before returning; it is not AMQP QoS (`prefetch_count`).
 
-```bash
-bin/console messenger:consume transport1 transport2
+On **Symfony 8.1+**, the Worker always passes a size via `messenger:consume --fetch-size` (default 1). Use that option. Transport `fetch_size` is ignored, because the argument is always present.
+
+On **Symfony < 8.1**, the Worker calls `get()` with no argument. `wait_timeout` only fires when the queue is idle, so a busy transport can yield forever and starve other receivers, `--time-limit`, and `messenger:stop-workers`. Set transport `fetch_size` as the default for that omitted argument:
+
+```yaml
+# config/packages/messenger.yaml
+framework:
+    messenger:
+        transports:
+            orders:
+                dsn: 'phpamqplib://guest:guest@localhost:5672/%2f/orders'
+                options:
+                    fetch_size: 10
 ```
 
-Instead, you should consume messages from each transport in a separate process.
+That yaml value is the same cap as `--fetch-size`, supplied only when the caller does not pass `$fetchSize`. It is not a yaml equivalent of the console option.
+
+The Worker still prefers the first transport listed whenever that transport has work. For isolated throughput, consume each transport in its own process:
 
 ```bash
 bin/console messenger:consume transport1
 bin/console messenger:consume transport2
 ```
 
-Because we're using a blocking consumer, when you pass multiple transports to the `messenger:consume` command, the first transport will block the process and wait for messages for the configured `queueConfig.waitTimeout` value before the second transport will start consuming messages. This maybe could be enhanced to work better in the future, but we believe something would have to be changed in the Symfony Messenger component to support this. For now, we recommend consuming messages from each transport in a separate process.
-
-A single transport can declare multiple queues. The receiver subscribes to each queue rather than only the first. Those queues are still polled sequentially: `consume()` waits up to that queue's `wait_timeout` before the next queue is polled. Messages that arrive for another already-subscribed queue during that wait are buffered and returned when that queue is polled.
+A single transport can declare multiple queues. The receiver subscribes to each queue rather than only the first. Those queues are still polled sequentially: `consume()` waits up to that queue's `wait_timeout` before the next queue is polled. Messages that arrive for another already-subscribed queue during that wait are buffered and returned when that queue is polled. When a fetch size is in effect (CLI argument or transport default), the receiver stops after that many envelopes across those queues.
 
 ## Minimum Configuration
 
@@ -113,8 +124,14 @@ framework:
                     # on consume so the worker can call the transport during processing.
                     keepalive_enabled: false
 
-                    # Prefetch settings
+                    # Prefetch settings (AMQP QoS: max unacked deliveries on the channel)
                     prefetch_count: 1
+
+                    # Default for get() when the caller omits $fetchSize (Symfony < 8.1
+                    # Worker). Same hint as messenger:consume --fetch-size. Omit for
+                    # unlimited. Ignored when get($fetchSize) is passed, including
+                    # Symfony 8.1+ consume which always passes --fetch-size.
+                    fetch_size: 10
 
                     # Consume wait settings
                     wait_timeout: 1
@@ -198,7 +215,10 @@ Any option can be specified in the DSN as an alternative to defining it in the `
 ```
 phpamqplib://guest:guest@localhost?heartbeat=60&read_timeout=5.0
 phpamqplib://guest:guest@localhost?heartbeat=10&keepalive_enabled=true
+phpamqplib://guest:guest@localhost?fetch_size=10
 ```
+
+`fetch_size` on the DSN is the transport default described above, not `messenger:consume --fetch-size`.
 
 `keepalive_enabled=true` has no effect unless `heartbeat` is greater than 0. It also requires Symfony >= 7.2, the `pcntl` extension, and `messenger:consume --keepalive`.
 

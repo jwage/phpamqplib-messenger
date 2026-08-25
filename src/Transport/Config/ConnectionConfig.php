@@ -40,6 +40,7 @@ readonly class ConnectionConfig
         'keepalive',
         'keepalive_enabled',
         'prefetch_count',
+        'fetch_size',
         'wait_timeout',
         'confirm_enabled',
         'confirm_timeout',
@@ -135,9 +136,15 @@ readonly class ConnectionConfig
         DelayConfig|null $delay = null,
         array|null $queues = null,
         string|null $connectionName = null,
+        // Default for get() when $fetchSize is omitted; ignored when the Worker passes one.
+        public int|null $fetchSize = null,
     ) {
         if ($waitTimeout === 0 || $waitTimeout === 0.0) {
             throw new InvalidArgumentException('Connection wait timeout cannot be zero. This will cause the consumer to wait forever and block the messenger worker loop.');
+        }
+
+        if ($fetchSize !== null && $fetchSize < 1) {
+            throw new InvalidArgumentException('Connection fetch size must be greater than zero. This limits how many messages get() yields before returning control to the messenger worker loop.');
         }
 
         if ($transactionsEnabled && $confirmEnabled) {
@@ -191,6 +198,7 @@ readonly class ConnectionConfig
      *     keepalive?: bool|mixed,
      *     keepalive_enabled?: bool|mixed,
      *     prefetch_count?: int|mixed,
+     *     fetch_size?: int|mixed,
      *     wait_timeout?: int|float|mixed,
      *     confirm_enabled?: bool|mixed,
      *     confirm_timeout?: int|float|mixed,
@@ -314,6 +322,7 @@ readonly class ConnectionConfig
             keepalive: ConfigHelper::getBool($connectionConfig, 'keepalive'),
             keepaliveEnabled: ConfigHelper::getBool($connectionConfig, 'keepalive_enabled'),
             prefetchCount: $prefetchCount,
+            fetchSize: ConfigHelper::getInt($connectionConfig, 'fetch_size'),
             waitTimeout: $waitTimeout,
             confirmEnabled: ConfigHelper::getBool($connectionConfig, 'confirm_enabled'),
             confirmTimeout: ConfigHelper::getFloat($connectionConfig, 'confirm_timeout'),
