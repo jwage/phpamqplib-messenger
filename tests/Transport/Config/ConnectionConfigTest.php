@@ -83,6 +83,8 @@ class ConnectionConfigTest extends TestCase
             'confirm_enabled' => true,
             'confirm_timeout' => 10.0,
             'retries_enabled' => false,
+            'retries' => 2,
+            'retry_wait_time' => 500,
             'exchange' => [
                 'name' => 'custom_exchange',
                 'type' => 'fanout',
@@ -131,6 +133,8 @@ class ConnectionConfigTest extends TestCase
         self::assertTrue($connectionConfig->confirmEnabled);
         self::assertSame(10.0, $connectionConfig->confirmTimeout);
         self::assertFalse($connectionConfig->retriesEnabled);
+        self::assertSame(2, $connectionConfig->retries);
+        self::assertSame(500, $connectionConfig->retryWaitTime);
         self::assertSame('My test connection', $connectionConfig->connectionName);
 
         self::assertEquals(new ExchangeConfig(
@@ -312,6 +316,30 @@ class ConnectionConfigTest extends TestCase
         new ConnectionConfig(fetchSize: $fetchSize);
     }
 
+    public function testRetriesCannotBeNegative(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Connection retries cannot be negative.');
+
+        new ConnectionConfig(retries: -1);
+    }
+
+    public function testRetryWaitTimeCannotBeNegative(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Connection retry wait time cannot be negative.');
+
+        new ConnectionConfig(retryWaitTime: -1);
+    }
+
+    public function testFromArrayRetriesCannotBeNegative(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Connection retries cannot be negative.');
+
+        ConnectionConfig::fromArray(['retries' => -1]);
+    }
+
     public function testFromArrayFetchSizeMustBeGreaterThanZero(): void
     {
         self::expectException(InvalidArgumentException::class);
@@ -377,6 +405,8 @@ class ConnectionConfigTest extends TestCase
         self::assertTrue($connectionConfig->confirmEnabled);
         self::assertSame(3, $connectionConfig->confirmTimeout);
         self::assertTrue($connectionConfig->retriesEnabled);
+        self::assertSame(ConnectionConfig::DEFAULT_RETRIES, $connectionConfig->retries);
+        self::assertSame(ConnectionConfig::DEFAULT_RETRY_WAIT_TIME, $connectionConfig->retryWaitTime);
         self::assertEquals(new ExchangeConfig(), $connectionConfig->exchange);
         self::assertEquals(new DelayConfig(), $connectionConfig->delay);
         self::assertSame([], $connectionConfig->queues);

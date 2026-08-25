@@ -3430,6 +3430,66 @@ class ConnectionTest extends TestCase
         self::assertSame(1, $count);
     }
 
+    public function testRetryUsesConfiguredLimit(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(retries: 1, retryWaitTime: 0));
+        $count      = 0;
+
+        try {
+            $connection->retry(static function () use (&$count): void {
+                $count++;
+
+                throw new AMQPConnectionClosedException('test');
+            })->run();
+
+            self::fail('Expected the operation to fail after the configured retries.');
+        } catch (TransportException $exception) {
+            self::assertSame('test', $exception->getMessage());
+        }
+
+        self::assertSame(2, $count);
+    }
+
+    public function testRetryWithReconnectUsesConfiguredLimit(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(retries: 1, retryWaitTime: 0));
+        $count      = 0;
+
+        try {
+            $connection->retryWithReconnect(static function () use (&$count): void {
+                $count++;
+
+                throw new AMQPConnectionClosedException('test');
+            })->run();
+
+            self::fail('Expected the operation to fail after the configured retries.');
+        } catch (TransportException $exception) {
+            self::assertSame('test', $exception->getMessage());
+        }
+
+        self::assertSame(2, $count);
+    }
+
+    public function testRetryUsesZeroConfiguredLimit(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(retries: 0, retryWaitTime: 0));
+        $count      = 0;
+
+        try {
+            $connection->retry(static function () use (&$count): void {
+                $count++;
+
+                throw new AMQPConnectionClosedException('test');
+            })->run();
+
+            self::fail('Expected the operation to fail without retrying.');
+        } catch (TransportException $exception) {
+            self::assertSame('test', $exception->getMessage());
+        }
+
+        self::assertSame(1, $count);
+    }
+
     public function testChannelInvalidatesCachedChannelWhenConnectionClosed(): void
     {
         [$connection, $amqpConnection, $amqpChannel1] = $this->createConnectionWithAllMocks();
