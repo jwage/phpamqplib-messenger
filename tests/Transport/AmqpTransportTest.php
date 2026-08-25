@@ -13,10 +13,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
-use Symfony\Component\Messenger\Transport\Receiver\KeepaliveReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
-
-use function interface_exists;
 
 class AmqpTransportTest extends TestCase
 {
@@ -125,15 +122,11 @@ class AmqpTransportTest extends TestCase
         $transport->setup();
     }
 
-    public function testImplementsKeepaliveReceiverInterfaceWhenAvailable(): void
+    public function testImplementsKeepaliveReceiverInterface(): void
     {
         $transport = $this->createTransport();
 
         self::assertInstanceOf(AmqpKeepaliveReceiverInterface::class, $transport);
-
-        if (interface_exists(KeepaliveReceiverInterface::class)) {
-            self::assertInstanceOf(KeepaliveReceiverInterface::class, $transport);
-        }
     }
 
     public function testFlush(): void
