@@ -188,17 +188,18 @@ class E2eKernel extends Kernel
                 ->addTag('kernel.event_subscriber');
 
             $handler = $container->autowire(E2eMessageHandler::class);
-            $handler->addTag('messenger.message_handler', ['method' => '__invoke']);
-            $handler->addTag('messenger.message_handler', ['method' => 'handleFollowup']);
-            $handler->addTag('messenger.message_handler', ['method' => 'handleLow']);
-            $handler->addTag('messenger.message_handler', ['method' => 'handleTx']);
-            $handler->addTag('messenger.message_handler', ['method' => 'handleRouted']);
-            $handler->addTag('messenger.message_handler', ['method' => 'handleGreedy']);
-            $handler->addTag('messenger.message_handler', ['method' => 'handleManual']);
-            $handler->addTag('messenger.message_handler', ['method' => 'handleKeepalive']);
-            $handler->addTag('messenger.message_handler', ['method' => 'handleMemory']);
-            $handler->addTag('messenger.message_handler', ['method' => 'handleSsl']);
-            $handler->addTag('messenger.message_handler', ['method' => 'handleAuto']);
+            // Symfony 5.4 infers the handled type only from __invoke unless `handles` is set.
+            $handler->addTag('messenger.message_handler', ['method' => '__invoke', 'handles' => E2eMessage::class]);
+            $handler->addTag('messenger.message_handler', ['method' => 'handleFollowup', 'handles' => E2eFollowupMessage::class]);
+            $handler->addTag('messenger.message_handler', ['method' => 'handleLow', 'handles' => E2eLowMessage::class]);
+            $handler->addTag('messenger.message_handler', ['method' => 'handleTx', 'handles' => E2eTxMessage::class]);
+            $handler->addTag('messenger.message_handler', ['method' => 'handleRouted', 'handles' => E2eRoutedMessage::class]);
+            $handler->addTag('messenger.message_handler', ['method' => 'handleGreedy', 'handles' => E2eGreedyMessage::class]);
+            $handler->addTag('messenger.message_handler', ['method' => 'handleManual', 'handles' => E2eManualMessage::class]);
+            $handler->addTag('messenger.message_handler', ['method' => 'handleKeepalive', 'handles' => E2eKeepaliveMessage::class]);
+            $handler->addTag('messenger.message_handler', ['method' => 'handleMemory', 'handles' => E2eMemoryMessage::class]);
+            $handler->addTag('messenger.message_handler', ['method' => 'handleSsl', 'handles' => E2eSslMessage::class]);
+            $handler->addTag('messenger.message_handler', ['method' => 'handleAuto', 'handles' => E2eAutoMessage::class]);
         });
     }
 

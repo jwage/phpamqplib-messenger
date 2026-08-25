@@ -91,7 +91,7 @@ abstract class E2eTestCase extends TestCase
         $this->env = [
             'APP_ENV' => 'test',
             'APP_DEBUG' => '0',
-            'E2E_CACHE' => 'e2e-v4',
+            'E2E_CACHE' => 'e2e-v5',
             'E2E_LOG' => $this->logFile,
             'E2E_HIGH_DSN' => $this->highDsn,
             'E2E_LOW_DSN' => $this->lowDsn,
