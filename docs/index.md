@@ -1,4 +1,4 @@
-# PhpAmqpLibMessengerBundle Documentations
+# PhpAmqpLibMessengerBundle Documentation
 
 This bundle adds support for `php-amqplib/php-amqplib` to Symfony Messenger, providing an alternative way to connect to RabbitMQ using a pure PHP library instead of the [php-amqp](https://github.com/php-amqp/php-amqp) C extension.
 
@@ -8,7 +8,7 @@ This bundle adds support for `php-amqplib/php-amqplib` to Symfony Messenger, pro
 composer require jwage/phpamqplib-messenger
 ```
 
-Make sure the bundled is enabled in `config/bundles.php`:
+Make sure the bundle is enabled in `config/bundles.php`:
 
 ```php
 return [
@@ -22,7 +22,7 @@ return [
 It is easy to configure the bundle using a DSN and the `config/packages/messenger.yaml` file. The DSN format for the transport is:
 
 ```
-phpamqplib://username:password@localhost[:post]/vhost[/exchange]
+phpamqplib://username:password@localhost[:port]/vhost[/exchange]
 ```
 
 For SSL/TLS connections, use:
@@ -48,9 +48,11 @@ bin/console messenger:consume transport2
 
 Because we're using a blocking consumer, when you pass multiple transports to the `messenger:consume` command, the first transport will block the process and wait for messages for the configured `queueConfig.waitTimeout` value before the second transport will start consuming messages. This maybe could be enhanced to work better in the future, but we believe something would have to be changed in the Symfony Messenger component to support this. For now, we recommend consuming messages from each transport in a separate process.
 
+A single transport can declare multiple queues. The receiver subscribes to each queue rather than only the first. Those queues are still polled sequentially: `consume()` waits up to that queue's `wait_timeout` before the next queue is polled. Messages that arrive for another already-subscribed queue during that wait are buffered and returned when that queue is polled.
+
 ## Minimum Configuration
 
-The minimum configuration required is the transports name and the DSN.
+The minimum configuration requires a transport name and DSN.
 
 ```yaml
 # config/packages/messenger.yaml
@@ -65,7 +67,7 @@ The configuration above will create an exchange named `orders` and bind a queue 
 
 ## Advanced Configuration
 
-The bundle supports all advanced RabbitMQ configuration options in your `config/packages/messenger.yaml` file. Here is an example configuration with all the default values you can customize:
+The bundle supports advanced RabbitMQ configuration options in your `config/packages/messenger.yaml` file. The following comprehensive example shows the available options; review application-specific values such as names, timeouts, heartbeat, and certificate settings for your environment:
 
 ```yaml
 # config/packages/messenger.yaml
@@ -87,7 +89,7 @@ framework:
                     # login: 'guest'
                     password: 'guest'
                     vhost: '/'
-                    insist: true
+                    insist: false
                     login_method: 'AMQPLAIN'
                     locale: 'en_US'
 
@@ -98,7 +100,7 @@ framework:
                     rpc_timeout: 3.0
 
                     # Heartbeat settings
-                    heartbeat: 60
+                    heartbeat: 0
                     keepalive: true
 
                     # Prefetch settings
@@ -110,7 +112,11 @@ framework:
                     # Confirm settings
                     confirm_enabled: true
                     confirm_timeout: 3.0
-                    
+
+                    # Transactions are an alternative to publisher confirms;
+                    # confirm_enabled and transactions_enabled cannot both be true.
+                    transactions_enabled: false
+
                     # Connection name (optional for easier identification in server logs and management UI)
                     connection_name: ''
 
@@ -174,6 +180,7 @@ framework:
                         # declaration fail. Set this to true when running against such a
                         # broker. The delay queues are still cleaned up via `x-expires`.
                         queue_durable: false
+                        arguments: []
 ```
 
 Any option can be specified in the DSN as an alternative to defining it in the `messenger.yaml` file:
@@ -218,11 +225,20 @@ $envelope = Envelope::wrap($message)->with($stamp);
 $bus->dispatch($envelope);
 ```
 
+## Delivery Reliability
+
+The transport implements **at-least-once**, not exactly-once, publishing semantics. Publisher confirms are enabled by default, messages are persistent, and exchanges and queues are durable by default. After a retryable connection or channel failure, the transport either retries messages it still owns or throws so the caller can retry. If RabbitMQ accepted a publish before the connection failed, recovery may publish that message twice, so handlers must be idempotent.
+
+Publisher confirms and transactions are mutually exclusive. If both are disabled, a successful socket write cannot prove durable broker acceptance. End-to-end durability also depends on keeping messages persistent, topology durable, and RabbitMQ configured for the durability guarantees your application requires.
+
 ## Batch Dispatching
 
-The bundle supports batch dispatching of messages. You can inject the `Jwage\PhpAmqpLibMessengerBundle\BatchMessageBusInterface` service, which wraps your message bus and provides a new method named `getBatch()` for dispatching messages in batches:
+The bundle supports batch dispatching through `Jwage\PhpAmqpLibMessengerBundle\Batch`. Create a batch around your existing message bus and choose the number of messages that triggers an automatic flush:
 
 ```php
+use Jwage\PhpAmqpLibMessengerBundle\Batch;
+use Symfony\Component\Messenger\MessageBusInterface;
+
 class SomeService
 {
     public function __construct(
@@ -245,11 +261,25 @@ class SomeService
 }
 ```
 
+Batched `flush()` is **at-least-once**, not exactly-once. The transport owns messages accepted for a batch until a flush succeeds, including across reconnect and `Connection::close()`. A failed flush retains the batch and throws; reaching or exceeding the batch size on a later dispatch attempts the flush again.
+
+A live publisher-confirm timeout retries the wait on the original channel and does not call `publish_batch()` again. If those waits are exhausted, the batch remains pending and `flush()` throws. If the connection or channel dies after the write or while waiting for confirms, recovery replays the retained batch because RabbitMQ's outcome is unknowable. That replay may produce duplicates, so handlers must be idempotent (or use the [deduplication plugin](#deduplication-plugin)).
+
+A later non-batch publish on the same connection flushes any retained batch first, so a newer direct message cannot overtake older buffered messages. If that flush still fails, the direct publish throws without sending the newer message.
+
+Pending batches exist only in process memory. They do not survive process termination, so call `flush()` explicitly and allow its exception to propagate; do not rely on destructor-time flushing for durability.
+
+## Publisher and Consumer Channels
+
+Publishing/topology operations and consuming use separate AMQP channels, even when they share one underlying connection. A live publisher-channel failure can therefore be retired and replaced without invalidating an in-flight consumer delivery tag. If the underlying connection dies, its delivery tags are no longer valid and the transport re-registers its consumers on a fresh channel. `Connection::channel()` returns the publisher/topology channel; use the transport receiver or `Connection::consume()` for consumption.
+
+When RabbitMQ reports a resource alarm, known-blocked publishes fail before allocating another channel. A publisher channel that discovers the alarm is reclaimed after the connection becomes readable again and before its replacement is opened.
+
 ## Deduplication Plugin
 
-This bundle prioritizes message reliability over raw performance. By default, confirms are enabled to ensure that messages are acknowledged by the server. In the event of a connection exception, publishes are retried if there is uncertainty about whether a message was received by the server. This approach ensures that messages are not lost, but it also means that a message could potentially be published twice. Therefore, it is crucial to ensure that your message handlers are 100% idempotent to handle such scenarios gracefully.
+At-least-once recovery can publish a message more than once when RabbitMQ accepted it but the client lost the connection before learning the outcome. Idempotent handlers remain the primary defense against duplicate processing.
 
-Alternatively, you can use the [deduplication plugin](https://github.com/noxdafox/rabbitmq-message-deduplication) to deduplicate messages based on a message id. So if we have connection issues while publishing messages, we can safely retry publishing the message without worrying about duplications.
+The optional [RabbitMQ message deduplication plugin](https://github.com/noxdafox/rabbitmq-message-deduplication) can suppress publishes that reuse the same message ID while they remain within its configured cache. This complements rather than replaces idempotent handlers.
 
 ```yaml
 # config/packages/messenger.yaml
@@ -284,7 +314,7 @@ $envelope = Envelope::wrap($message)->with(AmqpStamp::createWithAttributes(
 $bus->dispatch($envelope);
 ```
 
-To make this easier, you can use the `DeduplicationPluginMiddleware` middleware that will automatically add the required attributes to each message if they are not already present:
+To make this easier, use `DeduplicationPluginMiddleware` to preserve an existing message ID or generate one with `symfony/uid`, then set both the AMQP `message_id` property and `x-deduplication-header`:
 
 ```yaml
 # config/packages/messenger.yaml
@@ -295,3 +325,33 @@ framework:
                 middleware:
                     - 'Jwage\PhpAmqpLibMessengerBundle\Middleware\DeduplicationPluginMiddleware'
 ```
+
+## Running Tests
+
+Functional tests need a RabbitMQ broker. Port `5672` is often already taken by another local broker, so this suite defaults to **port 5673**.
+
+```bash
+docker compose up -d --wait
+./vendor/bin/phpunit
+docker compose down
+```
+
+Override the DSN if needed:
+
+```bash
+MESSENGER_TRANSPORT_PHPAMQPLIB_DSN='phpamqplib://guest:guest@127.0.0.1:5673/%2f/messages' ./vendor/bin/phpunit
+```
+
+If the broker is down or unreachable, functional tests **fail** (they do not skip).
+
+### Live broker failure tests
+
+Broker mutations (restart, pause, overflow NACK, memory alarm, TLS listener) are PHPUnit tests in a **separate `chaos` testsuite**. They are excluded from `./vendor/bin/phpunit` so they do not pause the functional-test broker.
+
+```bash
+docker compose up -d --wait
+./vendor/bin/phpunit --testsuite chaos
+# or: composer chaos
+```
+
+See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the test catalog and how tests inject broker faults. CI runs them in a separate job. Do not run them in parallel with the default PHPUnit suite; they pause and restart the broker.

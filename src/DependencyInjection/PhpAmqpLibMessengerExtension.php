@@ -15,7 +15,7 @@ use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
 class PhpAmqpLibMessengerExtension extends Extension
 {
     /**
-     * @param array<array-key, array<array-key, mixed>> $configs
+     * @param array<array-key, mixed> $configs
      *
      * @throws Exception
      *

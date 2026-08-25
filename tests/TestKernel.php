@@ -39,7 +39,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
         $loader->load(static function (ContainerBuilder $container): void {
             $container->setParameter(
                 'env(MESSENGER_TRANSPORT_PHPAMQPLIB_DSN)',
-                'phpamqplib://guest:guest@127.0.0.1/%2f/messages',
+                'phpamqplib://guest:guest@127.0.0.1:5673/%2f/messages',
             );
 
             $container->loadFromExtension('framework', [
@@ -84,6 +84,26 @@ class TestKernel extends Kernel implements CompilerPassInterface
                                 'exchange' => ['name' => 'test_transactions_exchange'],
                                 'queues' => [
                                     'test_transactions_queue' => ['prefetch_count' => 2],
+                                ],
+                            ],
+                        ],
+                        'with_multiple_queues' => [
+                            'dsn' => '%env(MESSENGER_TRANSPORT_PHPAMQPLIB_DSN)%',
+                            'options' => [
+                                'transactions_enabled' => false,
+                                'confirm_enabled' => true,
+                                'wait_timeout' => 0.10, // lower wait_timeout for tests
+                                'exchange' => [
+                                    'name' => 'test_multiple_queues_exchange',
+                                    'type' => 'direct',
+                                ],
+                                'queues' => [
+                                    'test_multiple_queues_order' => [
+                                        'binding_keys' => ['order'],
+                                    ],
+                                    'test_multiple_queues_quote' => [
+                                        'binding_keys' => ['quote'],
+                                    ],
                                 ],
                             ],
                         ],

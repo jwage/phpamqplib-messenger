@@ -14,12 +14,17 @@ jobs:
       matrix:
         php: ['8.3', '8.4']
         symfony_version: ['5.4.*', '6.4.*', '7.0.*', '8.0.*']
+        dependencies: ['highest']
         exclude:
           # Symfony 8 requires PHP 8.4+
           - php: '8.3'
             symfony_version: '8.0.*'
+        include:
+          - php: '8.3'
+            symfony_version: '5.4.*'
+            dependencies: 'lowest'
 
-    name: PHP ${{ matrix.php }} Symfony ${{ matrix.symfony_version }}
+    name: PHP ${{ matrix.php }} Symfony ${{ matrix.symfony_version }} (${{ matrix.dependencies }})
 
     services:
       rabbitmq:
@@ -41,9 +46,9 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: composer-${{ matrix.php }}-${{ matrix.symfony_version }}-${{ hashFiles('**/composer.json') }}
+          key: composer-${{ matrix.php }}-${{ matrix.symfony_version }}-${{ matrix.dependencies }}-${{ hashFiles('**/composer.json') }}
           restore-keys: |
-            composer-${{ matrix.php }}-${{ matrix.symfony_version }}-
+            composer-${{ matrix.php }}-${{ matrix.symfony_version }}-${{ matrix.dependencies }}-
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -53,7 +58,13 @@ jobs:
 
       - run: php ./tests/bin/pin-symfony-version.php "${{ matrix.symfony_version }}"
 
-      - run: composer update --no-progress
+      - name: Install highest supported dependencies
+        if: matrix.dependencies == 'highest'
+        run: composer update --no-progress
+
+      - name: Install lowest supported dependencies
+        if: matrix.dependencies == 'lowest'
+        run: composer update --no-progress --prefer-lowest --prefer-stable
 
       - name: PHPCS
         run: ./vendor/bin/phpcs
@@ -65,3 +76,27 @@ jobs:
         run: ./vendor/bin/phpunit
         env:
           MESSENGER_TRANSPORT_PHPAMQPLIB_DSN: "phpamqplib://guest:guest@127.0.0.1:${{ job.services.rabbitmq.ports['5672'] }}/%2f/messages"
+
+  chaos:
+    name: Live broker chaos
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: :xdebug
+
+      - run: composer update --no-progress
+
+      # Own compose broker: these tests pause, restart, and stop RabbitMQ.
+      # They must not share the PHPUnit service container.
+      - run: docker compose up -d --wait
+
+      - run: ./vendor/bin/phpunit --testsuite chaos
+
+      - if: always()
+        run: docker compose down
