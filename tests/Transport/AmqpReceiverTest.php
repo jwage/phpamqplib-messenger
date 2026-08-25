@@ -84,6 +84,57 @@ class AmqpReceiverTest extends TestCase
         self::assertSame('queue_name', $amqpReceivedStamp1->getQueueName());
     }
 
+    public function testGetConsumesEachConfiguredQueue(): void
+    {
+        $message1      = new stdClass();
+        $message2      = new stdClass();
+        $envelope1     = new Envelope($message1);
+        $envelope2     = new Envelope($message2);
+        $amqpEnvelope1 = new AmqpEnvelope(new AMQPMessage(serialize($message1), ['message_id' => '1']));
+        $amqpEnvelope2 = new AmqpEnvelope(new AMQPMessage(serialize($message2), ['message_id' => '2']));
+
+        $connection = $this->getTestConnection();
+        $connection->method('getQueueNames')
+            ->willReturn(['queue_name', 'queue_name2']);
+
+        $connection->expects(self::exactly(2))
+            ->method('consume')
+            ->willReturnCallback(
+                static function (string $queueName) use ($amqpEnvelope1, $amqpEnvelope2): array {
+                    return match ($queueName) {
+                        'queue_name' => [$amqpEnvelope1],
+                        'queue_name2' => [$amqpEnvelope2],
+                        default => [],
+                    };
+                },
+            );
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::exactly(2))
+            ->method('decode')
+            ->willReturnOnConsecutiveCalls($envelope1, $envelope2);
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        $envelopes = [];
+
+        foreach ($receiver->get() as $envelope) {
+            $envelopes[] = $envelope;
+        }
+
+        self::assertCount(2, $envelopes);
+
+        $amqpReceivedStamp1 = $envelopes[0]->last(AmqpReceivedStamp::class);
+        $amqpReceivedStamp2 = $envelopes[1]->last(AmqpReceivedStamp::class);
+
+        self::assertInstanceOf(AmqpReceivedStamp::class, $amqpReceivedStamp1);
+        self::assertInstanceOf(AmqpReceivedStamp::class, $amqpReceivedStamp2);
+        self::assertSame($amqpEnvelope1, $amqpReceivedStamp1->getAMQPEnvelope());
+        self::assertSame('queue_name', $amqpReceivedStamp1->getQueueName());
+        self::assertSame($amqpEnvelope2, $amqpReceivedStamp2->getAMQPEnvelope());
+        self::assertSame('queue_name2', $amqpReceivedStamp2->getQueueName());
+    }
+
     public function testGetNacksWhenDecodeThrows(): void
     {
         $amqpEnvelope = $this->createMock(AmqpEnvelope::class);

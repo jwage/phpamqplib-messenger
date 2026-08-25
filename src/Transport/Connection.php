@@ -40,7 +40,8 @@ class Connection
     /** @var list<AMQPChannel> */
     private array $retiredPublisherChannels = [];
 
-    private AmqpConsumer|null $consumer = null;
+    /** @var array<string, AmqpConsumer> */
+    private array $consumers = [];
 
     /** @var list<array{0: AMQPMessage, 1: string, 2: string}> */
     private array $batchMessages = [];
@@ -63,12 +64,12 @@ class Connection
 
     public function __destruct()
     {
-        $this->consumer?->invalidate();
+        $this->invalidateConsumers();
 
         $this->connection      = null;
         $this->channel         = null;
         $this->consumerChannel = null;
-        $this->consumer        = null;
+        $this->consumers       = [];
 
         $this->pendingBatchConfirmChannel = null;
         $this->retiredPublisherChannels   = [];
@@ -90,13 +91,13 @@ class Connection
             // Closing the connection cancels its consumers, so do not issue a separate
             // basic_cancel first. Besides being redundant, that round trip can block on
             // an alarm-blocked connection or reconnect solely to cancel a stale tag.
-            $this->consumer?->invalidate();
+            $this->invalidateConsumers();
             $this->connection?->close();
         } finally {
             $this->connection      = null;
             $this->channel         = null;
             $this->consumerChannel = null;
-            $this->consumer        = null;
+            $this->consumers       = [];
 
             $this->pendingBatchConfirmChannel = null;
             $this->retiredPublisherChannels   = [];
@@ -169,7 +170,7 @@ class Connection
     }
 
     /**
-     * Returns the channel reserved for the transport-managed consumer.
+     * Returns the channel reserved for transport-managed consumers.
      *
      * @internal AmqpConsumer owns registrations and local state on this channel.
      *
@@ -183,7 +184,7 @@ class Connection
 
         if ($this->consumerChannel !== null && ! $this->consumerChannel->is_open()) {
             $this->consumerChannel = null;
-            $this->consumer?->invalidate();
+            $this->invalidateConsumers();
         }
 
         if ($this->consumerChannel === null) {
@@ -211,7 +212,7 @@ class Connection
             $this->setupExchangeAndQueues();
         }
 
-        return ($this->consumer ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger))->consume($queueName);
+        return ($this->consumers[$queueName] ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger))->consume($queueName);
     }
 
     /**
@@ -564,7 +565,7 @@ class Connection
         $this->consumerChannel            = null;
         $this->pendingBatchConfirmChannel = null;
         $this->retiredPublisherChannels   = [];
-        $this->consumer?->invalidate();
+        $this->invalidateConsumers();
 
         foreach ($channels as $channel) {
             $channel?->closeIfDisconnected();
@@ -651,6 +652,13 @@ class Connection
 
         if ($connection->isBlocked()) {
             throw new AMQPConnectionBlockedException();
+        }
+    }
+
+    private function invalidateConsumers(): void
+    {
+        foreach ($this->consumers as $consumer) {
+            $consumer->invalidate();
         }
     }
 
