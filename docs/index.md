@@ -108,8 +108,9 @@ framework:
                     # `messenger:consume --keepalive` does not turn this on.
                     #
                     # Set to true when handlers can run longer than the AMQP heartbeat
-                    # interval. Also requires Symfony >= 7.2 and `--keepalive` on consume
-                    # so the worker can call the transport during processing.
+                    # interval. This only sends frames when `heartbeat` is greater than 0.
+                    # Also requires Symfony >= 7.2, the pcntl extension, and `--keepalive`
+                    # on consume so the worker can call the transport during processing.
                     keepalive_enabled: false
 
                     # Prefetch settings
@@ -198,6 +199,8 @@ Any option can be specified in the DSN as an alternative to defining it in the `
 phpamqplib://guest:guest@localhost?heartbeat=60&read_timeout=5.0
 phpamqplib://guest:guest@localhost?heartbeat=10&keepalive_enabled=true
 ```
+
+`keepalive_enabled=true` has no effect unless `heartbeat` is greater than 0. It also requires Symfony >= 7.2, the `pcntl` extension, and `messenger:consume --keepalive`.
 
 ## AmqpStamp
 
