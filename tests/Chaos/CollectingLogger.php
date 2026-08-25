@@ -15,7 +15,7 @@ final class CollectingLogger extends AbstractLogger
     public array $records = [];
 
     /**
-     * Compatible with psr/log 1–3 (lowest Symfony 5.4 still uses untyped log()).
+     * Compatible with psr/log 1–3 (lowest Symfony 6.4 still uses untyped log()).
      *
      * @param mixed                   $level
      * @param string|Stringable       $message
