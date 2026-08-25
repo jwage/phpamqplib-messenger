@@ -89,7 +89,10 @@ class NackTest extends ChaosTestCase
         ]));
 
         $connection->publish(body: 'to-ack');
-        $envelope = $this->harness->consumeOne($connection, $name);
+        $envelope        = $this->harness->consumeOne($connection, $name);
+        $publisherBefore = $connection->channel();
+        $consumerBefore  = $connection->consumerChannel();
+        self::assertNotSame($publisherBefore, $consumerBefore);
 
         $elapsed = (float) $this->harness->withRetryDefaults(3, 500, function () use ($connection): float {
             return $this->harness->milliseconds(static function () use ($connection): void {
@@ -103,6 +106,11 @@ class NackTest extends ChaosTestCase
         });
 
         self::assertLessThan(400, $elapsed);
+        self::assertSame(
+            $consumerBefore,
+            $connection->consumerChannel(),
+            'A publisher NACK must discard only the publisher channel, not the consumer channel holding the delivery tag',
+        );
 
         $envelope->ack();
     }

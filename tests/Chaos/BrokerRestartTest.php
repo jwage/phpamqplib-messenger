@@ -39,29 +39,52 @@ class BrokerRestartTest extends ChaosTestCase
     public function testInFlightFlushSurvivesBrokerRestart(): void
     {
         $name       = $this->harness->topologyName('restart_during');
-        $connection = $this->harness->connect($this->harness->topology($name));
+        $connection = $this->harness->connect($this->harness->topology($name, extra: [
+            'confirm_timeout' => 5,
+            'read_timeout' => 10,
+            'write_timeout' => 10,
+        ]));
 
         $connection->publish(body: 'one', batchSize: 3);
         $connection->publish(body: 'two', batchSize: 3);
 
-        $this->harness->info('Restarting broker during flush');
-        $this->harness->brokerLater(0.2, 'restart');
+        // Pause so confirms cannot complete locally, then SIGKILL so the frozen
+        // process cannot wake up and ack before it exits.
+        $this->harness->info('Pausing broker, then SIGKILL during flush');
+        $this->harness->broker('pause');
+        $this->harness->brokerLater(0.3, 'kill');
 
-        $this->harness->withRetryDefaults(8, 250, function () use ($connection): void {
+        $flushThrew = false;
+        try {
+            $this->harness->withRetryDefaults(0, 0, function () use ($connection, &$flushThrew): void {
+                try {
+                    $connection->flush();
+                } catch (Throwable $exception) {
+                    $flushThrew = true;
+                    $this->harness->info('Flush threw during broker kill: ' . $exception->getMessage());
+                }
+            });
+        } finally {
             try {
-                $connection->flush();
+                $this->harness->broker('start');
             } catch (Throwable $exception) {
-                $this->harness->info('Flush threw during restart: ' . $exception->getMessage());
+                $this->harness->info('start after inflight flush: ' . $exception->getMessage());
             }
-        });
+        }
 
         $this->harness->waitUntilReady();
 
-        if ($this->harness->pendingBatchSize($connection) > 0) {
-            $this->harness->withRetryDefaults(5, 200, static function () use ($connection): void {
-                $connection->flush();
-            });
-        }
+        $pending = $this->harness->pendingBatchSize($connection);
+        self::assertTrue($flushThrew, 'Expected flush to fail while the broker is paused and killed');
+        self::assertGreaterThanOrEqual(
+            2,
+            $pending,
+            'A failed flush must retain the in-memory batch so a later retry can republish',
+        );
+
+        $this->harness->withRetryDefaults(5, 200, static function () use ($connection): void {
+            $connection->flush();
+        });
 
         $count = $connection->countMessagesInQueues();
         self::assertGreaterThanOrEqual(2, $count);
@@ -90,7 +113,7 @@ class BrokerRestartTest extends ChaosTestCase
     public function testConsumerAcksAfterBrokerRestart(): void
     {
         $name       = $this->harness->topologyName('consumer_restart');
-        $connection = $this->harness->connect($this->harness->topology($name, ['wait_timeout' => 2]));
+        $connection = $this->harness->connect($this->harness->topology($name, ['wait_timeout' => 5]));
 
         $connection->publish(body: 'survive-restart');
         self::assertSame(1, $connection->countMessagesInQueues());
@@ -100,7 +123,7 @@ class BrokerRestartTest extends ChaosTestCase
         $this->harness->waitUntilReady();
 
         $envelope = $this->harness->withRetryDefaults(5, 200, function () use ($connection, $name): AmqpEnvelope {
-            return $this->harness->consumeOne($connection, $name);
+            return $this->harness->consumeOnce($connection, $name);
         });
 
         self::assertInstanceOf(AmqpEnvelope::class, $envelope);
@@ -162,6 +185,11 @@ class BrokerRestartTest extends ChaosTestCase
             $this->harness->info('consume() threw during restart: ' . $exception->getMessage());
         }
 
+        self::assertNull(
+            $this->harness->wrappedAmqpConnection($connection),
+            'consume() must Connection::close() when wait() hits a broker death, not leave a stale AMQP connection',
+        );
+
         $this->harness->waitUntilReady();
 
         $this->harness->withRetryDefaults(5, 200, static function () use ($connection): void {
@@ -169,7 +197,7 @@ class BrokerRestartTest extends ChaosTestCase
         });
 
         $envelope = $this->harness->withRetryDefaults(5, 200, function () use ($connection, $name): AmqpEnvelope {
-            return $this->harness->consumeOne($connection, $name);
+            return $this->harness->consumeOnce($connection, $name);
         });
 
         self::assertInstanceOf(AmqpEnvelope::class, $envelope);
@@ -222,7 +250,11 @@ class BrokerRestartTest extends ChaosTestCase
     public function testBusBatchFlushSurvivesBrokerRestart(): void
     {
         $name       = $this->harness->topologyName('bus_batch_restart');
-        $connection = $this->harness->connect($this->harness->topology($name, ['wait_timeout' => 2]));
+        $connection = $this->harness->connect($this->harness->topology($name, ['wait_timeout' => 2], [
+            'confirm_timeout' => 5,
+            'read_timeout' => 10,
+            'write_timeout' => 10,
+        ]));
         $transport  = new AmqpTransport($connection);
         $batch      = Batch::new(new TransportDispatchBus($transport), 3);
 
@@ -230,24 +262,41 @@ class BrokerRestartTest extends ChaosTestCase
         $batch->dispatch(new ConfirmMessage(2));
         self::assertSame(2, $this->harness->pendingBatchSize($connection));
 
-        $this->harness->info('Restarting broker during Batch::flush()');
-        $this->harness->brokerLater(0.2, 'restart');
+        $this->harness->info('Pausing broker, then SIGKILL during Batch::flush()');
+        $this->harness->broker('pause');
+        $this->harness->brokerLater(0.3, 'kill');
 
-        $this->harness->withRetryDefaults(8, 250, function () use ($batch): void {
+        $flushThrew = false;
+        try {
+            $this->harness->withRetryDefaults(0, 0, function () use ($batch, &$flushThrew): void {
+                try {
+                    $batch->flush();
+                } catch (Throwable $exception) {
+                    $flushThrew = true;
+                    $this->harness->info('Batch flush threw during broker kill: ' . $exception->getMessage());
+                }
+            });
+        } finally {
             try {
-                $batch->flush();
+                $this->harness->broker('start');
             } catch (Throwable $exception) {
-                $this->harness->info('Batch flush threw during restart: ' . $exception->getMessage());
+                $this->harness->info('start after bus-batch flush: ' . $exception->getMessage());
             }
-        });
+        }
 
         $this->harness->waitUntilReady();
 
-        if ($this->harness->pendingBatchSize($connection) > 0) {
-            $this->harness->withRetryDefaults(5, 200, static function () use ($batch): void {
-                $batch->flush();
-            });
-        }
+        $pending = $this->harness->pendingBatchSize($connection);
+        self::assertTrue($flushThrew, 'Expected Batch::flush() to fail while the broker is paused and killed');
+        self::assertGreaterThanOrEqual(
+            2,
+            $pending,
+            'A failed Batch::flush() must retain the in-memory batch so a later retry can republish',
+        );
+
+        $this->harness->withRetryDefaults(5, 200, static function () use ($batch): void {
+            $batch->flush();
+        });
 
         $count = $connection->countMessagesInQueues();
         self::assertGreaterThanOrEqual(2, $count);

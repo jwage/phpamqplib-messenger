@@ -96,6 +96,30 @@ class RetryTest extends TestCase
         self::assertSame(3, $runs);
     }
 
+    public function testEmptyCatchListDoesNotRetry(): void
+    {
+        $runs = 0;
+
+        try {
+            (new Retry(
+                retries: 3,
+                waitTime: 0,
+            ))
+                ->catch([])
+                ->run(static function () use (&$runs): void {
+                    $runs++;
+
+                    throw new RuntimeException('not retried');
+                });
+
+            self::fail('Expected the exception to propagate without retries.');
+        } catch (RuntimeException $exception) {
+            self::assertSame('not retried', $exception->getMessage());
+        }
+
+        self::assertSame(1, $runs);
+    }
+
     public function testExhaustedRetriesWrapTheExceptionAsTransportException(): void
     {
         try {

@@ -12,6 +12,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\DsnParser;
 use PhpAmqpLib\Channel\AMQPChannel;
+use PhpAmqpLib\Connection\AMQPStreamConnection;
 use ReflectionProperty;
 use RuntimeException;
 use Throwable;
@@ -28,15 +29,18 @@ use function getmypid;
 use function hrtime;
 use function is_array;
 use function microtime;
+use function posix_kill;
 use function preg_match;
 use function preg_replace;
 use function proc_close;
+use function proc_get_status;
 use function proc_open;
 use function sprintf;
 use function stream_get_contents;
 use function uniqid;
 use function usleep;
 
+use const SIGKILL;
 use const STDOUT;
 
 final class Harness
@@ -178,6 +182,35 @@ final class Harness
         return $channel;
     }
 
+    public function wrappedAmqpConnection(Connection $connection): AMQPStreamConnection|null
+    {
+        $property = new ReflectionProperty(Connection::class, 'connection');
+        $amqp     = $property->getValue($connection);
+
+        assert($amqp instanceof AMQPStreamConnection || $amqp === null);
+
+        return $amqp;
+    }
+
+    public function consumeOnce(Connection $connection, string $queueName): AmqpEnvelope
+    {
+        foreach ($connection->consume($queueName) as $envelope) {
+            return $envelope;
+        }
+
+        $this->fail(sprintf('Expected a delivery on %s from a single consume()', $queueName));
+    }
+
+    public function amqpChannelCount(Connection $connection): int
+    {
+        $amqp = $this->wrappedAmqpConnection($connection);
+        if ($amqp === null) {
+            return 0;
+        }
+
+        return count($amqp->channels);
+    }
+
     public function consumeOne(Connection $connection, string $queueName, float $timeoutSeconds = 15): AmqpEnvelope
     {
         $deadline      = microtime(true) + $timeoutSeconds;
@@ -265,26 +298,27 @@ final class Harness
     public function broker(string $action): void
     {
         $script = dirname(__DIR__, 2) . '/tests/bin/chaos-broker';
-        $this->runCommand($script . ' ' . escapeshellarg($action));
 
         if ($action === 'pause') {
             $this->brokerPaused = true;
-        }
-
-        if ($action === 'unpause') {
-            $this->brokerPaused = false;
         }
 
         if ($action === 'memory-alarm') {
             $this->memoryAlarmed = true;
         }
 
-        if ($action === 'memory-ok') {
-            $this->memoryAlarmed = false;
-        }
-
         if ($action === 'disk-alarm') {
             $this->diskAlarmed = true;
+        }
+
+        $this->runCommand($script . ' ' . escapeshellarg($action));
+
+        if ($action === 'unpause') {
+            $this->brokerPaused = false;
+        }
+
+        if ($action === 'memory-ok') {
+            $this->memoryAlarmed = false;
         }
 
         if ($action === 'disk-ok') {
@@ -310,11 +344,16 @@ final class Harness
                 2 => ['file', '/dev/null', 'w'],
             ],
             $pipes,
+            cwd: null,
+            env_vars: null,
+            options: ['create_new_session' => true],
         );
 
         if ($process === false) {
             $this->fail('Failed to start background broker command: ' . $action);
         }
+
+        $this->backgroundProcesses[] = $process;
 
         if ($action === 'pause') {
             $this->brokerPaused = true;
@@ -351,6 +390,13 @@ final class Harness
     public function cleanup(): void
     {
         foreach ($this->backgroundProcesses as $process) {
+            $status = proc_get_status($process);
+            $pid    = $status['pid'] ?? 0;
+
+            if ($status['running'] === true && $pid > 0) {
+                posix_kill(-$pid, SIGKILL);
+            }
+
             proc_close($process);
         }
 

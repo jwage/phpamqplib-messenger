@@ -41,6 +41,7 @@ Tests inject faults through `$this->harness->broker()` / `$this->harness->broker
 |---|---|
 | `restart` | Kill and bring RabbitMQ back |
 | `stop` / `start` | Stop without removing the container |
+| `kill` | SIGKILL the container so it cannot drain in-flight confirms |
 | `pause` / `unpause` | Freeze the broker so confirms never arrive |
 | `memory-alarm` / `memory-ok` | Force / clear a memory `connection.blocked` |
 | `disk-alarm` / `disk-ok` | Force / clear a disk `connection.blocked` (`mem_relative 1000` / restore `50MB`) |
@@ -52,25 +53,25 @@ Tests inject faults through `$this->harness->broker()` / `$this->harness->broker
 | `SmokeTest::testPublishEnqueuesOneMessage` | The broker is reachable and a publish enqueues |
 | `NackTest::testDirectPublishNackFromOverflowIsNotRetried` | `x-overflow: reject-publish` becomes `PublisherNack` and is **not** retried |
 | `NackTest::testBatchFlushNackFromOverflowIsNotRetriedOrReplayed` | A batch flush NACK keeps the buffer and does not auto-replay into the full queue |
-| `NackTest::testConsumerAckSurvivesPublisherNack` | A publisher NACK does not invalidate an outstanding consumer delivery tag |
+| `NackTest::testConsumerAckSurvivesPublisherNack` | A publisher NACK discards only the publisher channel; the consumer channel and delivery tag stay valid |
 | `ConfirmTimeoutTest::testBatchConfirmTimeoutRewaitsWithoutRepublishing` | A live batch confirm timeout keeps the channel, re-waits, then a later publish does not duplicate |
-| `ConfirmTimeoutTest::testDirectConfirmTimeoutKeepsChannelAndDoesNotRepublish` | A live direct-publish confirm timeout keeps the channel and does not republish |
+| `ConfirmTimeoutTest::testDirectConfirmTimeoutKeepsChannelAndDoesNotRepublish` | A live direct-publish confirm timeout (`AMQPTimeoutException`, retries 0) keeps the channel and does not republish |
 | `BrokerRestartTest::testRetainedBatchFlushesAfterBrokerRestart` | A retained in-memory batch still flushes after restart |
-| `BrokerRestartTest::testInFlightFlushSurvivesBrokerRestart` | An in-flight flush never becomes a silent empty-channel success (at-least-once; duplicates allowed) |
+| `BrokerRestartTest::testInFlightFlushSurvivesBrokerRestart` | An in-flight flush with retries 0 retains the batch when it throws (no silent empty retry); at-least-once after recovery |
 | `BrokerRestartTest::testDirectPublishRecoversAfterBrokerRestart` | A later direct publish recovers after restart |
-| `BrokerRestartTest::testConsumerAcksAfterBrokerRestart` | A persistent message can be consumed and acked after restart |
+| `BrokerRestartTest::testConsumerAcksAfterBrokerRestart` | A persistent message is consumed with a single `consume()` (RetryFactory reconnect) and acked after restart |
 | `BrokerRestartTest::testDelayTopologyIsRecreatedAfterBrokerRestart` | Delayed publish recreates delay topology after restart |
-| `BrokerRestartTest::testConsumeWaitRecoversAfterBrokerRestart` | `consume()` blocked in `wait()` on an empty queue recovers after restart |
+| `BrokerRestartTest::testConsumeWaitRecoversAfterBrokerRestart` | `consume()` blocked in `wait()` on an empty queue calls `Connection::close()`, then recovers after restart |
 | `BrokerRestartTest::testAutoSetupDoesNotRecreateNonDurableTopologyAfterRestart` | After the first `setup()`, `auto_setup` stays false; non-durable topology is gone until `setup()` runs again |
-| `BrokerRestartTest::testBusBatchFlushSurvivesBrokerRestart` | `Batch` dispatched through `AmqpTransport` still flushes at-least-once across restart |
-| `MemoryAlarmTest::testPublishFailsDuringMemoryAlarm` | A blocked connection fails the publish instead of succeeding or opening extra channels |
-| `MemoryAlarmTest::testFlushKeepsBatchDuringMemoryAlarm` | A blocked flush keeps the batch, then publishes it after the alarm clears |
-| `DiskAlarmTest::testPublishFailsDuringDiskAlarm` | A disk alarm fails the publish the same way a memory alarm does |
-| `DiskAlarmTest::testFlushKeepsBatchDuringDiskAlarm` | A disk-alarmed flush keeps the batch, then publishes it after the alarm clears |
+| `BrokerRestartTest::testBusBatchFlushSurvivesBrokerRestart` | `Batch` through `AmqpTransport` retains the buffer when flush throws with retries 0; at-least-once after recovery |
+| `MemoryAlarmTest::testPublishFailsDuringMemoryAlarm` | After `connection.blocked`, publish fails before opening or discarding a publisher channel |
+| `MemoryAlarmTest::testFlushKeepsBatchDuringMemoryAlarm` | A blocked flush fails before opening or discarding a publisher channel, keeps the batch, then publishes it after the alarm clears |
+| `DiskAlarmTest::testPublishFailsDuringDiskAlarm` | After `connection.blocked`, a disk alarm fails publish the same way, without replacing the publisher channel |
+| `DiskAlarmTest::testFlushKeepsBatchDuringDiskAlarm` | A disk-alarmed flush fails before opening or discarding a publisher channel, keeps the batch, then publishes it after the alarm clears |
 | `RetainedBatchTest::testFailedBatchFlushesBeforeLaterDirectPublish` | After a failed flush, a later direct publish flushes the old batch first |
 | `RetainedBatchTest::testAutoFlushAfterFailedFlushAtThreshold` | After a failed auto-flush at the threshold, a later publish still flushes the retained batch |
 | `HeartbeatStallTest::testPublishRecoversAfterHeartbeatStall` | A heartbeat-enabled connection recovers after the broker is paused |
-| `HeartbeatStallTest::testConsumeWaitRecoversAfterHeartbeatStall` | `consume()` blocked in `wait()` recovers after a pause/unpause |
+| `HeartbeatStallTest::testConsumeWaitRecoversAfterHeartbeatStall` | `consume()` blocked in `wait()` hits I/O (not `wait_timeout`), calls `Connection::close()`, then recovers after unpause |
 | `SslPublishTest::testPublishAndConsumeOverTls` | `phpamqplibs://` publish/consume works against the compose TLS listener |
 | `SslPublishTest::testPublishFailsWhenPeerVerificationRejectsTheSelfSignedCertificate` | `verify_peer: true` without a trusted CA rejects the self-signed compose cert |
 

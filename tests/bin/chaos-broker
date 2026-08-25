@@ -21,6 +21,7 @@ Commands:
   restart        Restart RabbitMQ and wait until it is healthy
   stop           Stop the container without removing it
   start          Start a stopped container and wait until healthy
+  kill           SIGKILL the container (no chance to drain confirms)
   pause          Freeze the broker process (TCP stays up, no AMQP progress)
   unpause        Resume a paused broker
   memory-alarm   Force a memory alarm (connection.blocked)
@@ -93,21 +94,35 @@ case "$cmd" in
   stop)
     "${COMPOSE[@]}" stop "$SERVICE"
     ;;
+  kill)
+    "${COMPOSE[@]}" kill -s SIGKILL "$SERVICE"
+    ;;
   start)
     "${COMPOSE[@]}" start "$SERVICE"
     "${COMPOSE[@]}" up -d --wait
     wait_ready
     ;;
   pause)
+    id="$("${COMPOSE[@]}" ps -q "$SERVICE")"
     "${COMPOSE[@]}" pause "$SERVICE"
+    paused="$(docker inspect -f '{{.State.Paused}}' "$id")"
+    if [ "$paused" != "true" ]; then
+      echo "RabbitMQ container was not paused" >&2
+      exit 1
+    fi
     ;;
   unpause)
-    "${COMPOSE[@]}" unpause "$SERVICE"
+    id="$("${COMPOSE[@]}" ps -q "$SERVICE")"
+    paused="$(docker inspect -f '{{.State.Paused}}' "$id")"
+    if [ "$paused" = "true" ]; then
+      "${COMPOSE[@]}" unpause "$SERVICE"
+    fi
     wait_ready 15
     ;;
   memory-alarm)
     wait_ready
     "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmqctl set_vm_memory_high_watermark absolute 1
+    wait_for_alarms
     ;;
   memory-ok)
     wait_ready
