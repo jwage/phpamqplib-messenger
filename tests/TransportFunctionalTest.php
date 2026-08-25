@@ -644,7 +644,9 @@ class TransportFunctionalTest extends KernelTestCase
         $connection->publish(body: 'this is not a serialized messenger envelope');
 
         try {
-            iterator_to_array($this->confirmsTransport->get(), false);
+            /** @var Traversable<mixed, Envelope> $envelopes */
+            $envelopes = $this->confirmsTransport->get();
+            iterator_to_array($envelopes, false);
             self::fail('Expected a decode failure for a non-serialized body');
         } catch (MessageDecodingFailedException) {
         }

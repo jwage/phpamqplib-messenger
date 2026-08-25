@@ -8,6 +8,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Override;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\StampInterface;
 
 class TransportDispatchBus implements MessageBusInterface
 {
@@ -20,6 +21,9 @@ class TransportDispatchBus implements MessageBusInterface
     #[Override]
     public function dispatch(object $message, array $stamps = []): Envelope
     {
-        return $this->transport->send(Envelope::wrap($message, $stamps));
+        /** @var list<StampInterface> $typedStamps */
+        $typedStamps = $stamps;
+
+        return $this->transport->send(Envelope::wrap($message, $typedStamps));
     }
 }

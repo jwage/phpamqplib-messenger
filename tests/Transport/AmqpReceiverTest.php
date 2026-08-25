@@ -21,6 +21,7 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
+use Traversable;
 
 use function iterator_to_array;
 use function serialize;
@@ -107,7 +108,9 @@ class AmqpReceiverTest extends TestCase
         $this->expectException(MessageDecodingFailedException::class);
         $this->expectExceptionMessage('bad');
 
-        iterator_to_array($receiver->get());
+        /** @var Traversable<mixed, Envelope> $envelopes */
+        $envelopes = $receiver->get();
+        iterator_to_array($envelopes);
     }
 
     public function testGetNacksWhenDecodeReturnsAFailureEnvelope(): void
@@ -135,7 +138,9 @@ class AmqpReceiverTest extends TestCase
         $this->expectException(MessageDecodingFailedException::class);
         $this->expectExceptionMessage('bad');
 
-        iterator_to_array($receiver->get());
+        /** @var Traversable<mixed, Envelope> $envelopes */
+        $envelopes = $receiver->get();
+        iterator_to_array($envelopes);
     }
 
     public function testAck(): void

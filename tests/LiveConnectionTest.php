@@ -17,6 +17,7 @@ use ReflectionMethod;
 use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Throwable;
+use Traversable;
 
 use function iterator_to_array;
 use function preg_replace;
@@ -322,7 +323,9 @@ class LiveConnectionTest extends TestCase
         $connection->publish(body: 'this is not a serialized messenger envelope');
 
         try {
-            iterator_to_array($transport->get(), false);
+            /** @var Traversable<mixed, mixed> $envelopes */
+            $envelopes = $transport->get();
+            iterator_to_array($envelopes, false);
             self::fail('Expected a decode failure for a non-serialized body');
         } catch (MessageDecodingFailedException) {
         }

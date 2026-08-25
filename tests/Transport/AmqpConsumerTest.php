@@ -202,7 +202,9 @@ class AmqpConsumerTest extends TestCase
             ->method('wait')
             ->will($this->throwException(new AMQPTimeoutException()));
 
-        iterator_to_array($consumer->consume('test_queue'));
+        /** @var Traversable<AmqpEnvelope> $consumed */
+        $consumed = $consumer->consume('test_queue');
+        iterator_to_array($consumed);
 
         $consumer->callback($this->createStub(AMQPMessage::class));
         $consumer->invalidate();

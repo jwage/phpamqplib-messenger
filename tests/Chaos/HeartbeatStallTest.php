@@ -8,6 +8,8 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use PHPUnit\Framework\AssertionFailedError;
 use Throwable;
 
+use function assert;
+
 class HeartbeatStallTest extends ChaosTestCase
 {
     public function testPublishRecoversAfterHeartbeatStall(): void
@@ -91,6 +93,7 @@ class HeartbeatStallTest extends ChaosTestCase
         $envelope = $this->harness->withRetryDefaults(5, 200, function () use ($connection, $name): AmqpEnvelope {
             return $this->harness->consumeOnce($connection, $name);
         });
+        assert($envelope instanceof AmqpEnvelope);
 
         $envelope->ack();
         self::assertSame(0, $connection->countMessagesInQueues());

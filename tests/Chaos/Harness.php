@@ -208,7 +208,12 @@ final class Harness
             return 0;
         }
 
-        return count($amqp->channels);
+        $property = new ReflectionProperty(AMQPStreamConnection::class, 'channels');
+
+        /** @var array<array-key, mixed> $channels */
+        $channels = $property->getValue($amqp);
+
+        return count($channels);
     }
 
     public function consumeOne(Connection $connection, string $queueName, float $timeoutSeconds = 15): AmqpEnvelope

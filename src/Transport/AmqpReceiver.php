@@ -113,10 +113,12 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
             }
 
             // Symfony 8+'s PhpSerializer wraps a decode failure in an Envelope instead of throwing.
-            if ($envelope->getMessage() instanceof MessageDecodingFailedException) {
+            $decodedMessage = $envelope->getMessage();
+
+            if ($decodedMessage instanceof MessageDecodingFailedException) {
                 $amqpEnvelope->nack();
 
-                throw $envelope->getMessage();
+                throw $decodedMessage;
             }
 
             if (($messageId = $amqpEnvelope->getMessageId()) !== null) {
