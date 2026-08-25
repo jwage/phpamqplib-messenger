@@ -96,6 +96,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
                             'options' => [
                                 'transactions_enabled' => false,
                                 'confirm_enabled' => true,
+                                'fetch_size' => 2,
                                 'wait_timeout' => 0.10, // lower wait_timeout for tests
                                 'exchange' => ['name' => 'test_fetch_size_exchange'],
                                 'queues' => [

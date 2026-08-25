@@ -78,6 +78,7 @@ class ConnectionConfigTest extends TestCase
             'keepalive' => false,
             'keepalive_enabled' => true,
             'prefetch_count' => 15,
+            'fetch_size' => 10,
             'wait_timeout' => 2.0,
             'confirm_enabled' => true,
             'confirm_timeout' => 10.0,
@@ -124,6 +125,7 @@ class ConnectionConfigTest extends TestCase
         self::assertFalse($connectionConfig->keepalive);
         self::assertTrue($connectionConfig->keepaliveEnabled);
         self::assertSame(15, $connectionConfig->prefetchCount);
+        self::assertSame(10, $connectionConfig->fetchSize);
         self::assertSame(2.0, $connectionConfig->waitTimeout);
         self::assertTrue($connectionConfig->confirmEnabled);
         self::assertSame(10.0, $connectionConfig->confirmTimeout);
@@ -298,6 +300,24 @@ class ConnectionConfigTest extends TestCase
         new ConnectionConfig(waitTimeout: $waitTimeout);
     }
 
+    #[TestWith([0])]
+    #[TestWith([-1])]
+    public function testFetchSizeMustBeGreaterThanZero(int $fetchSize): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Connection fetch size must be greater than zero. This limits how many messages get() yields before returning control to the messenger worker loop.');
+
+        new ConnectionConfig(fetchSize: $fetchSize);
+    }
+
+    public function testFromArrayFetchSizeMustBeGreaterThanZero(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Connection fetch size must be greater than zero. This limits how many messages get() yields before returning control to the messenger worker loop.');
+
+        ConnectionConfig::fromArray(['fetch_size' => 0]);
+    }
+
     public function testTransactionsAndConfirmsCannotBeEnabledAtTheSameTime(): void
     {
         self::expectException(InvalidArgumentException::class);
@@ -350,6 +370,7 @@ class ConnectionConfigTest extends TestCase
         self::assertTrue($connectionConfig->keepalive);
         self::assertFalse($connectionConfig->keepaliveEnabled);
         self::assertSame(1, $connectionConfig->prefetchCount);
+        self::assertNull($connectionConfig->fetchSize);
         self::assertSame(1, $connectionConfig->waitTimeout);
         self::assertTrue($connectionConfig->confirmEnabled);
         self::assertSame(3, $connectionConfig->confirmTimeout);

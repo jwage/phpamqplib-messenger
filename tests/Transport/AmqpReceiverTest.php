@@ -152,6 +152,103 @@ class AmqpReceiverTest extends TestCase
         self::assertCount(3, $this->envelopesToList($receiver->getFromQueues(['queue_name'])));
     }
 
+    public function testGetUsesConfiguredFetchSizeWhenArgumentOmitted(): void
+    {
+        $this->connectionConfig = new ConnectionConfig(fetchSize: 2);
+
+        $message      = new stdClass();
+        $envelope     = new Envelope($message);
+        $amqpMessage1 = new AMQPMessage(serialize($message), ['message_id' => '1']);
+        $amqpMessage2 = new AMQPMessage(serialize($message), ['message_id' => '2']);
+        $amqpMessage3 = new AMQPMessage(serialize($message), ['message_id' => '3']);
+
+        $connection = $this->getTestConnection();
+        $connection->method('getQueueNames')
+            ->willReturn(['queue_name']);
+
+        $connection->expects(self::once())
+            ->method('consume')
+            ->with('queue_name', 2)
+            ->willReturn([
+                new AmqpEnvelope($amqpMessage1),
+                new AmqpEnvelope($amqpMessage2),
+                new AmqpEnvelope($amqpMessage3),
+            ]);
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::exactly(2))
+            ->method('decode')
+            ->willReturn($envelope);
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        self::assertCount(2, $this->envelopesToList($receiver->get()));
+    }
+
+    public function testGetFromQueuesUsesConfiguredFetchSizeWhenArgumentOmitted(): void
+    {
+        $this->connectionConfig = new ConnectionConfig(fetchSize: 2);
+
+        $message      = new stdClass();
+        $envelope     = new Envelope($message);
+        $amqpMessage1 = new AMQPMessage(serialize($message), ['message_id' => '1']);
+        $amqpMessage2 = new AMQPMessage(serialize($message), ['message_id' => '2']);
+        $amqpMessage3 = new AMQPMessage(serialize($message), ['message_id' => '3']);
+
+        $connection = $this->getTestConnection();
+
+        $connection->expects(self::once())
+            ->method('consume')
+            ->with('queue_name', 2)
+            ->willReturn([
+                new AmqpEnvelope($amqpMessage1),
+                new AmqpEnvelope($amqpMessage2),
+                new AmqpEnvelope($amqpMessage3),
+            ]);
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::exactly(2))
+            ->method('decode')
+            ->willReturn($envelope);
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        self::assertCount(2, $this->envelopesToList($receiver->getFromQueues(['queue_name'])));
+    }
+
+    public function testExplicitFetchSizeOverridesConfiguredFetchSize(): void
+    {
+        $this->connectionConfig = new ConnectionConfig(fetchSize: 2);
+
+        $message      = new stdClass();
+        $envelope     = new Envelope($message);
+        $amqpMessage1 = new AMQPMessage(serialize($message), ['message_id' => '1']);
+        $amqpMessage2 = new AMQPMessage(serialize($message), ['message_id' => '2']);
+        $amqpMessage3 = new AMQPMessage(serialize($message), ['message_id' => '3']);
+
+        $connection = $this->getTestConnection();
+        $connection->method('getQueueNames')
+            ->willReturn(['queue_name']);
+
+        $connection->expects(self::once())
+            ->method('consume')
+            ->with('queue_name', 3)
+            ->willReturn([
+                new AmqpEnvelope($amqpMessage1),
+                new AmqpEnvelope($amqpMessage2),
+                new AmqpEnvelope($amqpMessage3),
+            ]);
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::exactly(3))
+            ->method('decode')
+            ->willReturn($envelope);
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        self::assertCount(3, $this->envelopesToList($receiver->get(3)));
+    }
+
     public function testGetAcceptsFetchSize(): void
     {
         $message       = new stdClass();

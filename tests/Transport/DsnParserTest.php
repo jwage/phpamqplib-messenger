@@ -180,6 +180,21 @@ class DsnParserTest extends TestCase
         self::assertFalse($connectionConfig->keepaliveEnabled);
     }
 
+    public function testFetchSize(): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1');
+
+        self::assertNull($connectionConfig->fetchSize);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1?fetch_size=10');
+
+        self::assertSame(10, $connectionConfig->fetchSize);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', ['fetch_size' => 5]);
+
+        self::assertSame(5, $connectionConfig->fetchSize);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

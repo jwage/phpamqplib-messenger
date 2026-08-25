@@ -34,13 +34,7 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
     #[Override]
     public function get(int|null $fetchSize = null): iterable
     {
-        if ($fetchSize !== null) {
-            yield from $this->getFromQueues($this->connection->getQueueNames(), max(1, $fetchSize));
-
-            return;
-        }
-
-        yield from $this->getFromQueues($this->connection->getQueueNames());
+        yield from $this->getFromQueues($this->connection->getQueueNames(), $fetchSize);
     }
 
     /**
@@ -53,24 +47,29 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
     #[Override]
     public function getFromQueues(array $queueNames, int|null $fetchSize = null): iterable
     {
-        $remaining = $fetchSize !== null ? max(1, $fetchSize) : null;
+        // Symfony 8.1+ Worker always passes $fetchSize (--fetch-size). Config is
+        // only the default when that argument is omitted (Symfony < 8.1).
+        $fetchSize ??= $this->connection->getConfig()->fetchSize;
 
-        if ($remaining !== null) {
+        if ($fetchSize === null) {
             foreach ($queueNames as $queueName) {
-                foreach ($this->getEnvelopes($queueName, $fetchSize) as $envelope) {
-                    yield $envelope;
-
-                    if (--$remaining <= 0) {
-                        return;
-                    }
-                }
+                yield from $this->getEnvelopes($queueName);
             }
 
             return;
         }
 
+        $fetchSize = max(1, $fetchSize);
+        $remaining = $fetchSize;
+
         foreach ($queueNames as $queueName) {
-            yield from $this->getEnvelopes($queueName);
+            foreach ($this->getEnvelopes($queueName, $fetchSize) as $envelope) {
+                yield $envelope;
+
+                if (--$remaining <= 0) {
+                    return;
+                }
+            }
         }
     }
 

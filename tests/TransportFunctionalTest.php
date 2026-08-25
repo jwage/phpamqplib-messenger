@@ -324,6 +324,21 @@ class TransportFunctionalTest extends KernelTestCase
         }
     }
 
+    public function testConfiguredFetchSizeLimitsGetWithoutArgument(): void
+    {
+        for ($i = 1; $i <= 5; $i++) {
+            $this->fetchSizeTransport->send(Envelope::wrap(new ConfirmMessage($i)));
+        }
+
+        $this->fetchSizeTransport->getConnection()->reconnect();
+
+        $batch = $this->collectBatch($this->fetchSizeTransport, null);
+
+        self::assertCount(2, $batch);
+        self::assertSame(1, $batch[0]->getMessage()->count);
+        self::assertSame(2, $batch[1]->getMessage()->count);
+    }
+
     public function testFetchSizeLimitsAcrossMultipleQueues(): void
     {
         $this->multipleQueuesTransport->send(
@@ -890,12 +905,12 @@ class TransportFunctionalTest extends KernelTestCase
     }
 
     /** @return array<Envelope> */
-    private function collectBatch(AmqpTransport $transport, int $fetchSize): array
+    private function collectBatch(AmqpTransport $transport, int|null $fetchSize): array
     {
         $batch = [];
 
         /** @var Traversable<Envelope> $envelopes */
-        $envelopes = $transport->get($fetchSize);
+        $envelopes = $fetchSize !== null ? $transport->get($fetchSize) : $transport->get();
 
         foreach ($envelopes as $envelope) {
             $batch[] = $envelope;
