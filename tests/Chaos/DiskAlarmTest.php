@@ -9,22 +9,22 @@ use PHPUnit\Framework\AssertionFailedError;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Throwable;
 
-class MemoryAlarmTest extends ChaosTestCase
+class DiskAlarmTest extends ChaosTestCase
 {
-    public function testPublishFailsDuringMemoryAlarm(): void
+    public function testPublishFailsDuringDiskAlarm(): void
     {
-        $name       = $this->harness->topologyName('memory');
+        $name       = $this->harness->topologyName('disk');
         $connection = $this->harness->connect($this->harness->topology($name));
 
         $connection->publish(body: 'before-alarm');
         self::assertSame(1, $connection->countMessagesInQueues());
 
-        $this->harness->info('Forcing a RabbitMQ memory alarm');
-        $this->harness->broker('memory-alarm');
+        $this->harness->info('Forcing a RabbitMQ disk alarm');
+        $this->harness->broker('disk-alarm');
 
         try {
             $connection->publish(body: 'during-alarm');
-            self::fail('Expected publish to fail while the broker reports a memory alarm');
+            self::fail('Expected publish to fail while the broker reports a disk alarm');
         } catch (TransportException | AMQPConnectionBlockedException $exception) {
             $this->harness->info('Publish failed during alarm: ' . $exception->getMessage());
         } catch (AssertionFailedError $exception) {
@@ -33,7 +33,7 @@ class MemoryAlarmTest extends ChaosTestCase
             $this->harness->info('Publish failed during alarm: ' . $exception::class . ': ' . $exception->getMessage());
         }
 
-        $this->harness->broker('memory-ok');
+        $this->harness->broker('disk-ok');
         $this->harness->waitUntilReady();
 
         $this->harness->withRetryDefaults(5, 200, static function () use ($connection): void {
@@ -43,9 +43,9 @@ class MemoryAlarmTest extends ChaosTestCase
         self::assertGreaterThanOrEqual(2, $connection->countMessagesInQueues());
     }
 
-    public function testFlushKeepsBatchDuringMemoryAlarm(): void
+    public function testFlushKeepsBatchDuringDiskAlarm(): void
     {
-        $name       = $this->harness->topologyName('memory_flush');
+        $name       = $this->harness->topologyName('disk_flush');
         $connection = $this->harness->connect($this->harness->topology($name));
 
         $connection->channel();
@@ -53,12 +53,12 @@ class MemoryAlarmTest extends ChaosTestCase
         $connection->publish(body: 'batch-two', batchSize: 3);
         self::assertSame(2, $this->harness->pendingBatchSize($connection));
 
-        $this->harness->info('Forcing a RabbitMQ memory alarm before flush');
-        $this->harness->broker('memory-alarm');
+        $this->harness->info('Forcing a RabbitMQ disk alarm before flush');
+        $this->harness->broker('disk-alarm');
 
         try {
             $connection->flush();
-            self::fail('Expected flush to fail while the broker reports a memory alarm');
+            self::fail('Expected flush to fail while the broker reports a disk alarm');
         } catch (TransportException | AMQPConnectionBlockedException $exception) {
             $this->harness->info('Flush failed during alarm: ' . $exception->getMessage());
         } catch (AssertionFailedError $exception) {
@@ -69,7 +69,7 @@ class MemoryAlarmTest extends ChaosTestCase
 
         self::assertSame(2, $this->harness->pendingBatchSize($connection));
 
-        $this->harness->broker('memory-ok');
+        $this->harness->broker('disk-ok');
         $this->harness->waitUntilReady();
 
         $this->harness->withRetryDefaults(5, 200, static function () use ($connection): void {

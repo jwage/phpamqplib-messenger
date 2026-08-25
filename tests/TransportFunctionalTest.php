@@ -6,6 +6,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use Jwage\PhpAmqpLibMessengerBundle\Batch;
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
+use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferrableStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\ConfirmMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\TransactionMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
@@ -21,9 +22,11 @@ use ReflectionMethod;
 use ReflectionProperty;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
+use Symfony\Component\Messenger\Stamp\RedeliveryStamp;
 use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
 use Traversable;
 
@@ -582,6 +585,114 @@ class TransportFunctionalTest extends KernelTestCase
         $envelopes = $this->getEnvelopes($this->confirmsTransport, 1);
 
         self::assertSame(902, $envelopes[0]->getMessage()->count);
+    }
+
+    public function testPublisherChannelRetirementDoesNotInvalidateAConsumerReject(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $this->bus->dispatch(new ConfirmMessage(911));
+
+        /** @var Traversable<Envelope> $receivedEnvelopes */
+        $receivedEnvelopes = $this->confirmsTransport->get();
+
+        /** @var list<Envelope> $received */
+        $received = iterator_to_array($receivedEnvelopes, false);
+        self::assertCount(1, $received);
+
+        $discardChannel = new ReflectionMethod(Connection::class, 'discardChannel');
+        $discardChannel->invoke($this->confirmsTransport->getConnection());
+
+        $this->confirmsTransport->reject($received[0]);
+
+        $this->bus->dispatch(new ConfirmMessage(912));
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 1);
+
+        self::assertSame(912, $envelopes[0]->getMessage()->count);
+    }
+
+    public function testRejectDoesNotRequeueTheMessage(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $this->bus->dispatch(new ConfirmMessage(1101));
+
+        /** @var Traversable<Envelope> $receivedEnvelopes */
+        $receivedEnvelopes = $this->confirmsTransport->get();
+
+        /** @var list<Envelope> $received */
+        $received = iterator_to_array($receivedEnvelopes, false);
+        self::assertCount(1, $received);
+        self::assertSame(1101, $received[0]->getMessage()->count);
+
+        $this->confirmsTransport->reject($received[0]);
+        $this->confirmsTransport->getConnection()->close();
+
+        $this->bus->dispatch(new ConfirmMessage(1102));
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 1);
+
+        self::assertSame(1102, $envelopes[0]->getMessage()->count);
+    }
+
+    public function testDecodeFailureNacksTheUndecodableMessage(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $connection = $this->confirmsTransport->getConnection();
+        $connection->publish(body: 'this is not a serialized messenger envelope');
+
+        try {
+            iterator_to_array($this->confirmsTransport->get(), false);
+            self::fail('Expected a decode failure for a non-serialized body');
+        } catch (MessageDecodingFailedException) {
+        }
+
+        $connection->close();
+
+        self::assertSame(0, $this->confirmsTransport->getMessageCount());
+    }
+
+    public function testRedeliveryStampUsesDelayTopologyAndDoesNotBatch(): void
+    {
+        $this->drainTransport($this->confirmsTransport);
+
+        $this->bus->dispatch(new ConfirmMessage(1201));
+
+        /** @var Traversable<Envelope> $receivedEnvelopes */
+        $receivedEnvelopes = $this->confirmsTransport->get();
+
+        /** @var list<Envelope> $received */
+        $received = iterator_to_array($receivedEnvelopes, false);
+        self::assertCount(1, $received);
+
+        $this->confirmsTransport->ack($received[0]);
+
+        $connection = $this->confirmsTransport->getConnection();
+        $retry      = $received[0]->with(
+            new RedeliveryStamp(1),
+            new DelayStamp(400),
+            new DeferrableStamp(5),
+        );
+
+        $this->confirmsTransport->send($retry);
+
+        self::assertSame([], $this->getPendingBatchMessages($connection));
+
+        $envelopes = $this->getEnvelopes($this->confirmsTransport, 1);
+
+        self::assertSame(1201, $envelopes[0]->getMessage()->count);
+
+        $amqpEnvelope = $envelopes[0]->last(AmqpReceivedStamp::class)?->getAmqpEnvelope();
+
+        self::assertNotNull($amqpEnvelope);
+        self::assertSame('delays', $amqpEnvelope->getHeader('x-first-death-exchange'));
+        self::assertSame(
+            'delay_test_confirms_exchange_test_confirms_queue_400_retry',
+            $amqpEnvelope->getHeader('x-first-death-queue'),
+        );
+        self::assertSame('expired', $amqpEnvelope->getHeader('x-first-death-reason'));
     }
 
     protected function setUp(): void

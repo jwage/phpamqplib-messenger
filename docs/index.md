@@ -344,7 +344,6 @@ Broker mutations (restart, pause, overflow NACK, memory alarm, TLS listener) are
 docker compose up -d --wait
 ./vendor/bin/phpunit --testsuite chaos
 # or: composer chaos
-# or: php tests/bin/chaos.php --list
 ```
 
-See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the test catalog and broker commands. CI runs them in a separate job. Do not run them in parallel with the default PHPUnit suite; they pause and restart the broker.
+See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the test catalog and how tests inject broker faults. CI runs them in a separate job. Do not run them in parallel with the default PHPUnit suite; they pause and restart the broker.

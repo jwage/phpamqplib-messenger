@@ -119,4 +119,31 @@ class AmqpTransportTest extends TestCase
 
         $transport->setup();
     }
+
+    public function testFlush(): void
+    {
+        $sender    = $this->createMock(AmqpSender::class);
+        $transport = $this->createTransport(sender: $sender);
+
+        $sender->expects(self::once())
+            ->method('flush');
+
+        $transport->flush();
+    }
+
+    public function testGetFromQueues(): void
+    {
+        $envelope1 = new Envelope(new stdClass());
+        $return    = [$envelope1];
+
+        $receiver  = $this->createMock(AmqpReceiver::class);
+        $transport = $this->createTransport(receiver: $receiver);
+
+        $receiver->expects(self::once())
+            ->method('getFromQueues')
+            ->with(['queue_name'])
+            ->willReturn($return);
+
+        self::assertSame($return, $transport->getFromQueues(['queue_name']));
+    }
 }

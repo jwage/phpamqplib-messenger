@@ -16,16 +16,12 @@ Do not run them at the same time as the default PHPUnit suite. They pause and re
 
 ```bash
 docker compose up -d --wait
-# or: tests/bin/chaos-broker up
 
 ./vendor/bin/phpunit --testsuite chaos
 ./vendor/bin/phpunit --testsuite chaos --filter NackTest
-# wrappers:
-php tests/bin/chaos.php --list
-php tests/bin/chaos.php NackTest
-composer chaos
+# or: composer chaos
 
-tests/bin/chaos-broker down
+docker compose down
 ```
 
 Override the DSN if needed:
@@ -37,17 +33,17 @@ MESSENGER_TRANSPORT_PHPAMQPLIB_DSN='phpamqplib://guest:guest@127.0.0.1:5673/%2f/
 
 TLS tests use port **5671** (`MESSENGER_TRANSPORT_PHPAMQPLIB_SSL_DSN` if you need to override it).
 
-## Broker commands
+## Broker faults
 
-`tests/bin/chaos-broker` is the only supported way to inject broker faults:
+Tests inject faults through `$this->harness->broker()` / `$this->harness->brokerLater()`, which run `tests/bin/chaos-broker`. That script is not a test runner; start and stop the broker with `docker compose`.
 
 | Command | Effect |
 |---|---|
-| `up` / `down` / `wait` / `status` | Lifecycle |
 | `restart` | Kill and bring RabbitMQ back |
 | `stop` / `start` | Stop without removing the container |
 | `pause` / `unpause` | Freeze the broker so confirms never arrive |
-| `memory-alarm` / `memory-ok` | Force / clear `connection.blocked` |
+| `memory-alarm` / `memory-ok` | Force / clear a memory `connection.blocked` |
+| `disk-alarm` / `disk-ok` | Force / clear a disk `connection.blocked` (`mem_relative 1000` / restore `50MB`) |
 
 ## Tests
 
@@ -64,14 +60,21 @@ TLS tests use port **5671** (`MESSENGER_TRANSPORT_PHPAMQPLIB_SSL_DSN` if you nee
 | `BrokerRestartTest::testDirectPublishRecoversAfterBrokerRestart` | A later direct publish recovers after restart |
 | `BrokerRestartTest::testConsumerAcksAfterBrokerRestart` | A persistent message can be consumed and acked after restart |
 | `BrokerRestartTest::testDelayTopologyIsRecreatedAfterBrokerRestart` | Delayed publish recreates delay topology after restart |
+| `BrokerRestartTest::testConsumeWaitRecoversAfterBrokerRestart` | `consume()` blocked in `wait()` on an empty queue recovers after restart |
+| `BrokerRestartTest::testAutoSetupDoesNotRecreateNonDurableTopologyAfterRestart` | After the first `setup()`, `auto_setup` stays false; non-durable topology is gone until `setup()` runs again |
+| `BrokerRestartTest::testBusBatchFlushSurvivesBrokerRestart` | `Batch` dispatched through `AmqpTransport` still flushes at-least-once across restart |
 | `MemoryAlarmTest::testPublishFailsDuringMemoryAlarm` | A blocked connection fails the publish instead of succeeding or opening extra channels |
 | `MemoryAlarmTest::testFlushKeepsBatchDuringMemoryAlarm` | A blocked flush keeps the batch, then publishes it after the alarm clears |
+| `DiskAlarmTest::testPublishFailsDuringDiskAlarm` | A disk alarm fails the publish the same way a memory alarm does |
+| `DiskAlarmTest::testFlushKeepsBatchDuringDiskAlarm` | A disk-alarmed flush keeps the batch, then publishes it after the alarm clears |
 | `RetainedBatchTest::testFailedBatchFlushesBeforeLaterDirectPublish` | After a failed flush, a later direct publish flushes the old batch first |
 | `RetainedBatchTest::testAutoFlushAfterFailedFlushAtThreshold` | After a failed auto-flush at the threshold, a later publish still flushes the retained batch |
 | `HeartbeatStallTest::testPublishRecoversAfterHeartbeatStall` | A heartbeat-enabled connection recovers after the broker is paused |
+| `HeartbeatStallTest::testConsumeWaitRecoversAfterHeartbeatStall` | `consume()` blocked in `wait()` recovers after a pause/unpause |
 | `SslPublishTest::testPublishAndConsumeOverTls` | `phpamqplibs://` publish/consume works against the compose TLS listener |
+| `SslPublishTest::testPublishFailsWhenPeerVerificationRejectsTheSelfSignedCertificate` | `verify_peer: true` without a trusted CA rejects the self-signed compose cert |
 
-Live cases that do **not** mutate the broker run in the default suite (`LiveConnectionTest`): confirms-disabled publish/flush, isolated channel close, wrong-password auth, and idle heartbeat.
+Live cases that do **not** mutate the broker run in the default suite (`LiveConnectionTest`): confirms-disabled publish/flush, isolated channel close, ack/nack/decode-fail, auto_setup until `setup()`, abandoned in-memory batch, wrong-password auth, and idle heartbeat.
 
 ## Failure coverage
 
@@ -79,25 +82,32 @@ How the important `Connection` / `RetryFactory` failure paths are locked:
 
 | Failure | Unit | Functional (live broker) | Chaos (mutates broker) |
 |---|---|---|---|
-| Direct publish connection/channel death | `testDirectPublishRetriesWhenTheConnectionCloses` | `testDirectPublishRecoversAfterBrokerSocketIsDropped` | `BrokerRestartTest::testDirectPublishRecoversAfterBrokerRestart` |
+| Direct publish connection/channel death | `testDirectPublishRetriesWhenTheConnectionCloses`, `testDirectPublishRetriesWhenTheChannelCloses`, `testDirectPublishRetriesWhenIOFails`, `testDirectPublishReconnectsWhenTheConnectionIsDead` | `testDirectPublishRecoversAfterBrokerSocketIsDropped`, `LiveConnectionTest` channel-close | `BrokerRestartTest::testDirectPublishRecoversAfterBrokerRestart` |
 | Isolated publisher/consumer channel close | `testFlushRepublishesBatchAfterChannelClosed`, `testConsumerResumesWhenItsChannelClosesOnALiveConnection` | `LiveConnectionTest` channel-close tests | — |
-| Direct publisher NACK, including retries remaining | `testDirectPublishDoesNotRetryWhenTheBrokerNacksTheMessage` | — | `NackTest::testDirectPublishNackFromOverflowIsNotRetried` |
+| Direct publisher NACK, including retries remaining | `testDirectPublishDoesNotRetryWhenTheBrokerNacksTheMessage` | `LiveConnectionTest::testDirectPublishNackFromOverflowIsNotRetried` | `NackTest::testDirectPublishNackFromOverflowIsNotRetried` |
 | Direct confirm timeout does not republish (retries remaining) | `testDirectPublishDoesNotRepublishWhenPendingAcksTimeOutWhileRetriesRemain` | — | `ConfirmTimeoutTest::testDirectConfirmTimeoutKeepsChannelAndDoesNotRepublish` |
 | Batch flush connection/channel death | `testFlushRepublishesBatchAfterConnectionClosed` | `testBatchFlushRecoversAfterBrokerSocketIsDropped` | `BrokerRestartTest::testRetainedBatchFlushesAfterBrokerRestart`, `BrokerRestartTest::testInFlightFlushSurvivesBrokerRestart` |
-| Batch NACK, including retries remaining | `testBatchDoesNotRepublishWhenTheBrokerNacksAMessage` | — | `NackTest::testBatchFlushNackFromOverflowIsNotRetriedOrReplayed` |
+| Batch NACK, including retries remaining | `testBatchDoesNotRepublishWhenTheBrokerNacksAMessage` | `LiveConnectionTest::testBatchFlushNackFromOverflowKeepsTheBuffer` | `NackTest::testBatchFlushNackFromOverflowIsNotRetriedOrReplayed` |
 | Batch confirm timeout re-waits, no nested retry budget | `testFlushWaitsAgainWithoutRepublishingWhenPendingAcksTimeOut`, `testConfirmWaitDoesNotNestTheDefaultRetryBudget` | — | `ConfirmTimeoutTest::testBatchConfirmTimeoutRewaitsWithoutRepublishing` |
 | Confirm timeout then a newer publish re-waits first | `testPublishReWaitsAPendingBatchConfirmBeforeSendingANewerMessage` | — | `ConfirmTimeoutTest::testBatchConfirmTimeoutRewaitsWithoutRepublishing` |
-| Confirm wait connection death republishes | `testFlushRepublishesBatchWhenConnectionClosesWhileWaitingForPendingAcks` | — | `BrokerRestartTest::testInFlightFlushSurvivesBrokerRestart` |
+| Confirm wait connection death republishes | `testFlushRepublishesBatchWhenConnectionClosesWhileWaitingForPendingAcks`, `testDirectPublishRetriesWhenTheConnectionClosesWhileWaitingForPendingAcks` | — | `BrokerRestartTest::testInFlightFlushSurvivesBrokerRestart` |
 | Retained batch before a newer direct publish | `testDirectPublishWaitsForARetainedBatchToFlushFirst` | `testRetainedBatchFlushesBeforeANewerDirectPublishAfterTerminalFailure` | `RetainedBatchTest::testFailedBatchFlushesBeforeLaterDirectPublish` |
 | Auto-flush after a failed flush at the threshold | `testAutoFlushStillFiresAfterAFailedFlushRetainedTheBatch` | `testAutoFlushRecoversWhenAFailedBatchAlreadyReachedTheThreshold` | `RetainedBatchTest::testAutoFlushAfterFailedFlushAtThreshold` |
 | Memory alarm / blocked connection (publish and flush) | `testRepeatedPublishesWhileBrokerIsBlockedDoNotKeepOpeningChannels`, `testRepeatedFlushesWhileBrokerIsBlockedDoNotKeepOpeningChannels` | — | `MemoryAlarmTest` |
+| Disk alarm / blocked connection (publish and flush) | — | — | `DiskAlarmTest` |
 | RetryFactory policy (retry IO/timeout/closed; never nack/blocked/TransportException) | `RetryFactoryTest` | — | `NackTest::testDirectPublishNackFromOverflowIsNotRetried` |
 | Delay topology reconnect | `testPublishWithDelayReconnectsOnStaleConnection` | `testDelayedMessages` | `BrokerRestartTest::testDelayTopologyIsRecreatedAfterBrokerRestart` |
-| Consumer ack isolated from publisher channel retirement | `testPublisherFailureDoesNotInvalidateConsumerOnSharedConnection` | `testPublisherChannelRetirementDoesNotInvalidateAConsumerAcknowledgement` | `NackTest::testConsumerAckSurvivesPublisherNack`, `BrokerRestartTest::testConsumerAcksAfterBrokerRestart` |
+| RedeliveryStamp delayed retry is not batched | — | `testRedeliveryStampUsesDelayTopologyAndDoesNotBatch` | — |
+| Consume blocked in `wait()` during broker fault | — | — | `BrokerRestartTest::testConsumeWaitRecoversAfterBrokerRestart`, `HeartbeatStallTest::testConsumeWaitRecoversAfterHeartbeatStall` |
+| `Batch` through the bus during broker restart | — | `testBatchFlushRecoversAfterBrokerSocketIsDropped` | `BrokerRestartTest::testBusBatchFlushSurvivesBrokerRestart` |
+| `auto_setup` latches false (missing topology until `setup()`) | — | `LiveConnectionTest::testPublishFailsWhenAutoSetupIsDisabledUntilSetupIsCalled` | `BrokerRestartTest::testAutoSetupDoesNotRecreateNonDurableTopologyAfterRestart` |
+| Ack / nack drop / decode-fail nack | `AmqpReceiverTest` decode-fail nack tests | `LiveConnectionTest` ack/nack/decode tests, `testRejectDoesNotRequeueTheMessage`, `testDecodeFailureNacksTheUndecodableMessage` | — |
+| Consumer ack/reject isolated from publisher channel retirement | `testPublisherFailureDoesNotInvalidateConsumerOnSharedConnection`, `AmqpConsumerTest::testInvalidateDropsTheConsumerTagAndBufferedEnvelopes` | `testPublisherChannelRetirementDoesNotInvalidateAConsumerAcknowledgement`, `testPublisherChannelRetirementDoesNotInvalidateAConsumerReject`, `LiveConnectionTest` ack/nack after publisher close, `LiveConnectionTest::testConsumerAckSurvivesPublisherNack` | `NackTest::testConsumerAckSurvivesPublisherNack`, `BrokerRestartTest::testConsumerAcksAfterBrokerRestart` |
 | Confirms disabled | `testPublishWithConfirmDisabled`, `testFlushWithConfirmDisabled` | `LiveConnectionTest::testPublishAndFlushWithConfirmsDisabled`, `testTransportWithTransactions` | — |
 | Wrong password | `DsnParserTest` (config only) | `LiveConnectionTest::testConnectFailsWithTheWrongPassword` | — |
 | Heartbeat idle / stall | — | `LiveConnectionTest::testPublishStillWorksAfterAnIdleHeartbeatInterval` | `HeartbeatStallTest` |
 | TLS (`phpamqplibs://`) | `AmqpConnectionFactoryTest`, `DsnParserTest` | — | `SslPublishTest` |
+| Abandoned in-memory batch is not on the broker | — | `LiveConnectionTest::testUnflushedBatchIsNotOnTheBrokerAfterTheConnectionIsAbandoned` | — |
 
 ## Adding a test
 
@@ -106,4 +116,4 @@ How the important `Connection` / `RetryFactory` failure paths are locked:
 3. Inject faults only through `$this->harness->broker()` / `$this->harness->brokerLater()`.
 4. Assert with PHPUnit (`self::assertSame`, `self::fail`, …).
 
-`Harness::cleanup()` (called from `ChaosTestCase::tearDown()`) unpauses the broker, clears a memory alarm, and deletes the test's exchange/queue.
+`Harness::cleanup()` (called from `ChaosTestCase::tearDown()`) unpauses the broker, clears memory and disk alarms, and deletes the test's exchange/queue.

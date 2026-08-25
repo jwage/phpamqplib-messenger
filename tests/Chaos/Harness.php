@@ -53,6 +53,8 @@ final class Harness
 
     private bool $memoryAlarmed = false;
 
+    private bool $diskAlarmed = false;
+
     public function __construct(
         private CollectingLogger $logger = new CollectingLogger(),
         private bool $verbose = false,
@@ -280,6 +282,14 @@ final class Harness
         if ($action === 'memory-ok') {
             $this->memoryAlarmed = false;
         }
+
+        if ($action === 'disk-alarm') {
+            $this->diskAlarmed = true;
+        }
+
+        if ($action === 'disk-ok') {
+            $this->diskAlarmed = false;
+        }
     }
 
     public function brokerLater(float $seconds, string $action): void
@@ -308,6 +318,10 @@ final class Harness
 
         if ($action === 'pause') {
             $this->brokerPaused = true;
+        }
+
+        if ($action === 'disk-alarm') {
+            $this->diskAlarmed = true;
         }
     }
 
@@ -355,6 +369,14 @@ final class Harness
                 $this->broker('memory-ok');
             } catch (Throwable $exception) {
                 $this->info('Failed to reset memory alarm during cleanup: ' . $exception->getMessage());
+            }
+        }
+
+        if ($this->diskAlarmed) {
+            try {
+                $this->broker('disk-ok');
+            } catch (Throwable $exception) {
+                $this->info('Failed to reset disk alarm during cleanup: ' . $exception->getMessage());
             }
         }
 

@@ -161,6 +161,58 @@ class AmqpConsumerTest extends TestCase
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
     }
 
+    public function testInvalidateDropsTheConsumerTagAndBufferedEnvelopes(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('consumerChannel')
+            ->willReturn($channel);
+        $connection->method('getQueueNames')
+            ->willReturn(['test_queue']);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::exactly(2))
+            ->method('basic_qos')
+            ->with(
+                prefetch_size: 0,
+                prefetch_count: 20,
+                a_global: false,
+            );
+
+        $channel->expects(self::exactly(2))
+            ->method('basic_consume')
+            ->with(
+                queue: 'test_queue',
+                consumer_tag: '',
+                no_local: false,
+                no_ack: false,
+                exclusive: false,
+                nowait: false,
+                callback: self::isInstanceOf(Closure::class),
+            )
+            ->willReturn('consumer_tag');
+
+        $channel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::exactly(2))
+            ->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        iterator_to_array($consumer->consume('test_queue'));
+
+        $consumer->callback($this->createStub(AMQPMessage::class));
+        $consumer->invalidate();
+
+        /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+
+        self::assertCount(0, iterator_to_array($amqpEnvelopes));
+    }
+
     public function testConsumeWithWaitTimeoutSetToNull(): void
     {
         $connectionConfig = ConnectionConfig::fromArray([

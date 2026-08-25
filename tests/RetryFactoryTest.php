@@ -12,6 +12,7 @@ use PhpAmqpLib\Exception\AMQPChannelClosedException;
 use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
 use PhpAmqpLib\Exception\AMQPIOException;
+use PhpAmqpLib\Exception\AMQPProtocolChannelException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PHPUnit\Framework\Attributes\TestWith;
 use Symfony\Component\Messenger\Exception\TransportException;
@@ -154,6 +155,26 @@ class RetryFactoryTest extends TestCase
             self::fail('Expected TransportException to propagate without retry.');
         } catch (TransportException $exception) {
             self::assertSame('already wrapped', $exception->getMessage());
+        }
+
+        self::assertSame(1, $count);
+    }
+
+    public function testWillNotRetryAMQPProtocolChannelException(): void
+    {
+        $count = 0;
+
+        try {
+            $this->retryFactory->retry(waitTime: 0)
+                ->run(static function () use (&$count): void {
+                    $count++;
+
+                    throw new AMQPProtocolChannelException(1, 'PRECONDITION_FAILED', []);
+                });
+
+            self::fail('Expected AMQPProtocolChannelException to propagate without retry.');
+        } catch (AMQPProtocolChannelException $exception) {
+            self::assertSame('PRECONDITION_FAILED', $exception->getMessage());
         }
 
         self::assertSame(1, $count);

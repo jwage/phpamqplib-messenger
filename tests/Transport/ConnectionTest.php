@@ -23,6 +23,7 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPChannelClosedException;
 use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
+use PhpAmqpLib\Exception\AMQPIOException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
@@ -320,6 +321,72 @@ class ConnectionTest extends TestCase
                 'application_headers' => new AMQPTable(),
             ],
         );
+    }
+
+    private function assertDirectPublishRetriesRecoverableFailure(
+        AMQPChannelClosedException|AMQPConnectionClosedException|AMQPIOException $firstAttemptException,
+        bool $expectReconnect,
+    ): void {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+        $connectionDead = false;
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')
+            ->willReturnCallback(static function () use (&$connectionDead): bool {
+                return $connectionDead === false;
+            });
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+
+        if ($expectReconnect) {
+            $amqpConnection->expects(self::once())
+                ->method('reconnect')
+                ->willReturnCallback(static function () use (&$connectionDead): void {
+                    $connectionDead = false;
+                });
+        } else {
+            $amqpConnection->expects(self::never())
+                ->method('reconnect');
+        }
+
+        $amqpChannel1->method('confirm_select');
+        $amqpChannel1->expects(self::once())
+            ->method('basic_publish')
+            ->willReturnCallback(static function () use (&$connectionDead, $expectReconnect, $firstAttemptException): void {
+                if ($expectReconnect) {
+                    $connectionDead = true;
+                }
+
+                throw $firstAttemptException;
+            });
+        $amqpChannel1->expects(self::never())
+            ->method('wait_for_pending_acks');
+
+        $amqpChannel2->method('confirm_select');
+        $amqpChannel2->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel2->expects(self::once())
+            ->method('wait_for_pending_acks');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $this->runWithZeroRetryWaitTime(static function () use ($connection): void {
+            $connection->publish(body: 'retried body');
+        });
     }
 
     private function runWithZeroRetryWaitTime(callable $run): void
@@ -1400,6 +1467,80 @@ class ConnectionTest extends TestCase
 
         try {
             $connection->publish(body: 'retried body');
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+    }
+
+    public function testDirectPublishRetriesWhenTheChannelCloses(): void
+    {
+        $this->assertDirectPublishRetriesRecoverableFailure(
+            new AMQPChannelClosedException('Channel connection is closed.'),
+            expectReconnect: false,
+        );
+    }
+
+    public function testDirectPublishRetriesWhenIOFails(): void
+    {
+        $this->assertDirectPublishRetriesRecoverableFailure(
+            new AMQPIOException('Broken pipe'),
+            expectReconnect: false,
+        );
+    }
+
+    public function testDirectPublishReconnectsWhenTheConnectionIsDead(): void
+    {
+        $this->assertDirectPublishRetriesRecoverableFailure(
+            new AMQPConnectionClosedException('Broken pipe or closed connection'),
+            expectReconnect: true,
+        );
+    }
+
+    public function testDirectPublishRetriesWhenTheConnectionClosesWhileWaitingForPendingAcks(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+        $amqpConnection->expects(self::never())
+            ->method('reconnect');
+
+        $amqpChannel1->method('confirm_select');
+        $amqpChannel1->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel1->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->willThrowException(new AMQPConnectionClosedException('Connection closed while waiting for confirms'));
+
+        $amqpChannel2->method('confirm_select');
+        $amqpChannel2->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel2->expects(self::once())
+            ->method('wait_for_pending_acks');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $connection->publish(body: 'confirm then closed');
         } finally {
             Retry::$defaultWaitTime = $previousWaitTime;
         }
