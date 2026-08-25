@@ -6,4 +6,7 @@ use Symfony\Component\ErrorHandler\ErrorHandler;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-set_exception_handler([new ErrorHandler(), 'handleException']);
+/** @var callable(Throwable): void $exceptionHandler */
+$exceptionHandler = [new ErrorHandler(), 'handleException'];
+
+set_exception_handler($exceptionHandler);

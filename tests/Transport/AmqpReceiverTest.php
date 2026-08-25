@@ -16,11 +16,15 @@ use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
+use Traversable;
 
+use function iterator_to_array;
 use function serialize;
 
 class AmqpReceiverTest extends TestCase
@@ -78,6 +82,96 @@ class AmqpReceiverTest extends TestCase
         self::assertInstanceOf(AmqpReceivedStamp::class, $amqpReceivedStamp1);
         self::assertSame($amqpEnvelope, $amqpReceivedStamp1->getAMQPEnvelope());
         self::assertSame('queue_name', $amqpReceivedStamp1->getQueueName());
+    }
+
+    public function testGetNacksWhenDecodeThrows(): void
+    {
+        $amqpEnvelope = $this->createMock(AmqpEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('bad');
+        $amqpEnvelope->method('getHeaders')->willReturn([]);
+        $amqpEnvelope->expects(self::once())->method('nack');
+
+        $connection = $this->getTestConnection();
+        $connection->expects(self::once())
+            ->method('getQueueNames')
+            ->willReturn(['queue_name']);
+        $connection->expects(self::once())
+            ->method('consume')
+            ->willReturn([$amqpEnvelope]);
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::once())
+            ->method('decode')
+            ->willThrowException(new MessageDecodingFailedException('bad'));
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        $this->expectException(MessageDecodingFailedException::class);
+        $this->expectExceptionMessage('bad');
+
+        /** @var Traversable<mixed, Envelope> $envelopes */
+        $envelopes = $receiver->get();
+        iterator_to_array($envelopes);
+    }
+
+    public function testGetNacksWhenDecodeThrowsANonDecodingException(): void
+    {
+        $amqpEnvelope = $this->createMock(AmqpEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('bad');
+        $amqpEnvelope->method('getHeaders')->willReturn([]);
+        $amqpEnvelope->expects(self::once())->method('nack');
+
+        $connection = $this->getTestConnection();
+        $connection->expects(self::once())
+            ->method('getQueueNames')
+            ->willReturn(['queue_name']);
+        $connection->expects(self::once())
+            ->method('consume')
+            ->willReturn([$amqpEnvelope]);
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::once())
+            ->method('decode')
+            ->willThrowException(new RuntimeException('refusing to decode it'));
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('refusing to decode it');
+
+        /** @var Traversable<mixed, Envelope> $envelopes */
+        $envelopes = $receiver->get();
+        iterator_to_array($envelopes);
+    }
+
+    public function testGetNacksWhenDecodeReturnsAFailureEnvelope(): void
+    {
+        $amqpEnvelope = $this->createMock(AmqpEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('bad');
+        $amqpEnvelope->method('getHeaders')->willReturn([]);
+        $amqpEnvelope->expects(self::once())->method('nack');
+
+        $connection = $this->getTestConnection();
+        $connection->expects(self::once())
+            ->method('getQueueNames')
+            ->willReturn(['queue_name']);
+        $connection->expects(self::once())
+            ->method('consume')
+            ->willReturn([$amqpEnvelope]);
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::once())
+            ->method('decode')
+            ->willReturn(new Envelope(new MessageDecodingFailedException('bad')));
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        $this->expectException(MessageDecodingFailedException::class);
+        $this->expectExceptionMessage('bad');
+
+        /** @var Traversable<mixed, Envelope> $envelopes */
+        $envelopes = $receiver->get();
+        iterator_to_array($envelopes);
     }
 
     public function testAck(): void
