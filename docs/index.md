@@ -418,4 +418,4 @@ docker compose up -d --wait
 composer infection
 ```
 
-On pull requests, CI mutates only changed lines (`--git-diff-lines`). Pushes to `main` run the full set. Both fail unless every covered mutant is killed (`minCoveredMsi` 100 in `infection.json5.dist`).
+On pull requests, CI mutates only changed lines (`--git-diff-lines`). Pushes to `main` run the full set. Both fail if the MSI drops below 75% (`minMsi` 75 in `infection.json5.dist`).

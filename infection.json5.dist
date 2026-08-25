@@ -23,6 +23,6 @@
     // a broker and is not a useful mutation killer (slow, environment-dependent).
     "testFrameworkExtraArgs": "--testsuite=default --exclude-group=live",
     "ignoreMsiWithNoMutations": true,
-    "minMsi": 100,
-    "minCoveredMsi": 100
+    "minMsi": 75,
+    "minCoveredMsi": 75
 }

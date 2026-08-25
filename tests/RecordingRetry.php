@@ -14,7 +14,5 @@ class RecordingRetry extends Retry
     protected function sleep(int $microseconds): void
     {
         $this->sleeps[] = $microseconds;
-
-        parent::sleep($microseconds);
     }
 }
