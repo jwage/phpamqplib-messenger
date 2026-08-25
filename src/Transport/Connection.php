@@ -129,6 +129,26 @@ class Connection
     }
 
     /**
+     * Sends an AMQP heartbeat frame if the heartbeat interval has elapsed.
+     *
+     * This prevents RabbitMQ from closing the connection during long message processing.
+     *
+     * @throws TransportException
+     */
+    public function keepalive(): void
+    {
+        if ($this->connection === null) {
+            return;
+        }
+
+        try {
+            $this->connection->checkHeartBeat();
+        } catch (AMQPExceptionInterface $e) {
+            throw new TransportException($e->getMessage(), 0, $e);
+        }
+    }
+
+    /**
      * Returns the channel reserved for publishing and topology operations.
      *
      * Consumers managed by this transport use a separate channel so publisher failure

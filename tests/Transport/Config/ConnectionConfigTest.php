@@ -76,6 +76,7 @@ class ConnectionConfigTest extends TestCase
             'rpc_timeout' => 4.0,
             'heartbeat' => 10,
             'keepalive' => false,
+            'keepalive_enabled' => true,
             'prefetch_count' => 15,
             'wait_timeout' => 2.0,
             'confirm_enabled' => true,
@@ -121,6 +122,7 @@ class ConnectionConfigTest extends TestCase
         self::assertSame(4.0, $connectionConfig->rpcTimeout);
         self::assertSame(10, $connectionConfig->heartbeat);
         self::assertFalse($connectionConfig->keepalive);
+        self::assertTrue($connectionConfig->keepaliveEnabled);
         self::assertSame(15, $connectionConfig->prefetchCount);
         self::assertSame(2.0, $connectionConfig->waitTimeout);
         self::assertTrue($connectionConfig->confirmEnabled);
@@ -346,6 +348,7 @@ class ConnectionConfigTest extends TestCase
         self::assertSame(3.0, $connectionConfig->rpcTimeout);
         self::assertSame(0, $connectionConfig->heartbeat);
         self::assertTrue($connectionConfig->keepalive);
+        self::assertFalse($connectionConfig->keepaliveEnabled);
         self::assertSame(1, $connectionConfig->prefetchCount);
         self::assertSame(1, $connectionConfig->waitTimeout);
         self::assertTrue($connectionConfig->confirmEnabled);

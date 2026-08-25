@@ -14,16 +14,20 @@ use PhpAmqpLib\Channel\AMQPChannel;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\Group;
 use ReflectionMethod;
+use stdClass;
+use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Throwable;
 use Traversable;
 
 use function iterator_to_array;
+use function microtime;
 use function preg_replace;
 use function sleep;
 use function str_contains;
 use function strtolower;
+use function usleep;
 
 #[Group('live')]
 class LiveConnectionTest extends TestCase
@@ -383,6 +387,54 @@ class LiveConnectionTest extends TestCase
         self::assertSame(0, $this->harness->pendingBatchSize($replacement));
     }
 
+    public function testKeepalivePreventsHeartbeatTimeoutDuringLongProcessing(): void
+    {
+        [$name, $connection] = $this->connectWithHeartbeat('keepalive_ok', ['keepalive_enabled' => true]);
+        $transport           = new AmqpTransport($connection);
+
+        $connection->publish(body: 'keep-me');
+        $envelope = $this->harness->consumeOne($connection, $name);
+
+        $until = microtime(true) + 4.0;
+        while (microtime(true) < $until) {
+            $transport->keepalive(new Envelope(new stdClass()));
+            usleep(200_000);
+        }
+
+        $envelope->ack();
+
+        self::assertTrue($connection->isConnected());
+        self::assertSame(0, $connection->countMessagesInQueues());
+    }
+
+    public function testKeepaliveIsANoOpWhenDisabledSoLongProcessingMissesHeartbeats(): void
+    {
+        [$name, $connection] = $this->connectWithHeartbeat('keepalive_off');
+        $transport           = new AmqpTransport($connection);
+
+        $connection->publish(body: 'drop-me');
+        $envelope = $this->harness->consumeOne($connection, $name);
+
+        $until = microtime(true) + 4.0;
+        while (microtime(true) < $until) {
+            $transport->keepalive(new Envelope(new stdClass()));
+            usleep(200_000);
+        }
+
+        $threw = false;
+
+        try {
+            $envelope->ack();
+            $connection->countMessagesInQueues();
+        } catch (AssertionFailedError $exception) {
+            throw $exception;
+        } catch (Throwable) {
+            $threw = true;
+        }
+
+        self::assertTrue($threw, 'Expected the broker to close the connection after missed heartbeats');
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -395,5 +447,24 @@ class LiveConnectionTest extends TestCase
         $this->harness->cleanup();
 
         parent::tearDown();
+    }
+
+    /**
+     * @param array<string, mixed> $extra
+     *
+     * @return array{0: string, 1: Connection}
+     */
+    private function connectWithHeartbeat(string $label, array $extra = []): array
+    {
+        $name       = $this->harness->topologyName($label);
+        $connection = $this->harness->connect($this->harness->topology($name, ['wait_timeout' => 2], [
+            'heartbeat' => 1,
+            'read_timeout' => 5,
+            'write_timeout' => 5,
+            'rpc_timeout' => 5,
+            ...$extra,
+        ]));
+
+        return [$name, $connection];
     }
 }

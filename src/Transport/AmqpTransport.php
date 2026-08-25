@@ -17,7 +17,7 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\SetupableTransportInterface;
 use Throwable;
 
-class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterface, SetupableTransportInterface, BatchTransportInterface
+class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterface, SetupableTransportInterface, BatchTransportInterface, AmqpKeepaliveReceiverInterface
 {
     public function __construct(
         private Connection $connection,
@@ -109,6 +109,29 @@ class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterfac
     public function setup(): void
     {
         $this->connection->setup();
+    }
+
+    /**
+     * Sends an AMQP heartbeat frame to keep the connection alive during long message processing.
+     *
+     * Requires Symfony >= 7.2, the pcntl extension, and the --keepalive flag
+     * on messenger:consume. On older Symfony versions, this method exists but
+     * is never called by the framework.
+     *
+     * This is opt-in: set keepalive_enabled: true in transport options to activate.
+     * TCP keepalive (`keepalive: true`) is a separate setting and does not enable this.
+     * Heartbeat frames are only sent when the connection heartbeat interval is greater than 0.
+     *
+     * @throws TransportException
+     */
+    #[Override]
+    public function keepalive(Envelope $envelope, int|null $seconds = null): void
+    {
+        if (! $this->connection->getConfig()->keepaliveEnabled) {
+            return;
+        }
+
+        $this->connection->keepalive();
     }
 
     private function getSerializer(): SerializerInterface

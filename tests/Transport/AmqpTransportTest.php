@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpKeepaliveReceiverInterface;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceiver;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpSender;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
@@ -120,6 +122,13 @@ class AmqpTransportTest extends TestCase
         $transport->setup();
     }
 
+    public function testImplementsKeepaliveReceiverInterface(): void
+    {
+        $transport = $this->createTransport();
+
+        self::assertInstanceOf(AmqpKeepaliveReceiverInterface::class, $transport);
+    }
+
     public function testFlush(): void
     {
         $sender    = $this->createMock(AmqpSender::class);
@@ -145,5 +154,44 @@ class AmqpTransportTest extends TestCase
             ->willReturn($return);
 
         self::assertSame($return, $transport->getFromQueues(['queue_name']));
+    }
+
+    public function testKeepaliveCallsConnectionWhenEnabled(): void
+    {
+        $connectionConfig = new ConnectionConfig(keepaliveEnabled: true);
+
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getConfig')->willReturn($connectionConfig);
+        $connection->expects(self::once())->method('keepalive');
+
+        $transport = $this->createTransport(connection: $connection);
+
+        $transport->keepalive(new Envelope(new stdClass()));
+    }
+
+    public function testKeepaliveDoesNotCallConnectionWhenDisabled(): void
+    {
+        $connectionConfig = new ConnectionConfig(keepaliveEnabled: false);
+
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getConfig')->willReturn($connectionConfig);
+        $connection->expects(self::never())->method('keepalive');
+
+        $transport = $this->createTransport(connection: $connection);
+
+        $transport->keepalive(new Envelope(new stdClass()));
+    }
+
+    public function testKeepaliveDisabledByDefault(): void
+    {
+        $connectionConfig = new ConnectionConfig();
+
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getConfig')->willReturn($connectionConfig);
+        $connection->expects(self::never())->method('keepalive');
+
+        $transport = $this->createTransport(connection: $connection);
+
+        $transport->keepalive(new Envelope(new stdClass()));
     }
 }

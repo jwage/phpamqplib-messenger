@@ -1187,6 +1187,43 @@ class ConnectionTest extends TestCase
         $connection->setup();
     }
 
+    public function testKeepaliveDoesNothingWhenTheConnectionHasNotBeenOpened(): void
+    {
+        [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();
+
+        $amqpConnection->expects(self::never())->method('checkHeartBeat');
+
+        $connection->keepalive();
+    }
+
+    public function testKeepaliveSendsAHeartbeatOnTheOpenConnection(): void
+    {
+        [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();
+
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::once())->method('checkHeartBeat');
+
+        $connection->channel();
+        $connection->keepalive();
+    }
+
+    public function testKeepaliveWrapsAmqpExceptions(): void
+    {
+        [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();
+
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::once())
+            ->method('checkHeartBeat')
+            ->willThrowException(new AMQPConnectionClosedException('connection closed'));
+
+        $connection->channel();
+
+        $this->expectException(TransportException::class);
+        $this->expectExceptionMessage('connection closed');
+
+        $connection->keepalive();
+    }
+
     public function testChannel(): void
     {
         [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks();

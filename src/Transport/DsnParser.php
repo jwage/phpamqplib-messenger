@@ -69,6 +69,7 @@ class DsnParser
          *     rpc_timeout?: float|mixed,
          *     heartbeat?: int|mixed,
          *     keepalive?: bool|mixed,
+         *     keepalive_enabled?: bool|mixed,
          *     prefetch_count?: int|mixed,
          *     wait_timeout?: int|float|mixed,
          *     confirm_enabled?: bool|mixed,
