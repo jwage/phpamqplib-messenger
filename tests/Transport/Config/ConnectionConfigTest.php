@@ -82,6 +82,7 @@ class ConnectionConfigTest extends TestCase
             'wait_timeout' => 2.0,
             'confirm_enabled' => true,
             'confirm_timeout' => 10.0,
+            'retries_enabled' => false,
             'exchange' => [
                 'name' => 'custom_exchange',
                 'type' => 'fanout',
@@ -129,6 +130,7 @@ class ConnectionConfigTest extends TestCase
         self::assertSame(2.0, $connectionConfig->waitTimeout);
         self::assertTrue($connectionConfig->confirmEnabled);
         self::assertSame(10.0, $connectionConfig->confirmTimeout);
+        self::assertFalse($connectionConfig->retriesEnabled);
         self::assertSame('My test connection', $connectionConfig->connectionName);
 
         self::assertEquals(new ExchangeConfig(
@@ -374,6 +376,7 @@ class ConnectionConfigTest extends TestCase
         self::assertSame(1, $connectionConfig->waitTimeout);
         self::assertTrue($connectionConfig->confirmEnabled);
         self::assertSame(3, $connectionConfig->confirmTimeout);
+        self::assertTrue($connectionConfig->retriesEnabled);
         self::assertEquals(new ExchangeConfig(), $connectionConfig->exchange);
         self::assertEquals(new DelayConfig(), $connectionConfig->delay);
         self::assertSame([], $connectionConfig->queues);

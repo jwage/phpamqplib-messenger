@@ -1703,6 +1703,49 @@ class ConnectionTest extends TestCase
         }
     }
 
+    public function testDirectPublishDoesNotRetryWhenRetriesAreDisabled(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            retriesEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel);
+        $amqpConnection->expects(self::never())
+            ->method('reconnect');
+
+        $amqpChannel->method('confirm_select');
+        $amqpChannel->expects(self::once())
+            ->method('basic_publish')
+            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+        $amqpChannel->expects(self::never())
+            ->method('wait_for_pending_acks');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        try {
+            $connection->publish(body: 'lost on failure');
+            self::fail('Expected the publish to fail without retrying.');
+        } catch (TransportException $exception) {
+            self::assertSame('Broken pipe or closed connection', $exception->getMessage());
+            self::assertInstanceOf(AMQPConnectionClosedException::class, $exception->getPrevious());
+        }
+    }
+
     public function testDirectPublishRetriesWhenTheChannelCloses(): void
     {
         $this->assertDirectPublishRetriesRecoverableFailure(
@@ -2835,6 +2878,53 @@ class ConnectionTest extends TestCase
         }
     }
 
+    public function testFlushDoesNotRetryWhenRetriesAreDisabled(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            retriesEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+
+        $amqpChannel->expects(self::once())
+            ->method('batch_basic_publish');
+        $amqpChannel->expects(self::once())
+            ->method('publish_batch')
+            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $connection->publish(body: 'retained body', batchSize: 2);
+
+        try {
+            $connection->flush();
+            self::fail('Expected the flush to fail without retrying.');
+        } catch (TransportException $exception) {
+            self::assertSame('Broken pipe or closed connection', $exception->getMessage());
+        }
+
+        $pendingBatchMessages = $this->getPendingBatchMessages($connection);
+
+        self::assertCount(1, $pendingBatchMessages);
+        self::assertSame('retained body', $pendingBatchMessages[0][0]->getBody());
+    }
+
     public function testFlushAfterExhaustedRetriesDoesNotDuplicateBatchOnLaterFlush(): void
     {
         $connectionConfig = new ConnectionConfig(
@@ -3298,6 +3388,46 @@ class ConnectionTest extends TestCase
         $this->connection->retry(static function (): void {
             throw new AMQPConnectionClosedException('test');
         }, waitTime: 0)->run();
+    }
+
+    public function testRetryDoesNotRetryWhenRetriesAreDisabled(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(retriesEnabled: false));
+        $count      = 0;
+
+        try {
+            $connection->retry(static function () use (&$count): void {
+                $count++;
+
+                throw new AMQPConnectionClosedException('test');
+            }, waitTime: 0)->run();
+
+            self::fail('Expected the operation to fail without retrying.');
+        } catch (TransportException $exception) {
+            self::assertSame('test', $exception->getMessage());
+        }
+
+        self::assertSame(1, $count);
+    }
+
+    public function testRetryWithReconnectDoesNotRetryWhenRetriesAreDisabled(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(retriesEnabled: false));
+        $count      = 0;
+
+        try {
+            $connection->retryWithReconnect(static function () use (&$count): void {
+                $count++;
+
+                throw new AMQPConnectionClosedException('test');
+            }, waitTime: 0)->run();
+
+            self::fail('Expected the operation to fail without retrying.');
+        } catch (TransportException $exception) {
+            self::assertSame('test', $exception->getMessage());
+        }
+
+        self::assertSame(1, $count);
     }
 
     public function testChannelInvalidatesCachedChannelWhenConnectionClosed(): void
