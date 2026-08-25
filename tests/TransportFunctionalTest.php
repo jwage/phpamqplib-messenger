@@ -44,6 +44,8 @@ class TransportFunctionalTest extends KernelTestCase
 
     private AmqpTransport $transactionsTransport;
 
+    private AmqpTransport $multipleQueuesTransport;
+
     public function testTransportWithConfirms(): void
     {
         $envelopes = $this->getEnvelopes($this->confirmsTransport, 0);
@@ -129,6 +131,64 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertEquals($message1, $envelopes[0]->getMessage());
         self::assertEquals($message2, $envelopes[1]->getMessage());
         self::assertEquals($message3, $envelopes[2]->getMessage());
+    }
+
+    public function testTransportConsumesFromEveryConfiguredQueue(): void
+    {
+        $this->multipleQueuesTransport->send(
+            Envelope::wrap(new ConfirmMessage(1401))->with(new AmqpStamp(routingKey: 'order')),
+        );
+        $this->multipleQueuesTransport->send(
+            Envelope::wrap(new ConfirmMessage(1402))->with(new AmqpStamp(routingKey: 'quote')),
+        );
+
+        $envelopes = $this->getEnvelopes($this->multipleQueuesTransport, 2);
+
+        $byQueue = [];
+
+        foreach ($envelopes as $envelope) {
+            $stamp = $envelope->last(AmqpReceivedStamp::class);
+            self::assertInstanceOf(AmqpReceivedStamp::class, $stamp);
+
+            $byQueue[$stamp->getQueueName()] = $envelope->getMessage();
+        }
+
+        self::assertEquals(new ConfirmMessage(1401), $byQueue['test_multiple_queues_order'] ?? null);
+        self::assertEquals(new ConfirmMessage(1402), $byQueue['test_multiple_queues_quote'] ?? null);
+    }
+
+    public function testConsumingOneQueueDoesNotPreventConsumingAnother(): void
+    {
+        $this->multipleQueuesTransport->send(
+            Envelope::wrap(new ConfirmMessage(1403))->with(new AmqpStamp(routingKey: 'order')),
+        );
+        $this->multipleQueuesTransport->send(
+            Envelope::wrap(new ConfirmMessage(1404))->with(new AmqpStamp(routingKey: 'quote')),
+        );
+
+        $orderEnvelopes = $this->getEnvelopes(
+            $this->multipleQueuesTransport,
+            1,
+            queueNames: ['test_multiple_queues_order'],
+        );
+
+        self::assertSame(1403, $orderEnvelopes[0]->getMessage()->count);
+        self::assertSame(
+            'test_multiple_queues_order',
+            $orderEnvelopes[0]->last(AmqpReceivedStamp::class)?->getQueueName(),
+        );
+
+        $quoteEnvelopes = $this->getEnvelopes(
+            $this->multipleQueuesTransport,
+            1,
+            queueNames: ['test_multiple_queues_quote'],
+        );
+
+        self::assertSame(1404, $quoteEnvelopes[0]->getMessage()->count);
+        self::assertSame(
+            'test_multiple_queues_quote',
+            $quoteEnvelopes[0]->last(AmqpReceivedStamp::class)?->getQueueName(),
+        );
     }
 
     public function testMessageId(): void
@@ -722,16 +782,24 @@ class TransportFunctionalTest extends KernelTestCase
 
         $this->transactionsTransport = $transactionsTransport;
 
+        $multipleQueuesTransport = $container->get('messenger.transport.with_multiple_queues');
+        assert($multipleQueuesTransport instanceof AmqpTransport);
+
+        $this->multipleQueuesTransport = $multipleQueuesTransport;
+
         $this->confirmsTransport->setup();
         $this->transactionsTransport->setup();
+        $this->multipleQueuesTransport->setup();
         $this->drainTransport($this->confirmsTransport);
         $this->drainTransport($this->transactionsTransport);
+        $this->drainTransport($this->multipleQueuesTransport);
     }
 
     protected function tearDown(): void
     {
         $this->confirmsTransport->getConnection()->close();
         $this->transactionsTransport->getConnection()->close();
+        $this->multipleQueuesTransport->getConnection()->close();
     }
 
     /** @param array<object> $messages */
@@ -746,9 +814,17 @@ class TransportFunctionalTest extends KernelTestCase
         $batch->flush();
     }
 
-    /** @return array<Envelope> */
-    private function getEnvelopes(AmqpTransport $transport, int $count, int $maxEmptyPolls = 100): array
-    {
+    /**
+     * @param list<string>|null $queueNames
+     *
+     * @return array<Envelope>
+     */
+    private function getEnvelopes(
+        AmqpTransport $transport,
+        int $count,
+        int $maxEmptyPolls = 100,
+        array|null $queueNames = null,
+    ): array {
         if ($count === 0) {
             $this->drainTransport($transport);
 
@@ -762,7 +838,9 @@ class TransportFunctionalTest extends KernelTestCase
             $receivedAny = false;
 
             /** @var Traversable<Envelope> $envelopes */
-            $envelopes = $transport->get();
+            $envelopes = $queueNames === null
+                ? $transport->get()
+                : $transport->getFromQueues($queueNames);
 
             foreach ($envelopes as $envelope) {
                 $collectedEnvelopes[] = $envelope;

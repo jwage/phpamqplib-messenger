@@ -48,6 +48,8 @@ bin/console messenger:consume transport2
 
 Because we're using a blocking consumer, when you pass multiple transports to the `messenger:consume` command, the first transport will block the process and wait for messages for the configured `queueConfig.waitTimeout` value before the second transport will start consuming messages. This maybe could be enhanced to work better in the future, but we believe something would have to be changed in the Symfony Messenger component to support this. For now, we recommend consuming messages from each transport in a separate process.
 
+A single transport can declare multiple queues. The receiver subscribes to each queue rather than only the first. Those queues are still polled sequentially: `consume()` waits up to that queue's `wait_timeout` before the next queue is polled. Messages that arrive for another already-subscribed queue during that wait are buffered and returned when that queue is polled.
+
 ## Minimum Configuration
 
 The minimum configuration requires a transport name and DSN.
@@ -263,7 +265,7 @@ Pending batches exist only in process memory. They do not survive process termin
 
 ## Publisher and Consumer Channels
 
-Publishing/topology operations and consuming use separate AMQP channels, even when they share one underlying connection. A live publisher-channel failure can therefore be retired and replaced without invalidating an in-flight consumer delivery tag. If the underlying connection dies, its delivery tags are no longer valid and the transport re-registers the consumer on a fresh channel. `Connection::channel()` returns the publisher/topology channel; use the transport receiver or `Connection::consume()` for consumption.
+Publishing/topology operations and consuming use separate AMQP channels, even when they share one underlying connection. A live publisher-channel failure can therefore be retired and replaced without invalidating an in-flight consumer delivery tag. If the underlying connection dies, its delivery tags are no longer valid and the transport re-registers its consumers on a fresh channel. `Connection::channel()` returns the publisher/topology channel; use the transport receiver or `Connection::consume()` for consumption.
 
 When RabbitMQ reports a resource alarm, known-blocked publishes fail before allocating another channel. A publisher channel that discovers the alarm is reclaimed after the connection becomes readable again and before its replacement is opened.
 

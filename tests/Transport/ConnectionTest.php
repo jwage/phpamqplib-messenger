@@ -421,6 +421,17 @@ class ConnectionTest extends TestCase
         );
     }
 
+    private function getConsumer(Connection $connection, string $queueName = 'queue_name'): AmqpConsumer
+    {
+        $consumers = (new ReflectionProperty(Connection::class, 'consumers'))->getValue($connection);
+        assert(is_array($consumers));
+
+        $consumer = $consumers[$queueName] ?? null;
+        assert($consumer instanceof AmqpConsumer);
+
+        return $consumer;
+    }
+
     public function testClose(): void
     {
         [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();
@@ -486,8 +497,7 @@ class ConnectionTest extends TestCase
 
         self::assertSame([], iterator_to_array($envelopes));
 
-        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
-        assert($consumer instanceof AmqpConsumer);
+        $consumer = $this->getConsumer($connection);
 
         $consumerTagProperty = new ReflectionProperty(AmqpConsumer::class, 'consumerTag');
         self::assertSame('consumer-tag', $consumerTagProperty->getValue($consumer));
@@ -670,8 +680,7 @@ class ConnectionTest extends TestCase
 
         self::assertSame([], iterator_to_array($envelopes));
 
-        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
-        assert($consumer instanceof AmqpConsumer);
+        $consumer = $this->getConsumer($connection);
 
         // Simulate a delivery already received on the consumer channel.
         $bufferProperty = new ReflectionProperty(AmqpConsumer::class, 'buffer');
@@ -761,8 +770,7 @@ class ConnectionTest extends TestCase
         $envelopes = $connection->consume('queue_name');
         self::assertSame([], iterator_to_array($envelopes));
 
-        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
-        assert($consumer instanceof AmqpConsumer);
+        $consumer = $this->getConsumer($connection);
 
         $message = new AMQPMessage('in-flight delivery');
         $message->setChannel($consumerChannel);
@@ -852,8 +860,7 @@ class ConnectionTest extends TestCase
         $envelopes = $connection->consume('queue_name');
         self::assertSame([], iterator_to_array($envelopes));
 
-        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
-        assert($consumer instanceof AmqpConsumer);
+        $consumer = $this->getConsumer($connection);
 
         $message = new AMQPMessage('in-flight delivery');
         $message->setChannel($consumerChannel);
@@ -952,8 +959,7 @@ class ConnectionTest extends TestCase
 
         self::assertSame([], iterator_to_array($envelopes));
 
-        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
-        assert($consumer instanceof AmqpConsumer);
+        $consumer = $this->getConsumer($connection);
         $consumer->invalidate();
     }
 
@@ -1007,8 +1013,7 @@ class ConnectionTest extends TestCase
         $envelopes = $connection->consume('queue_name');
         self::assertSame([], iterator_to_array($envelopes));
 
-        $consumer = (new ReflectionProperty(Connection::class, 'consumer'))->getValue($connection);
-        assert($consumer instanceof AmqpConsumer);
+        $consumer = $this->getConsumer($connection);
         $consumer->callback(new AMQPMessage('stale delivery'));
 
         $channel1Open = false;
@@ -1224,6 +1229,80 @@ class ConnectionTest extends TestCase
         $amqpEnvelopes = $this->connection->consume('queue_name');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
+    }
+
+    public function testConsumeRegistersASeparateConsumerPerQueue(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+                'queue_name2' => new QueueConfig(name: 'queue_name2'),
+            ],
+        );
+
+        $factory        = $this->createMock(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->expects(self::once())
+            ->method('create')
+            ->willReturn($amqpConnection);
+
+        $amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::once())
+            ->method('close');
+
+        $consumedQueues = [];
+
+        $amqpChannel->method('is_open')->willReturn(true);
+        $amqpChannel->method('is_consuming')->willReturn(true);
+        $amqpChannel->method('wait')->willThrowException(new AMQPTimeoutException('poll timeout'));
+        $amqpChannel->expects(self::never())
+            ->method('basic_cancel');
+        $amqpChannel->expects(self::exactly(2))
+            ->method('basic_consume')
+            ->willReturnCallback(
+                static function (string $queue, mixed ...$_args) use (&$consumedQueues): string {
+                    $consumedQueues[] = $queue;
+
+                    return $queue === 'queue_name' ? 'consumer-tag-1' : 'consumer-tag-2';
+                },
+            );
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+        self::assertSame([], iterator_to_array($envelopes));
+
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name2');
+        self::assertSame([], iterator_to_array($envelopes));
+
+        self::assertSame(['queue_name', 'queue_name2'], $consumedQueues);
+
+        $consumer1 = $this->getConsumer($connection, 'queue_name');
+        $consumer2 = $this->getConsumer($connection, 'queue_name2');
+
+        self::assertNotSame($consumer1, $consumer2);
+
+        $consumerTagProperty = new ReflectionProperty(AmqpConsumer::class, 'consumerTag');
+        self::assertSame('consumer-tag-1', $consumerTagProperty->getValue($consumer1));
+        self::assertSame('consumer-tag-2', $consumerTagProperty->getValue($consumer2));
+
+        $connection->close();
+
+        self::assertNull($consumerTagProperty->getValue($consumer1));
+        self::assertNull($consumerTagProperty->getValue($consumer2));
     }
 
     public function testPublish(): void
