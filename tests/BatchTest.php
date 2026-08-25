@@ -7,11 +7,14 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 use Jwage\PhpAmqpLibMessengerBundle\Batch;
 use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferrableStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferredStamp;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\BatchTransportInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\DelayStamp;
+use Symfony\Component\Messenger\Stamp\StampInterface;
 
 class BatchTest extends TestCase
 {
@@ -46,6 +49,32 @@ class BatchTest extends TestCase
         $this->batch->dispatch($message2);
 
         $this->batch->flush();
+    }
+
+    public function testDispatchPropagatesStamps(): void
+    {
+        $message    = new stdClass();
+        $delayStamp = new DelayStamp(1234);
+        $amqpStamp  = new AmqpStamp(routingKey: 'orders');
+
+        $this->expectWrappedDispatchWithStamps($message, [$delayStamp, $amqpStamp]);
+
+        $envelope = $this->batch->dispatch($message, [$delayStamp, $amqpStamp]);
+
+        $this->assertEnvelopeHasMessageAndStamps($envelope, $message, [$delayStamp, $amqpStamp]);
+    }
+
+    public function testDispatchMergesEnvelopeStampsWithDispatchStamps(): void
+    {
+        $message    = new stdClass();
+        $delayStamp = new DelayStamp(1234);
+        $amqpStamp  = new AmqpStamp(routingKey: 'orders');
+
+        $this->expectWrappedDispatchWithStamps($message, [$delayStamp, $amqpStamp]);
+
+        $envelope = $this->batch->dispatch(Envelope::wrap($message, [$delayStamp]), [$amqpStamp]);
+
+        $this->assertEnvelopeHasMessageAndStamps($envelope, $message, [$delayStamp, $amqpStamp]);
     }
 
     public function testFlushTransportOncePerBatch(): void
@@ -118,6 +147,31 @@ class BatchTest extends TestCase
         $this->wrappedBus = $this->createMock(WrappedBus::class);
 
         $this->batch = new Batch($this->wrappedBus, 10);
+    }
+
+    /** @param list<StampInterface> $stamps */
+    private function expectWrappedDispatchWithStamps(object $message, array $stamps): void
+    {
+        $this->wrappedBus->expects(self::once())
+            ->method('dispatch')
+            ->with($this->callback(function (Envelope $envelope) use ($message, $stamps): bool {
+                $this->assertEnvelopeHasMessageAndStamps($envelope, $message, $stamps);
+
+                return true;
+            }))
+            ->willReturnArgument(0);
+    }
+
+    /** @param list<StampInterface> $stamps */
+    private function assertEnvelopeHasMessageAndStamps(Envelope $envelope, object $message, array $stamps): void
+    {
+        self::assertSame($message, $envelope->getMessage());
+
+        foreach ($stamps as $stamp) {
+            self::assertSame($stamp, $envelope->last($stamp::class));
+        }
+
+        self::assertSame(10, $envelope->last(DeferrableStamp::class)?->getBatchSize());
     }
 
     private function createEnvelope(stdClass $message, int $batchSize = 10, BatchTransportInterface|null $transport = null): Envelope
