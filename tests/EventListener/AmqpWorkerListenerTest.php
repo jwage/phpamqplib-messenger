@@ -21,18 +21,22 @@ use function microtime;
 
 class AmqpWorkerListenerTest extends TestCase
 {
-    public function testOnWorkerStartedEnablesExternalWaitForMatchingTransports(): void
+    public function testOnWorkerStartedStartsConsumersForMatchingPhpAmqpLibTransports(): void
     {
         $connection = $this->createMock(Connection::class);
         $connection->expects(self::once())
             ->method('setWaitCoordinator');
         $connection->expects(self::once())
-            ->method('listen')
+            ->method('startConsumers')
             ->with(null);
+        $connection->expects(self::never())
+            ->method('listen');
 
         $other = $this->createMock(Connection::class);
         $other->expects(self::once())
             ->method('setWaitCoordinator');
+        $other->expects(self::never())
+            ->method('startConsumers');
         $other->expects(self::never())
             ->method('listen');
 
@@ -48,6 +52,40 @@ class AmqpWorkerListenerTest extends TestCase
         $listener->onWorkerStarted($this->createWorkerStartedEvent($this->createWorker(['async'])));
     }
 
+    public function testOnWorkerStartedListensWhenNonPhpAmqpLibTransportsArePresent(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->expects(self::once())
+            ->method('listen')
+            ->with(null);
+        $connection->expects(self::never())
+            ->method('startConsumers');
+
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $listener->addConnection('async', $connection);
+
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($this->createWorker(['async', 'redis'])));
+    }
+
+    public function testOnWorkerRunningResetsTheCoordinatorWhenEveryTransportIsPhpAmqpLib(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('startConsumers');
+        $connection->expects(self::never())
+            ->method('waitForDeliveries');
+
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('reset');
+
+        $listener = new AmqpWorkerListener($coordinator);
+        $listener->addConnection('async', $connection);
+
+        $worker = $this->createWorker(['async']);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker));
+        $listener->onWorkerRunning(new WorkerRunningEvent($worker, false));
+    }
+
     public function testOnWorkerRunningDoesNotWaitWhenTheWorkerIsNotIdle(): void
     {
         $connection = $this->createMock(Connection::class);
@@ -58,47 +96,46 @@ class AmqpWorkerListenerTest extends TestCase
         $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
         $listener->addConnection('async', $connection);
 
-        $worker = $this->createWorker(['async']);
+        $worker = $this->createWorker(['async', 'redis']);
         $listener->onWorkerStarted($this->createWorkerStartedEvent($worker));
         $listener->onWorkerRunning(new WorkerRunningEvent($worker, false));
     }
 
-    public function testOnWorkerRunningWaitsWithTheConnectionTimeoutWhenIdle(): void
+    public function testOnWorkerRunningWaitsWithTheConnectionTimeoutWhenIdleAndMixed(): void
     {
         $connection = $this->createMock(Connection::class);
         $connection->method('listen');
         $connection->method('getWaitTimeout')
-            ->willReturn(1.5);
+            ->willReturn(0.5);
         $connection->expects(self::once())
             ->method('waitForDeliveries')
-            ->with(1.5);
+            ->with(0.5, false);
 
         $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
         $listener->addConnection('async', $connection);
 
-        $worker = $this->createWorker(['async']);
-        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker));
+        $worker = $this->createWorker(['async', 'redis']);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, idleTimeout: 2_000_000));
         $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
     }
 
-    public function testIdleWaitIsNotCappedBySleepWhenEveryTransportIsPhpAmqpLib(): void
+    public function testIdleWaitIsNotUsedWhenEveryTransportIsPhpAmqpLib(): void
     {
         $connection = $this->createMock(Connection::class);
-        $connection->method('listen');
-        $connection->method('getWaitTimeout')
-            ->willReturn(5.0);
-        $connection->expects(self::once())
-            ->method('waitForDeliveries')
-            ->with(5.0);
+        $connection->method('startConsumers');
+        $connection->expects(self::never())
+            ->method('waitForDeliveries');
 
         $other = $this->createMock(Connection::class);
-        $other->method('listen');
-        $other->method('getWaitTimeout')
-            ->willReturn(5.0);
+        $other->method('startConsumers');
         $other->expects(self::never())
             ->method('waitForDeliveries');
 
-        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('reset');
+
+        $listener = new AmqpWorkerListener($coordinator);
         $listener->addConnection('high', $connection);
         $listener->addConnection('low', $other);
 
@@ -119,7 +156,7 @@ class AmqpWorkerListenerTest extends TestCase
             ->willReturn(5.0);
         $connection->expects(self::once())
             ->method('waitForDeliveries')
-            ->with(2.0);
+            ->with(2.0, false);
 
         $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
         $listener->addConnection('async', $connection);
@@ -143,13 +180,13 @@ class AmqpWorkerListenerTest extends TestCase
             ->method('waitForDeliveries')
             ->with(self::callback(static function (float $timeout): bool {
                 return $timeout > 0.0 && $timeout <= 2.5;
-            }));
+            }), false);
 
         $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
         $listener->addConnection('async', $connection);
 
-        $worker = $this->createWorker(['async']);
-        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, deadline: microtime(true) + 2.0));
+        $worker = $this->createWorker(['async', 'redis']);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, deadline: microtime(true) + 2.0, idleTimeout: 10_000_000));
         $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
     }
 
@@ -169,7 +206,7 @@ class AmqpWorkerListenerTest extends TestCase
         $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
         $listener->addConnection('async', $connection);
 
-        $worker = $this->createWorker(['async']);
+        $worker = $this->createWorker(['async', 'redis']);
         $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, deadline: microtime(true) - 1.0));
         $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
     }
@@ -178,16 +215,15 @@ class AmqpWorkerListenerTest extends TestCase
     {
         $connection = $this->createMock(Connection::class);
         $connection->expects(self::once())
-            ->method('listen');
+            ->method('startConsumers');
         $connection->expects(self::once())
             ->method('disableExternalWait');
+        $connection->expects(self::once())
+            ->method('unregisterFromWaitCoordinator');
 
         $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
         $coordinator->expects(self::once())
             ->method('register')
-            ->with($connection);
-        $coordinator->expects(self::once())
-            ->method('unregister')
             ->with($connection);
 
         $listener = new AmqpWorkerListener($coordinator);

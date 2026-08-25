@@ -59,9 +59,11 @@ bin/console messenger:consume transport1
 bin/console messenger:consume transport2
 ```
 
-A single `messenger:consume` process can still listen to several phpamqplib transports, including alongside Doctrine, Redis, or other receivers. Each `get()` only drains frames that already arrived. After every transport has been checked and the worker is idle, it waits on all phpamqplib sockets at once (up to `wait_timeout`). SIGINT and idle checks therefore stay close to one `wait_timeout` rather than scaling with the number of phpamqplib transports.
+A single `messenger:consume` process can still listen to several phpamqplib transports, including alongside Doctrine, Redis, or other receivers.
 
-When the same worker also consumes a non-phpamqplib transport, that idle wait is capped by `messenger:consume --sleep` (Symfony 8.1+) so the other transports keep being polled on their usual interval. Direct `get()` calls outside `messenger:consume` still wait per queue, which is what tests and custom consumers do.
+When every receiver is phpamqplib, the first `get()` of a worker pass waits on all of those sockets at once (up to `wait_timeout`). Later transports in the same pass only drain. A delivery is therefore handled in that same iteration, so leftover `messenger:consume --sleep` does not sit between idle and the next message. SIGINT and idle checks stay close to one `wait_timeout` rather than scaling with the number of phpamqplib transports.
+
+When the same worker also consumes a non-phpamqplib transport, `get()` only drains frames that already arrived. After every receiver has been checked and the worker is idle, it waits on all phpamqplib sockets at once, capped by `messenger:consume --sleep` (Symfony 8.1+) so the other transports keep being polled on their usual interval. Direct `get()` calls outside `messenger:consume` still wait per queue, which is what tests and custom consumers do.
 
 A single transport can declare multiple queues. The receiver subscribes to each queue rather than only the first. Messages that arrive for another already-subscribed queue during a wait are buffered and returned when that queue is polled. When a fetch size is in effect (CLI argument or transport default), the receiver stops after that many envelopes across those queues.
 

@@ -20,12 +20,14 @@ use function microtime;
 use function min;
 
 /**
- * When the worker is idle, blocks on AMQP sockets instead of polling.
+ * Coordinates AMQP waits for messenger:consume so idle/SIGINT delay stays
+ * close to one wait_timeout instead of scaling with the number of transports.
  *
- * Matches Symfony's PostgreSqlNotifyOnIdleListener: get() stays non-blocking
- * once the worker starts, and the wait happens after every receiver has been
- * checked. Workers that also consume non-phpamqplib transports cap that wait
- * to --sleep so those transports keep being polled.
+ * All-phpamqplib workers wait inside get() (coalesced across sockets). That
+ * way a delivery is yielded in the same worker iteration and leftover
+ * --sleep does not delay the next message. Mixed workers match Symfony's
+ * PostgreSqlNotifyOnIdleListener: get() only drains, and the wait happens
+ * after every receiver has been polled, capped by --sleep.
  */
 class AmqpWorkerListener implements EventSubscriberInterface
 {
@@ -82,7 +84,12 @@ class AmqpWorkerListener implements EventSubscriberInterface
             : null;
 
         foreach ($matched as $connection) {
-            $connection->listen($queueNames);
+            if ($this->sleepCap !== null) {
+                $connection->listen($queueNames);
+            } else {
+                $connection->startConsumers($queueNames);
+            }
+
             $this->coordinator->register($connection);
             $this->matchedConnections[] = $connection;
             $this->activeConnection   ??= $connection;
@@ -91,6 +98,12 @@ class AmqpWorkerListener implements EventSubscriberInterface
 
     public function onWorkerRunning(WorkerRunningEvent $event): void
     {
+        if ($this->sleepCap === null) {
+            $this->coordinator->reset();
+
+            return;
+        }
+
         if (! $event->isWorkerIdle() || $this->activeConnection === null) {
             return;
         }
@@ -105,20 +118,20 @@ class AmqpWorkerListener implements EventSubscriberInterface
             }
         }
 
-        $timeout = min($timeout, $this->sleepCap ?? $timeout);
+        $timeout = min($timeout, $this->sleepCap);
 
         if ($timeout <= 0) {
             return;
         }
 
-        $this->activeConnection->waitForDeliveries($timeout);
+        $this->activeConnection->waitForDeliveries($timeout, coalesce: false);
     }
 
     public function onWorkerStopped(WorkerStoppedEvent $_event): void
     {
         foreach ($this->matchedConnections as $connection) {
             $connection->disableExternalWait();
-            $this->coordinator->unregister($connection);
+            $connection->unregisterFromWaitCoordinator();
         }
 
         $this->matchedConnections = [];

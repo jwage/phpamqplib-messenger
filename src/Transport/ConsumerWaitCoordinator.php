@@ -15,16 +15,19 @@ use function spl_object_id;
 use function stream_select;
 
 /**
- * Multiplexed AMQP wait used by AmqpWorkerListener while the worker is idle.
+ * Multiplexed AMQP wait used by phpamqplib messenger:consume workers.
  *
- * Symfony's worker polls every receiver, then sleeps. This coordinator waits
- * on every registered connection's socket at once so a message on any
- * phpamqplib transport wakes the process without blocking get() itself.
+ * All-phpamqplib workers wait from get(): the first transport of a pass
+ * stream_selects every registered socket, later transports only drain.
+ * Mixed workers wait from AmqpWorkerListener after every receiver has been
+ * polled (coalesce disabled) so Doctrine/Redis/etc. stay in the loop.
  */
 class ConsumerWaitCoordinator
 {
     /** @var array<int, Connection> */
     private array $connections = [];
+
+    private bool $waitedThisPass = false;
 
     public function register(Connection $connection): void
     {
@@ -36,8 +39,25 @@ class ConsumerWaitCoordinator
         unset($this->connections[spl_object_id($connection)]);
     }
 
-    public function wait(float $timeout): void
+    public function reset(): void
     {
+        $this->waitedThisPass = false;
+    }
+
+    public function wait(float $timeout, bool $coalesce = true): void
+    {
+        if ($coalesce && $this->waitedThisPass) {
+            foreach (array_values($this->connections) as $connection) {
+                $connection->drainConsumerChannel();
+            }
+
+            return;
+        }
+
+        if ($coalesce) {
+            $this->waitedThisPass = true;
+        }
+
         $this->selectAndDrain($timeout);
     }
 

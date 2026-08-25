@@ -60,6 +60,14 @@ class AmqpConsumer
             return;
         }
 
+        if ($this->connection->isRegisteredWithWaitCoordinator()) {
+            $this->connection->waitForDeliveries($this->connection->getWaitTimeout());
+
+            yield from $this->releaseBuffer($fetchSize);
+
+            return;
+        }
+
         $stop = false;
 
         while ($this->connection->consumerChannel()->is_consuming()) {

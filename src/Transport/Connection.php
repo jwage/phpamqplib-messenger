@@ -56,6 +56,8 @@ class Connection
 
     private bool $externalWaitEnabled = false;
 
+    private bool $registeredWithCoordinator = false;
+
     private bool $autoSetup;
 
     private bool $autoSetupDelay;
@@ -108,6 +110,17 @@ class Connection
         $this->externalWaitEnabled = false;
     }
 
+    public function isRegisteredWithWaitCoordinator(): bool
+    {
+        return $this->registeredWithCoordinator;
+    }
+
+    public function unregisterFromWaitCoordinator(): void
+    {
+        $this->waitCoordinator?->unregister($this);
+        $this->registeredWithCoordinator = false;
+    }
+
     /**
      * Marks get() as handled by the worker idle listener and starts consumers.
      *
@@ -144,7 +157,7 @@ class Connection
 
     public function close(): void
     {
-        $this->waitCoordinator?->unregister($this);
+        $this->unregisterFromWaitCoordinator();
 
         try {
             // Closing the connection cancels its consumers, so do not issue a separate
@@ -298,7 +311,7 @@ class Connection
      * Registers basic_consume on each configured queue without blocking for deliveries.
      *
      * Used when a messenger worker is about to poll several transports so every
-     * socket is already subscribed before the first idle wait.
+     * socket is already subscribed before the first wait.
      *
      * @param array<string>|null $queueNames
      *
@@ -325,17 +338,24 @@ class Connection
             $consumer->ensureStarted($queueName);
         }
 
-        $this->waitCoordinator?->register($this);
+        if ($this->waitCoordinator !== null) {
+            $this->waitCoordinator->register($this);
+            $this->registeredWithCoordinator = true;
+        }
     }
 
     /**
      * Blocks until a delivery is readable on any registered connection, or the
      * timeout expires. Analogous to PostgreSqlConnection::waitForNotify().
+     *
+     * When $coalesce is true, only the first wait in a worker pass actually
+     * blocks; later transports drain. Mixed workers pass false so the idle
+     * listener always waits after every receiver has been polled.
      */
-    public function waitForDeliveries(float $timeout): void
+    public function waitForDeliveries(float $timeout, bool $coalesce = true): void
     {
         if ($this->waitCoordinator !== null) {
-            $this->waitCoordinator->wait($timeout);
+            $this->waitCoordinator->wait($timeout, $coalesce);
 
             return;
         }
