@@ -120,7 +120,7 @@ class AmqpReceiverTest extends TestCase
 
         $receiver = new AmqpReceiver($connection, $serializer);
 
-        self::assertCount(3, iterator_to_array($receiver->get(), false));
+        self::assertCount(3, $this->envelopesToList($receiver->get()));
     }
 
     public function testGetFromQueuesWithoutFetchSizeYieldsAllAvailable(): void
@@ -149,7 +149,7 @@ class AmqpReceiverTest extends TestCase
 
         $receiver = new AmqpReceiver($connection, $serializer);
 
-        self::assertCount(3, iterator_to_array($receiver->getFromQueues(['queue_name']), false));
+        self::assertCount(3, $this->envelopesToList($receiver->getFromQueues(['queue_name'])));
     }
 
     public function testGetAcceptsFetchSize(): void
@@ -181,7 +181,7 @@ class AmqpReceiverTest extends TestCase
 
         $receiver = new AmqpReceiver($connection, $serializer);
 
-        self::assertCount(2, iterator_to_array($receiver->get(2), false));
+        self::assertCount(2, $this->envelopesToList($receiver->get(2)));
     }
 
     public function testGetFromQueuesAcceptsFetchSize(): void
@@ -211,7 +211,7 @@ class AmqpReceiverTest extends TestCase
 
         $receiver = new AmqpReceiver($connection, $serializer);
 
-        self::assertCount(2, iterator_to_array($receiver->getFromQueues(['queue_name'], 2), false));
+        self::assertCount(2, $this->envelopesToList($receiver->getFromQueues(['queue_name'], 2)));
     }
 
     public function testGetReturnsLeftoverEnvelopesOnNextCall(): void
@@ -252,8 +252,8 @@ class AmqpReceiverTest extends TestCase
 
         $receiver = new AmqpReceiver($connection, $serializer);
 
-        self::assertCount(2, iterator_to_array($receiver->get(2), false));
-        self::assertCount(1, iterator_to_array($receiver->get(2), false));
+        self::assertCount(2, $this->envelopesToList($receiver->get(2)));
+        self::assertCount(1, $this->envelopesToList($receiver->get(2)));
         self::assertCount(0, $sharedBuffer);
     }
 
@@ -326,8 +326,8 @@ class AmqpReceiverTest extends TestCase
 
         $receiver = new AmqpReceiver($connection, $serializer);
 
-        self::assertCount(2, iterator_to_array($receiver->get(2), false));
-        self::assertCount(1, iterator_to_array($receiver->get(2), false));
+        self::assertCount(2, $this->envelopesToList($receiver->get(2)));
+        self::assertCount(1, $this->envelopesToList($receiver->get(2)));
     }
 
     public function testGetWithFetchSizeDoesNotConsumeFurtherQueuesOnceLimitIsReached(): void
@@ -356,7 +356,7 @@ class AmqpReceiverTest extends TestCase
 
         $receiver = new AmqpReceiver($connection, $serializer);
 
-        self::assertCount(2, iterator_to_array($receiver->get(2), false));
+        self::assertCount(2, $this->envelopesToList($receiver->get(2)));
     }
 
     public function testGetWithFetchSizeConsumesAdditionalQueuesUntilLimitIsReached(): void
@@ -397,7 +397,7 @@ class AmqpReceiverTest extends TestCase
 
         $receiver = new AmqpReceiver($connection, $serializer);
 
-        self::assertCount(3, iterator_to_array($receiver->get(3), false));
+        self::assertCount(3, $this->envelopesToList($receiver->get(3)));
     }
 
     public function testGetConsumesEachConfiguredQueue(): void
@@ -606,6 +606,19 @@ class AmqpReceiverTest extends TestCase
         $this->amqpConnectionFactory = $this->createStub(AmqpConnectionFactory::class);
 
         $this->connectionConfig = new ConnectionConfig();
+    }
+
+    /**
+     * @param iterable<Envelope> $envelopes
+     *
+     * @return list<Envelope>
+     */
+    private function envelopesToList(iterable $envelopes): array
+    {
+        /** @var Traversable<mixed, Envelope> $traversable */
+        $traversable = $envelopes;
+
+        return iterator_to_array($traversable, false);
     }
 
     private function getTestConnectionStub(): Connection&Stub

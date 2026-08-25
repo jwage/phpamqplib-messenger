@@ -336,7 +336,9 @@ class AmqpConsumerTest extends TestCase
 
         self::assertCount(1, $received);
 
-        $remaining = iterator_to_array($consumer->consume('test_queue', 1), false);
+        /** @var Traversable<AmqpEnvelope> $remainingEnvelopes */
+        $remainingEnvelopes = $consumer->consume('test_queue', 1);
+        $remaining          = iterator_to_array($remainingEnvelopes, false);
 
         self::assertCount(2, $remaining);
     }
@@ -394,7 +396,9 @@ class AmqpConsumerTest extends TestCase
         self::assertCount(1, $received);
 
         // The 2 unyielded messages are dropped — this is the known legacy limitation
-        $remaining = iterator_to_array($consumer->consume('test_queue'), false);
+        /** @var Traversable<AmqpEnvelope> $remainingEnvelopes */
+        $remainingEnvelopes = $consumer->consume('test_queue');
+        $remaining          = iterator_to_array($remainingEnvelopes, false);
 
         self::assertCount(0, $remaining);
     }
@@ -427,7 +431,9 @@ class AmqpConsumerTest extends TestCase
         $channel->method('wait')
             ->will($this->throwException(new AMQPTimeoutException()));
 
-        iterator_to_array($consumer->consume('test_queue', 50));
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue', 50);
+        iterator_to_array($amqpEnvelopes);
     }
 
     public function testConsumeWithFetchSizeSmallerThanPrefetchCountDoesNotOverride(): void
@@ -459,7 +465,9 @@ class AmqpConsumerTest extends TestCase
             ->will($this->throwException(new AMQPTimeoutException()));
 
         // fetchSize=5 < prefetchCount=20 → effective prefetch stays 20
-        iterator_to_array($consumer->consume('test_queue', 5));
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue', 5);
+        iterator_to_array($amqpEnvelopes);
     }
 
     public function testConsumeUpdatesQosWhenFetchSizeIncreasesAbovePrefetchCount(): void
@@ -492,10 +500,14 @@ class AmqpConsumerTest extends TestCase
             ->will($this->throwException(new AMQPTimeoutException()));
 
         // First consume: no fetchSize → prefetch stays at config value (20)
-        iterator_to_array($consumer->consume('test_queue'));
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+        iterator_to_array($amqpEnvelopes);
 
         // Second consume: fetchSize=50 > prefetchCount=20 → QoS updated to 50
-        iterator_to_array($consumer->consume('test_queue', 50));
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue', 50);
+        iterator_to_array($amqpEnvelopes);
     }
 
     public function testStopConsumer(): void
