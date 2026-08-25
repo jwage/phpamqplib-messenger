@@ -17,14 +17,14 @@
     "require": {
         "php": "^8.3",
         "php-amqplib/php-amqplib": "^3.7.2",
-        "symfony/messenger": "^5.4 ||^6.3 || ^7.0 || ^8.0"
+        "symfony/messenger": "^6.3 || ^7.0 || ^8.0"
     },
     "require-dev": {
         "doctrine/coding-standard": "^13.0",
         "phpunit/phpunit": "^12.1",
         "psalm/plugin-phpunit": "^0.19.5",
         "psalm/plugin-symfony": "^5.2",
-        "symfony/framework-bundle": "^5.4 || ^6.4 || ^7.0 || ^8.0",
+        "symfony/framework-bundle": "^6.4 || ^7.0 || ^8.0",
         "symfony/phpunit-bridge": "^7.2 || ^8.0",
         "symfony/uid": "^7.2 || ^8.0",
         "vimeo/psalm": "^6"

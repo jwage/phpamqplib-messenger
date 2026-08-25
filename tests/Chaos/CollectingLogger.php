@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos;
 
+use Override;
 use Psr\Log\AbstractLogger;
 use Stringable;
 
@@ -14,14 +15,9 @@ final class CollectingLogger extends AbstractLogger
     /** @var list<array{level: string, message: string}> */
     public array $records = [];
 
-    /**
-     * Compatible with psr/log 1–3 (lowest Symfony 5.4 still uses untyped log()).
-     *
-     * @param mixed                   $level
-     * @param string|Stringable       $message
-     * @param array<array-key, mixed> $context
-     */
-    public function log($level, $message, array $context = []): void // phpcs:ignore SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingNativeTypeHint
+    /** @param array<array-key, mixed> $context */
+    #[Override]
+    public function log(mixed $level, string|Stringable $message, array $context = []): void
     {
         $this->records[] = [
             'level' => (string) $level,
