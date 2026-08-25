@@ -328,6 +328,10 @@ class LiveConnectionTest extends TestCase
             iterator_to_array($envelopes, false);
             self::fail('Expected a decode failure for a non-serialized body');
         } catch (MessageDecodingFailedException) {
+        } catch (Throwable $exception) {
+            if ($exception::class !== 'Symfony\\Component\\Messenger\\Exception\\InvalidMessageSignatureException') {
+                throw $exception;
+            }
         }
 
         $connection->close();

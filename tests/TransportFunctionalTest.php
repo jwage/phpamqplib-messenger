@@ -28,6 +28,7 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Messenger\Stamp\RedeliveryStamp;
 use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
+use Throwable;
 use Traversable;
 
 use function assert;
@@ -649,6 +650,10 @@ class TransportFunctionalTest extends KernelTestCase
             iterator_to_array($envelopes, false);
             self::fail('Expected a decode failure for a non-serialized body');
         } catch (MessageDecodingFailedException) {
+        } catch (Throwable $exception) {
+            if ($exception::class !== 'Symfony\\Component\\Messenger\\Exception\\InvalidMessageSignatureException') {
+                throw $exception;
+            }
         }
 
         $connection->close();
