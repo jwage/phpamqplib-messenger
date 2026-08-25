@@ -45,6 +45,7 @@ readonly class ConnectionConfig
         'confirm_enabled',
         'confirm_timeout',
         'transactions_enabled',
+        'retries_enabled',
         'ssl',
         'exchange',
         'delay',
@@ -94,6 +95,8 @@ readonly class ConnectionConfig
 
     public bool $transactionsEnabled;
 
+    public bool $retriesEnabled;
+
     public ExchangeConfig $exchange;
 
     public DelayConfig $delay;
@@ -131,6 +134,7 @@ readonly class ConnectionConfig
         bool|null $confirmEnabled = null,
         int|float|null $confirmTimeout = null,
         bool|null $transactionsEnabled = null,
+        bool|null $retriesEnabled = null,
         public SslConfig|null $ssl = null,
         ExchangeConfig|null $exchange = null,
         DelayConfig|null $delay = null,
@@ -172,6 +176,7 @@ readonly class ConnectionConfig
         $this->confirmEnabled      = $confirmEnabled ?? true;
         $this->confirmTimeout      = $confirmTimeout ?? self::DEFAULT_CONFIRM_TIMEOUT;
         $this->transactionsEnabled = $transactionsEnabled ?? false;
+        $this->retriesEnabled      = $retriesEnabled ?? true;
         $this->exchange            = $exchange ?? new ExchangeConfig();
         $this->delay               = $delay ?? new DelayConfig();
         $this->queues              = self::indexByQueueName($queues ?? []);
@@ -203,6 +208,7 @@ readonly class ConnectionConfig
      *     confirm_enabled?: bool|mixed,
      *     confirm_timeout?: int|float|mixed,
      *     transactions_enabled?: bool|mixed,
+     *     retries_enabled?: bool|mixed,
      *     ssl?: array{
      *         cafile?: string|null,
      *         capath?: string|null,
@@ -327,6 +333,7 @@ readonly class ConnectionConfig
             confirmEnabled: ConfigHelper::getBool($connectionConfig, 'confirm_enabled'),
             confirmTimeout: ConfigHelper::getFloat($connectionConfig, 'confirm_timeout'),
             transactionsEnabled: ConfigHelper::getBool($connectionConfig, 'transactions_enabled'),
+            retriesEnabled: ConfigHelper::getBool($connectionConfig, 'retries_enabled'),
             ssl: isset($connectionConfig['ssl']) ? SslConfig::fromArray($connectionConfig['ssl']) : null,
             exchange: isset($connectionConfig['exchange']) ? ExchangeConfig::fromArray($connectionConfig['exchange']) : null,
             delay: isset($connectionConfig['delay']) ? DelayConfig::fromArray($connectionConfig['delay']) : null,

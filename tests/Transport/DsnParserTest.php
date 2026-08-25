@@ -41,6 +41,7 @@ class DsnParserTest extends TestCase
         self::assertSame(0, $connectionConfig->heartbeat);
         self::assertSame(true, $connectionConfig->keepalive);
         self::assertSame(false, $connectionConfig->keepaliveEnabled);
+        self::assertSame(true, $connectionConfig->retriesEnabled);
         self::assertNull($connectionConfig->ssl);
         self::assertEquals(new ExchangeConfig(name: 'messages'), $connectionConfig->exchange);
         self::assertEquals(new DelayConfig(), $connectionConfig->delay);
@@ -180,6 +181,25 @@ class DsnParserTest extends TestCase
         self::assertFalse($connectionConfig->keepaliveEnabled);
     }
 
+    public function testRetriesEnabled(): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1');
+
+        self::assertTrue($connectionConfig->retriesEnabled);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1?retries_enabled=false');
+
+        self::assertFalse($connectionConfig->retriesEnabled);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', ['retries_enabled' => false]);
+
+        self::assertFalse($connectionConfig->retriesEnabled);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', ['retries_enabled' => true]);
+
+        self::assertTrue($connectionConfig->retriesEnabled);
+    }
+
     public function testFetchSize(): void
     {
         $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1');
@@ -219,6 +239,7 @@ class DsnParserTest extends TestCase
         self::assertSame(5, $connectionConfig->heartbeat);
         self::assertSame(true, $connectionConfig->keepalive);
         self::assertSame('connection_name', $connectionConfig->connectionName);
+        self::assertFalse($connectionConfig->retriesEnabled);
 
         self::assertEquals(new SslConfig(
             cafile: 'cacert',
@@ -297,6 +318,7 @@ class DsnParserTest extends TestCase
             'rpc_timeout' => 4.0,
             'heartbeat' => 5,
             'keepalive' => true,
+            'retries_enabled' => false,
             'ssl' => ['cafile' => 'cacert'],
             'exchange' => [
                 'name' => 'exchange_name',

@@ -490,7 +490,7 @@ class Connection
     ): Retry {
         return $this->retryFactory->retry(
             $run,
-            $retries,
+            $this->resolveRetries($retries),
             $waitTime,
             $jitter,
         )
@@ -512,7 +512,7 @@ class Connection
     ): Retry {
         return $this->retryFactory->retry(
             $run,
-            $retries,
+            $this->resolveRetries($retries),
             $waitTime,
             $jitter,
         );
@@ -537,7 +537,7 @@ class Connection
     ): Retry {
         return $this->retryFactory->retry(
             $run,
-            $retries,
+            $this->resolveRetries($retries),
             $waitTime,
             $jitter,
         )
@@ -546,6 +546,20 @@ class Connection
                     $this->reconnect();
                 }
             });
+    }
+
+    /** Uses the configured retry budget unless the caller passed an explicit count. */
+    private function resolveRetries(int|null $retries): int|null
+    {
+        if ($retries !== null) {
+            return $retries;
+        }
+
+        if (! $this->connectionConfig->retriesEnabled) {
+            return 0;
+        }
+
+        return null;
     }
 
     /** Drops a failed publisher channel without disturbing a consumer on this connection. */
