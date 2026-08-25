@@ -24,9 +24,6 @@ class AmqpSenderTest extends TestCase
     /** @var Connection&MockObject */
     private Connection $connection;
 
-    /** @var SerializerInterface&MockObject */
-    private SerializerInterface $serializer;
-
     private AmqpSender $sender;
 
     public function testSend(): void
@@ -66,7 +63,10 @@ class AmqpSenderTest extends TestCase
             $amqpReceivedStamp,
         ]);
 
-        $this->serializer->expects(self::once())
+        $serializer = $this->createMock(SerializerInterface::class);
+        $sender     = new AmqpSender($this->connection, $serializer);
+
+        $serializer->expects(self::once())
             ->method('encode')
             ->with($envelope)
             ->willReturn(['body' => 'body', 'headers' => ['header1' => 'value1', 'header2' => 'value2']]);
@@ -81,9 +81,17 @@ class AmqpSenderTest extends TestCase
                 amqpStamp: $amqpStamp,
             );
 
-        $newEnvelope = $this->sender->send($envelope);
+        $newEnvelope = $sender->send($envelope);
 
         self::assertNotSame($envelope, $newEnvelope);
+    }
+
+    public function testFlush(): void
+    {
+        $this->connection->expects(self::once())
+            ->method('flush');
+
+        $this->sender->flush();
     }
 
     protected function setUp(): void
@@ -92,11 +100,9 @@ class AmqpSenderTest extends TestCase
 
         $this->connection = $this->createMock(Connection::class);
 
-        $this->serializer = $this->createMock(SerializerInterface::class);
-
         $this->sender = new AmqpSender(
             $this->connection,
-            $this->serializer,
+            $this->createStub(SerializerInterface::class),
         );
     }
 }

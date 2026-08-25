@@ -40,7 +40,7 @@ class AmqpConsumerTest extends TestCase
         $channel = $this->createMock(AMQPChannel::class);
 
         $connection = $this->getTestConnectionStub();
-        $connection->method('channel')
+        $connection->method('consumerChannel')
             ->willReturn($channel);
         $connection->method('getQueueNames')
             ->willReturn(['test_queue']);
@@ -100,8 +100,8 @@ class AmqpConsumerTest extends TestCase
     {
         $channel = $this->createMock(AMQPChannel::class);
 
-        $connection = $this->getTestConnection(onlyMethods: ['channel', 'getQueueNames', 'close']);
-        $connection->method('channel')
+        $connection = $this->getTestConnection(onlyMethods: ['consumerChannel', 'getQueueNames', 'close']);
+        $connection->method('consumerChannel')
             ->willReturn($channel);
         $connection->method('getQueueNames')
             ->willReturn(['test_queue']);
@@ -162,6 +162,60 @@ class AmqpConsumerTest extends TestCase
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
     }
 
+    public function testInvalidateDropsTheConsumerTagAndBufferedEnvelopes(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('consumerChannel')
+            ->willReturn($channel);
+        $connection->method('getQueueNames')
+            ->willReturn(['test_queue']);
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::exactly(2))
+            ->method('basic_qos')
+            ->with(
+                prefetch_size: 0,
+                prefetch_count: 20,
+                a_global: false,
+            );
+
+        $channel->expects(self::exactly(2))
+            ->method('basic_consume')
+            ->with(
+                queue: 'test_queue',
+                consumer_tag: '',
+                no_local: false,
+                no_ack: false,
+                exclusive: false,
+                nowait: false,
+                callback: self::isInstanceOf(Closure::class),
+            )
+            ->willReturn('consumer_tag');
+
+        $channel->expects(self::exactly(2))
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::exactly(2))
+            ->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        /** @var Traversable<AmqpEnvelope> $consumed */
+        $consumed = $consumer->consume('test_queue');
+        iterator_to_array($consumed);
+
+        $consumer->callback($this->createStub(AMQPMessage::class));
+        $consumer->invalidate();
+
+        /** @var Traversable<AMQPEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+
+        self::assertCount(0, iterator_to_array($amqpEnvelopes));
+    }
+
     public function testConsumeWithWaitTimeoutSetToNull(): void
     {
         $connectionConfig = ConnectionConfig::fromArray([
@@ -176,7 +230,7 @@ class AmqpConsumerTest extends TestCase
         $channel = $this->createMock(AMQPChannel::class);
 
         $connection = $this->getTestConnectionStub(connectionConfig: $connectionConfig);
-        $connection->method('channel')
+        $connection->method('consumerChannel')
             ->willReturn($channel);
         $connection->method('getQueueNames')
             ->willReturn(['test_queue']);
@@ -242,7 +296,7 @@ class AmqpConsumerTest extends TestCase
         $channel = $this->createMock(AMQPChannel::class);
 
         $connection = $this->getTestConnectionStub();
-        $connection->method('channel')
+        $connection->method('consumerChannel')
             ->willReturn($channel);
         $connection->method('getQueueNames')
             ->willReturn(['test_queue']);
@@ -298,7 +352,7 @@ class AmqpConsumerTest extends TestCase
         $channel = $this->createMock(AMQPChannel::class);
 
         $connection = $this->getTestConnectionStub();
-        $connection->method('channel')
+        $connection->method('consumerChannel')
             ->willReturn($channel);
         $connection->method('getQueueNames')
             ->willReturn(['test_queue']);
@@ -350,7 +404,7 @@ class AmqpConsumerTest extends TestCase
         $channel = $this->createMock(AMQPChannel::class);
 
         $connection = $this->getTestConnectionStub();
-        $connection->method('channel')
+        $connection->method('consumerChannel')
             ->willReturn($channel);
 
         $consumer = $this->getTestConsumer(connection: $connection);
@@ -381,7 +435,7 @@ class AmqpConsumerTest extends TestCase
         $channel = $this->createMock(AMQPChannel::class);
 
         $connection = $this->getTestConnectionStub();
-        $connection->method('channel')
+        $connection->method('consumerChannel')
             ->willReturn($channel);
 
         $consumer = $this->getTestConsumer(connection: $connection);
@@ -413,7 +467,7 @@ class AmqpConsumerTest extends TestCase
         $channel = $this->createMock(AMQPChannel::class);
 
         $connection = $this->getTestConnectionStub();
-        $connection->method('channel')
+        $connection->method('consumerChannel')
             ->willReturn($channel);
 
         $consumer = $this->getTestConsumer(connection: $connection);
@@ -449,7 +503,7 @@ class AmqpConsumerTest extends TestCase
         $channel = $this->createMock(AMQPChannel::class);
 
         $connection = $this->getTestConnectionStub();
-        $connection->method('channel')
+        $connection->method('consumerChannel')
             ->willReturn($channel);
         $connection->method('getQueueNames')
             ->willReturn(['test_queue']);
@@ -540,7 +594,7 @@ class AmqpConsumerTest extends TestCase
     private function getTestConnectionStub(ConnectionConfig|null $connectionConfig = null): Connection&Stub
     {
         return self::getStubBuilder(Connection::class)
-            ->onlyMethods(['channel', 'getQueueNames', 'close'])
+            ->onlyMethods(['consumerChannel', 'getQueueNames', 'close'])
             ->setConstructorArgs([
                 $this->retryFactory,
                 $this->amqpConnectionFactory,
@@ -553,7 +607,7 @@ class AmqpConsumerTest extends TestCase
     /** @param list<non-empty-string> $onlyMethods */
     private function getTestConnection(
         ConnectionConfig|null $connectionConfig = null,
-        array $onlyMethods = ['channel', 'getQueueNames', 'close'],
+        array $onlyMethods = ['consumerChannel', 'getQueueNames', 'close'],
     ): Connection&MockObject {
         return $this->getMockBuilder(Connection::class)
             ->onlyMethods($onlyMethods)

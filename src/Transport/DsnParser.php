@@ -69,6 +69,7 @@ class DsnParser
          *     rpc_timeout?: float|mixed,
          *     heartbeat?: int|mixed,
          *     keepalive?: bool|mixed,
+         *     keepalive_enabled?: bool|mixed,
          *     prefetch_count?: int|mixed,
          *     wait_timeout?: int|float|mixed,
          *     confirm_enabled?: bool|mixed,
@@ -105,6 +106,7 @@ class DsnParser
          *             arguments?: array<string, mixed>,
          *         },
          *         queue_name_pattern?: string,
+         *         durable?: bool,
          *     },
          *     queues: array<string, array{
          *         passive?: bool,

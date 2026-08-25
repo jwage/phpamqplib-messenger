@@ -130,10 +130,21 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
                     'body' => $body,
                     'headers' => $headers,
                 ]);
-            } catch (MessageDecodingFailedException $e) {
+            } catch (Throwable $e) {
+                // Symfony 8's SigningSerializer throws InvalidMessageSignatureException
+                // (not a MessageDecodingFailedException) for an unverified garbage body.
                 $amqpEnvelope->nack();
 
                 throw $e;
+            }
+
+            // Symfony 8+'s PhpSerializer wraps a decode failure in an Envelope instead of throwing.
+            $decodedMessage = $envelope->getMessage();
+
+            if ($decodedMessage instanceof MessageDecodingFailedException) {
+                $amqpEnvelope->nack();
+
+                throw $decodedMessage;
             }
 
             if (($messageId = $amqpEnvelope->getMessageId()) !== null) {

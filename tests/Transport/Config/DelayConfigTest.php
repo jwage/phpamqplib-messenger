@@ -19,6 +19,7 @@ class DelayConfigTest extends TestCase
         self::assertSame('delays', $delayConfig->exchange->name);
         self::assertSame(AMQPExchangeType::DIRECT, $delayConfig->exchange->type);
         self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
+        self::assertFalse($delayConfig->durable);
     }
 
     public function testFromArrayWithEmptyArray(): void
@@ -28,6 +29,7 @@ class DelayConfigTest extends TestCase
         self::assertSame('delays', $delayConfig->exchange->name);
         self::assertSame(AMQPExchangeType::DIRECT, $delayConfig->exchange->type);
         self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
+        self::assertFalse($delayConfig->durable);
     }
 
     public function testFromArray(): void
@@ -43,6 +45,7 @@ class DelayConfigTest extends TestCase
                 'arguments' => ['arg1' => 'val1', 'arg2' => 'val2'],
             ],
             'queue_name_pattern' => 'delay_%exchange_name%_%routing_key%_%delay%',
+            'durable' => true,
             'arguments' => ['arg3' => 'val3', 'arg4' => 'val4'],
         ]);
 
@@ -54,14 +57,23 @@ class DelayConfigTest extends TestCase
         self::assertTrue($delayConfig->exchange->autoDelete);
         self::assertSame(['arg1' => 'val1', 'arg2' => 'val2'], $delayConfig->exchange->arguments);
         self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
+        self::assertTrue($delayConfig->durable);
         self::assertSame(['arg3' => 'val3', 'arg4' => 'val4'], $delayConfig->arguments);
+    }
+
+    public function testFromArrayWithInvalidDurableType(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Invalid type "object" for key "durable" (expected boolean)');
+
+        DelayConfig::fromArray(['durable' => new stdClass()]);
     }
 
     /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
-        self::expectExceptionMessage('Invalid delay option(s) "invalid" passed to the AMQP Messenger transport - known options:');
+        self::expectExceptionMessage('Invalid delay option(s) "invalid" passed to the AMQP Messenger transport - known options: "exchange", "enabled", "auto_setup", "queue_name_pattern", "durable", "arguments".');
 
         DelayConfig::fromArray(['invalid' => true]);
     }

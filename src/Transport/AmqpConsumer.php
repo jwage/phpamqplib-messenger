@@ -42,12 +42,16 @@ class AmqpConsumer
     {
         $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
 
+        // Resolve the channel first. A dead cached channel must be discarded (and this
+        // consumer invalidated) before we decide whether the tag is still valid.
+        $this->connection->consumerChannel();
+
         $desiredPrefetch = $fetchSize !== null && $fetchSize > $queueConfig->prefetchCount
             ? $fetchSize
             : $queueConfig->prefetchCount;
 
         if ($this->effectivePrefetchCount !== $desiredPrefetch || $this->consumerTag === null) {
-            $this->connection->channel()->basic_qos(
+            $this->connection->consumerChannel()->basic_qos(
                 prefetch_size: 0,
                 prefetch_count: $desiredPrefetch,
                 a_global: false,
@@ -61,9 +65,9 @@ class AmqpConsumer
 
         $stop = false;
 
-        while ($this->connection->channel()->is_consuming()) {
+        while ($this->connection->consumerChannel()->is_consuming()) {
             try {
-                $this->connection->channel()->wait(
+                $this->connection->consumerChannel()->wait(
                     allowed_methods: null,
                     non_blocking: false,
                     timeout: $queueConfig->waitTimeout,
@@ -121,7 +125,7 @@ class AmqpConsumer
     {
         if ($this->consumerTag !== null) {
             try {
-                $this->connection->channel()->basic_cancel(consumer_tag: $this->consumerTag);
+                $this->connection->consumerChannel()->basic_cancel(consumer_tag: $this->consumerTag);
             } catch (AMQPExceptionInterface) {
                 // do nothing
             }
@@ -132,13 +136,33 @@ class AmqpConsumer
     }
 
     /**
+     * Forgets the consumer registration without talking to the broker.
+     *
+     * Called when the channel this consumer was registered on has been discarded. Unlike
+     * stop() this issues no basic_cancel: resolving a channel to cancel on would open and
+     * cache a replacement channel, and the broker may not be readable at all (a blocked
+     * connection stops being read, so waiting for basic.cancel-ok can hang). Dropping the
+     * tag lets the next consume() re-register on the replacement channel.
+     *
+     * Buffered envelopes are dropped with it because their delivery tags belong to the
+     * discarded channel and cannot be acknowledged on its replacement. The broker only
+     * requeues those deliveries once that channel or the connection actually closes.
+     */
+    public function invalidate(): void
+    {
+        $this->consumerTag            = null;
+        $this->effectivePrefetchCount = null;
+        $this->buffer                 = [];
+    }
+
+    /**
      * @throws AMQPExceptionInterface
      * @throws TransportException
      * @throws InvalidArgumentException
      */
     private function start(QueueConfig $queueConfig): void
     {
-        $this->consumerTag = $this->connection->channel()->basic_consume(
+        $this->consumerTag = $this->connection->consumerChannel()->basic_consume(
             queue: $queueConfig->name,
             consumer_tag: '',
             no_local: false,

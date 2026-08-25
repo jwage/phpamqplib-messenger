@@ -38,6 +38,7 @@ readonly class ConnectionConfig
         'rpc_timeout',
         'heartbeat',
         'keepalive',
+        'keepalive_enabled',
         'prefetch_count',
         'wait_timeout',
         'confirm_enabled',
@@ -80,6 +81,8 @@ readonly class ConnectionConfig
 
     public bool $keepalive;
 
+    public bool $keepaliveEnabled;
+
     public int $prefetchCount;
 
     public int|float|null $waitTimeout;
@@ -121,6 +124,7 @@ readonly class ConnectionConfig
         float|null $rpcTimeout = null,
         int|null $heartbeat = null,
         bool|null $keepalive = null,
+        bool|null $keepaliveEnabled = null,
         int|null $prefetchCount = null,
         int|float|null $waitTimeout = null,
         bool|null $confirmEnabled = null,
@@ -155,6 +159,7 @@ readonly class ConnectionConfig
         $this->rpcTimeout          = $rpcTimeout ?? 3.0;
         $this->heartbeat           = $heartbeat ?? 0;
         $this->keepalive           = $keepalive ?? true;
+        $this->keepaliveEnabled    = $keepaliveEnabled ?? false;
         $this->prefetchCount       = $prefetchCount ?? self::DEFAULT_PREFETCH_COUNT;
         $this->waitTimeout         = $waitTimeout ?? self::DEFAULT_WAIT_TIMEOUT;
         $this->confirmEnabled      = $confirmEnabled ?? true;
@@ -184,6 +189,7 @@ readonly class ConnectionConfig
      *     rpc_timeout?: float|mixed,
      *     heartbeat?: int|mixed,
      *     keepalive?: bool|mixed,
+     *     keepalive_enabled?: bool|mixed,
      *     prefetch_count?: int|mixed,
      *     wait_timeout?: int|float|mixed,
      *     confirm_enabled?: bool|mixed,
@@ -221,6 +227,7 @@ readonly class ConnectionConfig
      *             arguments?: array<string, mixed>,
      *         },
      *         queue_name_pattern?: string,
+     *         durable?: bool|mixed,
      *     },
      *     queues?: array<int|string, array{
      *         name?: string,
@@ -305,6 +312,7 @@ readonly class ConnectionConfig
             rpcTimeout: ConfigHelper::getFloat($connectionConfig, 'rpc_timeout'),
             heartbeat: ConfigHelper::getInt($connectionConfig, 'heartbeat'),
             keepalive: ConfigHelper::getBool($connectionConfig, 'keepalive'),
+            keepaliveEnabled: ConfigHelper::getBool($connectionConfig, 'keepalive_enabled'),
             prefetchCount: $prefetchCount,
             waitTimeout: $waitTimeout,
             confirmEnabled: ConfigHelper::getBool($connectionConfig, 'confirm_enabled'),

@@ -41,5 +41,12 @@
                 <directory name="tests"/>
             </errorLevel>
         </MissingOverrideAttribute>
+
+        <UnrecognizedStatement>
+            <errorLevel type="suppress">
+                <file name="src/Compat/BundleBase.php"/>
+            <file name="src/Transport/AmqpKeepaliveReceiverInterface.php"/>
+            </errorLevel>
+        </UnrecognizedStatement>
     </issueHandlers>
 </psalm>

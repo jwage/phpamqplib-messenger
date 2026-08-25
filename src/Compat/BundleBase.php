@@ -10,6 +10,7 @@ use Symfony\Component\HttpKernel\Bundle\Bundle;
 use function class_exists;
 
 // phpcs:disable PSR1.Classes.ClassDeclaration.MultipleClasses
+// phpcs:disable Generic.Files.OneObjectStructurePerFile
 if (class_exists(AbstractBundle::class)) {
     abstract class BundleBase extends AbstractBundle
     {

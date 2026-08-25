@@ -7,6 +7,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use RuntimeException;
+use Symfony\Component\Messenger\Exception\TransportException;
 use Throwable;
 
 class RetryTest extends TestCase
@@ -93,5 +94,48 @@ class RetryTest extends TestCase
 
         self::assertSame(2, $retries);
         self::assertSame(3, $runs);
+    }
+
+    public function testEmptyCatchListDoesNotRetry(): void
+    {
+        $runs = 0;
+
+        try {
+            (new Retry(
+                retries: 3,
+                waitTime: 0,
+            ))
+                ->catch([])
+                ->run(static function () use (&$runs): void {
+                    $runs++;
+
+                    throw new RuntimeException('not retried');
+                });
+
+            self::fail('Expected the exception to propagate without retries.');
+        } catch (RuntimeException $exception) {
+            self::assertSame('not retried', $exception->getMessage());
+        }
+
+        self::assertSame(1, $runs);
+    }
+
+    public function testExhaustedRetriesWrapTheExceptionAsTransportException(): void
+    {
+        try {
+            (new Retry(
+                retries: 0,
+                waitTime: 0,
+            ))
+                ->catch(InvalidArgumentException::class)
+                ->run(static function (): void {
+                    throw new InvalidArgumentException('gave up');
+                });
+
+            self::fail('Expected exhausted retries to wrap the exception.');
+        } catch (TransportException $exception) {
+            self::assertSame('gave up', $exception->getMessage());
+            self::assertInstanceOf(InvalidArgumentException::class, $exception->getPrevious());
+        }
     }
 }

@@ -21,10 +21,13 @@ use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
+use Traversable;
 
 use function array_shift;
 use function iterator_to_array;
@@ -291,7 +294,7 @@ class AmqpReceiverTest extends TestCase
             ->will($this->throwException(new AMQPTimeoutException()));
 
         $connection = self::getStubBuilder(Connection::class)
-            ->onlyMethods(['channel', 'getQueueNames', 'consume', 'close'])
+            ->onlyMethods(['consumerChannel', 'getQueueNames', 'consume', 'close'])
             ->setConstructorArgs([
                 $this->retryFactory,
                 $this->amqpConnectionFactory,
@@ -299,7 +302,7 @@ class AmqpReceiverTest extends TestCase
                 $this->logger,
             ])
             ->getStub();
-        $connection->method('channel')
+        $connection->method('consumerChannel')
             ->willReturn($channel);
         $connection->method('getQueueNames')
             ->willReturn(['queue_name']);
@@ -325,6 +328,217 @@ class AmqpReceiverTest extends TestCase
 
         self::assertCount(2, iterator_to_array($receiver->get(2), false));
         self::assertCount(1, iterator_to_array($receiver->get(2), false));
+    }
+
+    public function testGetWithFetchSizeDoesNotConsumeFurtherQueuesOnceLimitIsReached(): void
+    {
+        $message      = new stdClass();
+        $envelope     = new Envelope($message);
+        $amqpMessage1 = new AMQPMessage(serialize($message), ['message_id' => '1']);
+        $amqpMessage2 = new AMQPMessage(serialize($message), ['message_id' => '2']);
+
+        $connection = $this->getTestConnection();
+        $connection->method('getQueueNames')
+            ->willReturn(['queue_name', 'queue_name2']);
+
+        $connection->expects(self::once())
+            ->method('consume')
+            ->with('queue_name', 2)
+            ->willReturn([
+                new AmqpEnvelope($amqpMessage1),
+                new AmqpEnvelope($amqpMessage2),
+            ]);
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::exactly(2))
+            ->method('decode')
+            ->willReturn($envelope);
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        self::assertCount(2, iterator_to_array($receiver->get(2), false));
+    }
+
+    public function testGetWithFetchSizeConsumesAdditionalQueuesUntilLimitIsReached(): void
+    {
+        $message      = new stdClass();
+        $envelope     = new Envelope($message);
+        $amqpMessage1 = new AMQPMessage(serialize($message), ['message_id' => '1']);
+        $amqpMessage2 = new AMQPMessage(serialize($message), ['message_id' => '2']);
+        $amqpMessage3 = new AMQPMessage(serialize($message), ['message_id' => '3']);
+
+        $connection = $this->getTestConnection();
+        $connection->method('getQueueNames')
+            ->willReturn(['queue_name', 'queue_name2']);
+
+        $connection->expects(self::exactly(2))
+            ->method('consume')
+            ->willReturnCallback(
+                static function (string $queueName, int|null $fetchSize = null) use ($amqpMessage1, $amqpMessage2, $amqpMessage3): array {
+                    self::assertSame(3, $fetchSize);
+
+                    return match ($queueName) {
+                        'queue_name' => [
+                            new AmqpEnvelope($amqpMessage1),
+                            new AmqpEnvelope($amqpMessage2),
+                        ],
+                        'queue_name2' => [
+                            new AmqpEnvelope($amqpMessage3),
+                        ],
+                        default => [],
+                    };
+                },
+            );
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::exactly(3))
+            ->method('decode')
+            ->willReturn($envelope);
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        self::assertCount(3, iterator_to_array($receiver->get(3), false));
+    }
+
+    public function testGetConsumesEachConfiguredQueue(): void
+    {
+        $message1      = new stdClass();
+        $message2      = new stdClass();
+        $envelope1     = new Envelope($message1);
+        $envelope2     = new Envelope($message2);
+        $amqpEnvelope1 = new AmqpEnvelope(new AMQPMessage(serialize($message1), ['message_id' => '1']));
+        $amqpEnvelope2 = new AmqpEnvelope(new AMQPMessage(serialize($message2), ['message_id' => '2']));
+
+        $connection = $this->getTestConnection();
+        $connection->method('getQueueNames')
+            ->willReturn(['queue_name', 'queue_name2']);
+
+        $connection->expects(self::exactly(2))
+            ->method('consume')
+            ->willReturnCallback(
+                static function (string $queueName) use ($amqpEnvelope1, $amqpEnvelope2): array {
+                    return match ($queueName) {
+                        'queue_name' => [$amqpEnvelope1],
+                        'queue_name2' => [$amqpEnvelope2],
+                        default => [],
+                    };
+                },
+            );
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::exactly(2))
+            ->method('decode')
+            ->willReturnOnConsecutiveCalls($envelope1, $envelope2);
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        $envelopes = [];
+
+        foreach ($receiver->get() as $envelope) {
+            $envelopes[] = $envelope;
+        }
+
+        self::assertCount(2, $envelopes);
+
+        $amqpReceivedStamp1 = $envelopes[0]->last(AmqpReceivedStamp::class);
+        $amqpReceivedStamp2 = $envelopes[1]->last(AmqpReceivedStamp::class);
+
+        self::assertInstanceOf(AmqpReceivedStamp::class, $amqpReceivedStamp1);
+        self::assertInstanceOf(AmqpReceivedStamp::class, $amqpReceivedStamp2);
+        self::assertSame($amqpEnvelope1, $amqpReceivedStamp1->getAMQPEnvelope());
+        self::assertSame('queue_name', $amqpReceivedStamp1->getQueueName());
+        self::assertSame($amqpEnvelope2, $amqpReceivedStamp2->getAMQPEnvelope());
+        self::assertSame('queue_name2', $amqpReceivedStamp2->getQueueName());
+    }
+
+    public function testGetNacksWhenDecodeThrows(): void
+    {
+        $amqpEnvelope = $this->createMock(AmqpEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('bad');
+        $amqpEnvelope->method('getHeaders')->willReturn([]);
+        $amqpEnvelope->expects(self::once())->method('nack');
+
+        $connection = $this->getTestConnection();
+        $connection->expects(self::once())
+            ->method('getQueueNames')
+            ->willReturn(['queue_name']);
+        $connection->expects(self::once())
+            ->method('consume')
+            ->willReturn([$amqpEnvelope]);
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::once())
+            ->method('decode')
+            ->willThrowException(new MessageDecodingFailedException('bad'));
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        $this->expectException(MessageDecodingFailedException::class);
+        $this->expectExceptionMessage('bad');
+
+        /** @var Traversable<mixed, Envelope> $envelopes */
+        $envelopes = $receiver->get();
+        iterator_to_array($envelopes);
+    }
+
+    public function testGetNacksWhenDecodeThrowsANonDecodingException(): void
+    {
+        $amqpEnvelope = $this->createMock(AmqpEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('bad');
+        $amqpEnvelope->method('getHeaders')->willReturn([]);
+        $amqpEnvelope->expects(self::once())->method('nack');
+
+        $connection = $this->getTestConnection();
+        $connection->expects(self::once())
+            ->method('getQueueNames')
+            ->willReturn(['queue_name']);
+        $connection->expects(self::once())
+            ->method('consume')
+            ->willReturn([$amqpEnvelope]);
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::once())
+            ->method('decode')
+            ->willThrowException(new RuntimeException('refusing to decode it'));
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('refusing to decode it');
+
+        /** @var Traversable<mixed, Envelope> $envelopes */
+        $envelopes = $receiver->get();
+        iterator_to_array($envelopes);
+    }
+
+    public function testGetNacksWhenDecodeReturnsAFailureEnvelope(): void
+    {
+        $amqpEnvelope = $this->createMock(AmqpEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('bad');
+        $amqpEnvelope->method('getHeaders')->willReturn([]);
+        $amqpEnvelope->expects(self::once())->method('nack');
+
+        $connection = $this->getTestConnection();
+        $connection->expects(self::once())
+            ->method('getQueueNames')
+            ->willReturn(['queue_name']);
+        $connection->expects(self::once())
+            ->method('consume')
+            ->willReturn([$amqpEnvelope]);
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::once())
+            ->method('decode')
+            ->willReturn(new Envelope(new MessageDecodingFailedException('bad')));
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        $this->expectException(MessageDecodingFailedException::class);
+        $this->expectExceptionMessage('bad');
+
+        /** @var Traversable<mixed, Envelope> $envelopes */
+        $envelopes = $receiver->get();
+        iterator_to_array($envelopes);
     }
 
     public function testAck(): void

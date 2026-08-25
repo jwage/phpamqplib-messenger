@@ -40,6 +40,7 @@ class DsnParserTest extends TestCase
         self::assertSame(3.0, $connectionConfig->rpcTimeout);
         self::assertSame(0, $connectionConfig->heartbeat);
         self::assertSame(true, $connectionConfig->keepalive);
+        self::assertSame(false, $connectionConfig->keepaliveEnabled);
         self::assertNull($connectionConfig->ssl);
         self::assertEquals(new ExchangeConfig(name: 'messages'), $connectionConfig->exchange);
         self::assertEquals(new DelayConfig(), $connectionConfig->delay);
@@ -160,6 +161,25 @@ class DsnParserTest extends TestCase
         self::assertSame('My/Connection', $connectionConfig->connectionName);
     }
 
+    public function testKeepaliveEnabled(): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1');
+
+        self::assertFalse($connectionConfig->keepaliveEnabled);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1?keepalive_enabled=true');
+
+        self::assertTrue($connectionConfig->keepaliveEnabled);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', ['keepalive_enabled' => true]);
+
+        self::assertTrue($connectionConfig->keepaliveEnabled);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', ['keepalive_enabled' => false]);
+
+        self::assertFalse($connectionConfig->keepaliveEnabled);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -209,6 +229,7 @@ class DsnParserTest extends TestCase
                 autoDelete: true,
             ),
             queueNamePattern: 'queue_name_pattern',
+            durable: true,
             arguments: ['key' => 'value'],
         ), $connectionConfig->delay);
 
@@ -281,6 +302,7 @@ class DsnParserTest extends TestCase
                     'auto_delete' => true,
                 ],
                 'queue_name_pattern' => 'queue_name_pattern',
+                'durable' => true,
                 'arguments' => ['key' => 'value'],
             ],
             'queues' => [

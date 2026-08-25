@@ -13,6 +13,8 @@ use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 
 class PhpAmqpLibMessengerBundle extends BundleBase
 {
+    private PhpAmqpLibMessengerExtension|null $bundleExtension = null;
+
     #[Override]
     public function build(ContainerBuilder $container): void
     {
@@ -20,8 +22,6 @@ class PhpAmqpLibMessengerBundle extends BundleBase
 
         $container->addCompilerPass(new PhpAmqpLibMessengerCompilerPass());
     }
-
-    private PhpAmqpLibMessengerExtension|null $bundleExtension = null;
 
     #[Override]
     public function getContainerExtension(): ExtensionInterface|null
