@@ -42,25 +42,22 @@ class AmqpConsumer
     {
         $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
 
-        // Resolve the channel first. A dead cached channel must be discarded (and this
-        // consumer invalidated) before we decide whether the tag is still valid.
-        $this->connection->consumerChannel();
+        $this->ensureStarted($queueName, $fetchSize);
 
-        $desiredPrefetch = $fetchSize !== null && $fetchSize > $queueConfig->prefetchCount
-            ? $fetchSize
-            : $queueConfig->prefetchCount;
+        if ($this->connection->isExternalWaitEnabled()) {
+            if ($this->buffer === []) {
+                $this->connection->drainConsumerChannel();
+            }
 
-        if ($this->effectivePrefetchCount !== $desiredPrefetch || $this->consumerTag === null) {
-            $this->connection->consumerChannel()->basic_qos(
-                prefetch_size: 0,
-                prefetch_count: $desiredPrefetch,
-                a_global: false,
-            );
-            $this->effectivePrefetchCount = $desiredPrefetch;
+            yield from $this->releaseBuffer($fetchSize);
+
+            return;
         }
 
-        if ($this->consumerTag === null) {
-            $this->start($queueConfig);
+        if ($this->buffer !== []) {
+            yield from $this->releaseBuffer($fetchSize);
+
+            return;
         }
 
         $stop = false;
@@ -89,29 +86,44 @@ class AmqpConsumer
                 break;
             }
 
-            if ($fetchSize === null) {
-                // Keep original snapshotting into local variable (for legacy code support)!
-                // We do not use this approach when $fetchSize is used, because it will
-                // not yield all items in case the caller breks mid-iteration forced by the $fetchSize
-                $buffer = $this->buffer;
-
-                $this->buffer = [];
-
-                yield from $buffer;
-            } else {
-                // Drain by shifting items off $this->buffer one-by-one rather than snapshotting it
-                // into a local and clearing the instance buffer up-front. If the caller breaks
-                // mid-iteration (e.g. AmqpReceiver honoring fetchSize), only the items already
-                // yielded are removed; the rest remain on $this->buffer and are picked up by the
-                // next consume() call instead of being silently dropped from PHP memory.
-                while (($amqpEnvelope = array_shift($this->buffer)) !== null) {
-                    yield $amqpEnvelope;
-                }
-            }
+            yield from $this->releaseBuffer($fetchSize);
 
             if ($stop) {
                 break;
             }
+        }
+    }
+
+    /**
+     * Subscribes to the queue if needed, without waiting for deliveries.
+     *
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     * @throws InvalidArgumentException
+     */
+    public function ensureStarted(string $queueName, int|null $fetchSize = null): void
+    {
+        $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
+
+        // Resolve the channel first. A dead cached channel must be discarded (and this
+        // consumer invalidated) before we decide whether the tag is still valid.
+        $this->connection->consumerChannel();
+
+        $desiredPrefetch = $fetchSize !== null && $fetchSize > $queueConfig->prefetchCount
+            ? $fetchSize
+            : $queueConfig->prefetchCount;
+
+        if ($this->effectivePrefetchCount !== $desiredPrefetch || $this->consumerTag === null) {
+            $this->connection->consumerChannel()->basic_qos(
+                prefetch_size: 0,
+                prefetch_count: $desiredPrefetch,
+                a_global: false,
+            );
+            $this->effectivePrefetchCount = $desiredPrefetch;
+        }
+
+        if ($this->consumerTag === null) {
+            $this->start($queueConfig);
         }
     }
 
@@ -171,5 +183,31 @@ class AmqpConsumer
             nowait: false,
             callback: $this->callback(...),
         );
+    }
+
+    /** @return iterable<AmqpEnvelope> */
+    private function releaseBuffer(int|null $fetchSize): iterable
+    {
+        if ($fetchSize === null) {
+            // Keep original snapshotting into local variable (for legacy code support)!
+            // We do not use this approach when $fetchSize is used, because it will
+            // not yield all items in case the caller breaks mid-iteration forced by the $fetchSize
+            $buffer = $this->buffer;
+
+            $this->buffer = [];
+
+            yield from $buffer;
+
+            return;
+        }
+
+        // Drain by shifting items off $this->buffer one-by-one rather than snapshotting it
+        // into a local and clearing the instance buffer up-front. If the caller breaks
+        // mid-iteration (e.g. AmqpReceiver honoring fetchSize), only the items already
+        // yielded are removed; the rest remain on $this->buffer and are picked up by the
+        // next consume() call instead of being silently dropped from PHP memory.
+        while (($amqpEnvelope = array_shift($this->buffer)) !== null) {
+            yield $amqpEnvelope;
+        }
     }
 }

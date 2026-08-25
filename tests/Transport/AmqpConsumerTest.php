@@ -68,11 +68,11 @@ class AmqpConsumerTest extends TestCase
             )
             ->willReturn('consumer_tag');
 
-        $channel->expects(self::exactly(2))
+        $channel->expects(self::once())
             ->method('is_consuming')
             ->willReturn(true);
 
-        $channel->expects(self::exactly(2))
+        $channel->expects(self::once())
             ->method('wait')
             ->with(
                 allowed_methods: null,
@@ -258,11 +258,11 @@ class AmqpConsumerTest extends TestCase
             )
             ->willReturn('consumer_tag');
 
-        $channel->expects(self::exactly(2))
+        $channel->expects(self::once())
             ->method('is_consuming')
             ->willReturn(true);
 
-        $channel->expects(self::exactly(2))
+        $channel->expects(self::once())
             ->method('wait')
             ->with(
                 allowed_methods: null,
@@ -310,13 +310,8 @@ class AmqpConsumerTest extends TestCase
             ->method('basic_consume')
             ->willReturn('consumer_tag');
 
-        $channel->expects(self::exactly(2))
-            ->method('is_consuming')
-            ->willReturn(true);
-
-        $channel->expects(self::exactly(2))
-            ->method('wait')
-            ->will($this->throwException(new AMQPTimeoutException()));
+        $channel->expects(self::never())
+            ->method('wait');
 
         $message1 = $this->createStub(AMQPMessage::class);
         $message2 = $this->createStub(AMQPMessage::class);
@@ -368,13 +363,8 @@ class AmqpConsumerTest extends TestCase
             ->method('basic_consume')
             ->willReturn('consumer_tag');
 
-        $channel->expects(self::exactly(2))
-            ->method('is_consuming')
-            ->willReturn(true);
-
-        $channel->expects(self::exactly(2))
-            ->method('wait')
-            ->will($this->throwException(new AMQPTimeoutException()));
+        $channel->expects(self::never())
+            ->method('wait');
 
         $message1 = $this->createStub(AMQPMessage::class);
         $message2 = $this->createStub(AMQPMessage::class);
@@ -568,6 +558,40 @@ class AmqpConsumerTest extends TestCase
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
 
         $consumer->stop();
+    }
+
+    public function testConsumeWithExternalWaitDrainsWithoutBlocking(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnection(onlyMethods: [
+            'consumerChannel',
+            'getQueueNames',
+            'close',
+            'isExternalWaitEnabled',
+            'drainConsumerChannel',
+        ]);
+        $connection->method('consumerChannel')
+            ->willReturn($channel);
+        $connection->method('isExternalWaitEnabled')
+            ->willReturn(true);
+        $connection->expects(self::once())
+            ->method('drainConsumerChannel');
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::once())
+            ->method('basic_qos');
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+        $channel->expects(self::never())
+            ->method('wait');
+
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+
+        self::assertCount(0, iterator_to_array($amqpEnvelopes));
     }
 
     protected function setUp(): void

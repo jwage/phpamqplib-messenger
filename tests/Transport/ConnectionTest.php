@@ -733,13 +733,13 @@ class ConnectionTest extends TestCase
             ->method('reconnect');
 
         $consumerChannel->method('is_open')->willReturn(true);
-        $consumerChannel->expects(self::exactly(2))
+        $consumerChannel->expects(self::once())
             ->method('is_consuming')
             ->willReturn(true);
         $consumerChannel->expects(self::once())
             ->method('basic_consume')
             ->willReturn('consumer-tag');
-        $consumerChannel->expects(self::exactly(2))
+        $consumerChannel->expects(self::once())
             ->method('wait')
             ->willThrowException(new AMQPTimeoutException('poll timeout'));
         $consumerChannel->expects(self::once())
@@ -832,13 +832,13 @@ class ConnectionTest extends TestCase
             ->method('reconnect');
 
         $consumerChannel->method('is_open')->willReturn(true);
-        $consumerChannel->expects(self::exactly(2))
+        $consumerChannel->expects(self::once())
             ->method('is_consuming')
             ->willReturn(true);
         $consumerChannel->expects(self::once())
             ->method('basic_consume')
             ->willReturn('consumer-tag');
-        $consumerChannel->expects(self::exactly(2))
+        $consumerChannel->expects(self::once())
             ->method('wait')
             ->willThrowException(new AMQPTimeoutException('poll timeout'));
         $consumerChannel->expects(self::once())
@@ -1400,6 +1400,134 @@ class ConnectionTest extends TestCase
 
         self::assertNull($consumerTagProperty->getValue($consumer1));
         self::assertNull($consumerTagProperty->getValue($consumer2));
+    }
+
+    public function testStartConsumersSubscribesWithoutWaiting(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+                'queue_name2' => new QueueConfig(name: 'queue_name2'),
+            ],
+        );
+
+        $factory        = $this->createMock(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->expects(self::once())
+            ->method('create')
+            ->willReturn($amqpConnection);
+
+        $amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+
+        $consumedQueues = [];
+
+        $amqpChannel->method('is_open')->willReturn(true);
+        $amqpChannel->expects(self::never())
+            ->method('wait');
+        $amqpChannel->expects(self::exactly(2))
+            ->method('basic_consume')
+            ->willReturnCallback(
+                static function (string $queue, mixed ...$_args) use (&$consumedQueues): string {
+                    $consumedQueues[] = $queue;
+
+                    return $queue === 'queue_name' ? 'consumer-tag-1' : 'consumer-tag-2';
+                },
+            );
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $connection->startConsumers();
+
+        self::assertSame(['queue_name', 'queue_name2'], $consumedQueues);
+
+        $connection->close();
+    }
+
+    public function testListenEnablesExternalWaitAndStartsConsumers(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpChannel->method('is_open')->willReturn(true);
+        $amqpChannel->expects(self::never())
+            ->method('wait');
+        $amqpChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag-1');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        self::assertFalse($connection->isExternalWaitEnabled());
+
+        $connection->listen();
+
+        self::assertTrue($connection->isExternalWaitEnabled());
+
+        $connection->close();
+    }
+
+    public function testStartConsumersSkipsQueuesThatAreNotConfigured(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpChannel->method('is_open')->willReturn(true);
+        $amqpChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturnCallback(static function (string $queue): string {
+                self::assertSame('queue_name', $queue);
+
+                return 'consumer-tag-1';
+            });
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $connection->startConsumers(['queue_name', 'other_transport_queue']);
+
+        $connection->close();
     }
 
     public function testPublish(): void

@@ -16,7 +16,6 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use PhpAmqpLib\Channel\AMQPChannel;
-use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
@@ -383,12 +382,8 @@ class AmqpReceiverTest extends TestCase
         $channel->expects(self::once())
             ->method('basic_consume')
             ->willReturn('consumer_tag');
-        $channel->expects(self::exactly(2))
-            ->method('is_consuming')
-            ->willReturn(true);
-        $channel->expects(self::exactly(2))
-            ->method('wait')
-            ->will($this->throwException(new AMQPTimeoutException()));
+        $channel->expects(self::never())
+            ->method('wait');
 
         $connection = self::getStubBuilder(Connection::class)
             ->onlyMethods(['consumerChannel', 'getQueueNames', 'consume', 'close'])
@@ -690,6 +685,39 @@ class AmqpReceiverTest extends TestCase
         );
 
         self::assertSame(10, $receiver->getMessageCount());
+    }
+
+    public function testGetDoesNotWaitForDeliveries(): void
+    {
+        $connection = $this->getMockBuilder(Connection::class)
+            ->onlyMethods([
+                'getQueueNames',
+                'consume',
+                'countMessagesInQueues',
+                'waitForDeliveries',
+            ])
+            ->setConstructorArgs([
+                $this->retryFactory,
+                $this->amqpConnectionFactory,
+                $this->connectionConfig,
+                $this->logger,
+            ])
+            ->getMock();
+
+        $connection->expects(self::never())
+            ->method('waitForDeliveries');
+        $connection->method('getQueueNames')
+            ->willReturn(['queue_name', 'queue_name2']);
+        $connection->expects(self::exactly(2))
+            ->method('consume')
+            ->willReturn([]);
+
+        $receiver = new AmqpReceiver(
+            $connection,
+            $this->createStub(SerializerInterface::class),
+        );
+
+        self::assertSame([], $this->envelopesToList($receiver->get()));
     }
 
     protected function setUp(): void

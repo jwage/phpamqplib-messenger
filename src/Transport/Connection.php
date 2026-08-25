@@ -18,6 +18,7 @@ use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use Psr\Log\LoggerInterface;
+use ReflectionProperty;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Throwable;
 
@@ -28,6 +29,9 @@ use function array_sum;
 use function array_unshift;
 use function assert;
 use function count;
+use function is_object;
+use function is_resource;
+use function property_exists;
 
 class Connection
 {
@@ -47,6 +51,10 @@ class Connection
     private array $batchMessages = [];
 
     private AMQPChannel|null $pendingBatchConfirmChannel = null;
+
+    private ConsumerWaitCoordinator|null $waitCoordinator = null;
+
+    private bool $externalWaitEnabled = false;
 
     private bool $autoSetup;
 
@@ -80,6 +88,55 @@ class Connection
         return $this->connectionConfig;
     }
 
+    public function setWaitCoordinator(ConsumerWaitCoordinator|null $waitCoordinator): void
+    {
+        $this->waitCoordinator = $waitCoordinator;
+    }
+
+    public function isExternalWaitEnabled(): bool
+    {
+        return $this->externalWaitEnabled;
+    }
+
+    public function enableExternalWait(): void
+    {
+        $this->externalWaitEnabled = true;
+    }
+
+    public function disableExternalWait(): void
+    {
+        $this->externalWaitEnabled = false;
+    }
+
+    /**
+     * Marks get() as handled by the worker idle listener and starts consumers.
+     *
+     * Analogous to Symfony's PostgreSqlConnection::listen(). Direct get()
+     * without a worker keeps the blocking wait in AmqpConsumer.
+     *
+     * @param array<string>|null $queueNames
+     *
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     * @throws InvalidArgumentException
+     */
+    public function listen(array|null $queueNames = null): void
+    {
+        $this->enableExternalWait();
+        $this->startConsumers($queueNames);
+    }
+
+    public function getWaitTimeout(): float
+    {
+        $timeout = $this->connectionConfig->waitTimeout;
+
+        if ($timeout === null || $timeout === 0 || $timeout === 0.0) {
+            return (float) ConnectionConfig::DEFAULT_WAIT_TIMEOUT;
+        }
+
+        return (float) $timeout;
+    }
+
     public function isConnected(): bool
     {
         return $this->connection !== null && $this->connection->isConnected();
@@ -87,6 +144,8 @@ class Connection
 
     public function close(): void
     {
+        $this->waitCoordinator?->unregister($this);
+
         try {
             // Closing the connection cancels its consumers, so do not issue a separate
             // basic_cancel first. Besides being redundant, that round trip can block on
@@ -233,6 +292,113 @@ class Connection
         }
 
         return ($this->consumers[$queueName] ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger))->consume($queueName, $fetchSize);
+    }
+
+    /**
+     * Registers basic_consume on each configured queue without blocking for deliveries.
+     *
+     * Used when a messenger worker is about to poll several transports so every
+     * socket is already subscribed before the first idle wait.
+     *
+     * @param array<string>|null $queueNames
+     *
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     * @throws InvalidArgumentException
+     */
+    public function startConsumers(array|null $queueNames = null): void
+    {
+        if ($this->autoSetup) {
+            $this->setupExchangeAndQueues();
+        }
+
+        foreach ($queueNames ?? $this->getQueueNames() as $queueName) {
+            if (! isset($this->connectionConfig->queues[$queueName])) {
+                continue;
+            }
+
+            $consumer = $this->consumers[$queueName] ??= new AmqpConsumer(
+                $this,
+                $this->connectionConfig,
+                $this->logger,
+            );
+            $consumer->ensureStarted($queueName);
+        }
+
+        $this->waitCoordinator?->register($this);
+    }
+
+    /**
+     * Blocks until a delivery is readable on any registered connection, or the
+     * timeout expires. Analogous to PostgreSqlConnection::waitForNotify().
+     */
+    public function waitForDeliveries(float $timeout): void
+    {
+        if ($this->waitCoordinator !== null) {
+            $this->waitCoordinator->wait($timeout);
+
+            return;
+        }
+
+        $this->drainConsumerChannel();
+    }
+
+    /** Reads any frames already available on the consumer channel without blocking. */
+    public function drainConsumerChannel(): void
+    {
+        $channel = $this->consumerChannel;
+
+        if ($channel === null || ! $channel->is_open() || ! $channel->is_consuming()) {
+            return;
+        }
+
+        try {
+            $channel->wait(
+                allowed_methods: null,
+                non_blocking: true,
+            );
+        } catch (AMQPTimeoutException) {
+        } catch (AMQPExceptionInterface $e) {
+            $this->logger?->warning('AMQP exception occurred while draining consumer channel: {message}', [
+                'message' => $e->getMessage(),
+                'exception' => $e,
+            ]);
+
+            $this->close();
+        }
+    }
+
+    /**
+     * Underlying AMQP socket, or null when the connection is not open.
+     *
+     * php-amqplib deprecates getIO()/getSocket(); the stream is read via reflection
+     * so a worker can stream_select() several connections at once.
+     *
+     * @return resource|object|null
+     */
+    public function getConsumerSocket(): mixed
+    {
+        if ($this->connection === null || ! $this->connection->isConnected()) {
+            return null;
+        }
+
+        $ioProperty = new ReflectionProperty($this->connection, 'io');
+        $io         = $ioProperty->getValue($this->connection);
+        assert($io === null || is_object($io));
+
+        if (! is_object($io)) {
+            return null;
+        }
+
+        if (property_exists($io, 'sock')) {
+            $sockProperty = new ReflectionProperty($io, 'sock');
+            $socket       = $sockProperty->getValue($io);
+            assert($socket === null || is_object($socket) || is_resource($socket));
+
+            return $socket;
+        }
+
+        return null;
     }
 
     /**

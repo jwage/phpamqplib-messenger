@@ -59,7 +59,11 @@ bin/console messenger:consume transport1
 bin/console messenger:consume transport2
 ```
 
-A single transport can declare multiple queues. The receiver subscribes to each queue rather than only the first. Those queues are still polled sequentially: `consume()` waits up to that queue's `wait_timeout` before the next queue is polled. Messages that arrive for another already-subscribed queue during that wait are buffered and returned when that queue is polled. When a fetch size is in effect (CLI argument or transport default), the receiver stops after that many envelopes across those queues.
+A single `messenger:consume` process can still listen to several phpamqplib transports, including alongside Doctrine, Redis, or other receivers. Each `get()` only drains frames that already arrived. After every transport has been checked and the worker is idle, it waits on all phpamqplib sockets at once (up to `wait_timeout`). SIGINT and idle checks therefore stay close to one `wait_timeout` rather than scaling with the number of phpamqplib transports.
+
+When the same worker also consumes a non-phpamqplib transport, that idle wait is capped by `messenger:consume --sleep` (Symfony 8.1+) so the other transports keep being polled on their usual interval. Direct `get()` calls outside `messenger:consume` still wait per queue, which is what tests and custom consumers do.
+
+A single transport can declare multiple queues. The receiver subscribes to each queue rather than only the first. Messages that arrive for another already-subscribed queue during a wait are buffered and returned when that queue is polled. When a fetch size is in effect (CLI argument or transport default), the receiver stops after that many envelopes across those queues.
 
 ## Minimum Configuration
 

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
+use Jwage\PhpAmqpLibMessengerBundle\EventListener\AmqpWorkerListener;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransportFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConnectionFactory;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
@@ -30,6 +32,41 @@ class AmqpTransportFactoryTest extends TestCase
         self::assertTrue($this->factory->supports('phpamqplib://localhost', []));
         self::assertTrue($this->factory->supports('phpamqplibs://localhost', []));
         self::assertFalse($this->factory->supports('file://localhost', []));
+    }
+
+    public function testCreateTransportRegistersTheConnectionWithTheWorkerListener(): void
+    {
+        $connection = $this->createStub(Connection::class);
+        $this->connectionFactory->method('fromDsn')
+            ->willReturn($connection);
+
+        $listener = $this->createMock(AmqpWorkerListener::class);
+        $listener->expects(self::once())
+            ->method('addConnection')
+            ->with('orders', $connection);
+
+        $factory = new AmqpTransportFactory($this->connectionFactory, $listener);
+
+        $factory->createTransport(
+            'phpamqplib://localhost',
+            ['transport_name' => 'orders'],
+            $this->createStub(SerializerInterface::class),
+        );
+    }
+
+    public function testCreateTransportSkipsRegistrationWithoutATransportName(): void
+    {
+        $listener = $this->createMock(AmqpWorkerListener::class);
+        $listener->expects(self::never())
+            ->method('addConnection');
+
+        $factory = new AmqpTransportFactory($this->connectionFactory, $listener);
+
+        $factory->createTransport(
+            'phpamqplib://localhost',
+            [],
+            $this->createStub(SerializerInterface::class),
+        );
     }
 
     protected function setUp(): void
