@@ -14,7 +14,7 @@ readonly class DelayConfig
         'enabled',
         'auto_setup',
         'queue_name_pattern',
-        'queue_durable',
+        'durable',
         'arguments',
     ];
 
@@ -26,7 +26,7 @@ readonly class DelayConfig
 
     public string $queueNamePattern;
 
-    public bool $queueDurable;
+    public bool $durable;
 
     /** @var array<string, mixed> */
     public array $arguments;
@@ -37,7 +37,7 @@ readonly class DelayConfig
         bool|null $enabled = null,
         bool|null $autoSetup = null,
         string|null $queueNamePattern = null,
-        bool|null $queueDurable = null,
+        bool|null $durable = null,
         array|null $arguments = [],
     ) {
         $this->exchange = $exchange ?? new ExchangeConfig(
@@ -48,7 +48,7 @@ readonly class DelayConfig
         $this->enabled          = $enabled ?? true;
         $this->autoSetup        = $autoSetup ?? true;
         $this->queueNamePattern = $queueNamePattern ?? 'delay_%exchange_name%_%routing_key%_%delay%';
-        $this->queueDurable     = $queueDurable ?? false;
+        $this->durable          = $durable ?? false;
         $this->arguments        = $arguments ?? [];
     }
 
@@ -66,7 +66,7 @@ readonly class DelayConfig
      *     enabled?: bool|mixed,
      *     auto_setup?: bool|mixed,
      *     queue_name_pattern?: string,
-     *     queue_durable?: bool|mixed,
+     *     durable?: bool|mixed,
      *     arguments?: array<string, mixed>,
      * } $delayConfig
      *
@@ -81,7 +81,7 @@ readonly class DelayConfig
             enabled: ConfigHelper::getBool($delayConfig, 'enabled'),
             autoSetup: ConfigHelper::getBool($delayConfig, 'auto_setup'),
             queueNamePattern: ConfigHelper::getString($delayConfig, 'queue_name_pattern'),
-            queueDurable: ConfigHelper::getBool($delayConfig, 'queue_durable'),
+            durable: ConfigHelper::getBool($delayConfig, 'durable'),
             arguments: ConfigHelper::getArray($delayConfig, 'arguments'),
         );
     }

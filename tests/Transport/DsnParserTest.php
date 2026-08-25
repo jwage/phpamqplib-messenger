@@ -209,6 +209,7 @@ class DsnParserTest extends TestCase
                 autoDelete: true,
             ),
             queueNamePattern: 'queue_name_pattern',
+            durable: true,
             arguments: ['key' => 'value'],
         ), $connectionConfig->delay);
 
@@ -281,6 +282,7 @@ class DsnParserTest extends TestCase
                     'auto_delete' => true,
                 ],
                 'queue_name_pattern' => 'queue_name_pattern',
+                'durable' => true,
                 'arguments' => ['key' => 'value'],
             ],
             'queues' => [

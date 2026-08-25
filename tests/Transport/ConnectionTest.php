@@ -1363,12 +1363,12 @@ class ConnectionTest extends TestCase
         $connection->publish(body: 'test body', delayInMs: 5000);
     }
 
-    public function testPublishWithDelayQueueDurableDeclaresDurableDelayQueue(): void
+    public function testPublishWithDelayDurableDeclaresDurableDelayQueue(): void
     {
         [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
             autoSetup: false,
             exchange: new ExchangeConfig(name: 'exchange_name'),
-            delay: new DelayConfig(queueDurable: true),
+            delay: new DelayConfig(durable: true),
         ));
 
         $amqpChannel->expects(self::once())

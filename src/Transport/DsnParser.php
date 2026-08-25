@@ -105,7 +105,7 @@ class DsnParser
          *             arguments?: array<string, mixed>,
          *         },
          *         queue_name_pattern?: string,
-         *         queue_durable?: bool,
+         *         durable?: bool,
          *     },
          *     queues: array<string, array{
          *         passive?: bool,

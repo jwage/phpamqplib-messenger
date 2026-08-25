@@ -799,7 +799,7 @@ class Connection
 
         $this->channel()->queue_declare(
             queue: $delayQueueName,
-            durable: $this->connectionConfig->delay->queueDurable,
+            durable: $this->connectionConfig->delay->durable,
             nowait: false,
             arguments: new AMQPTable([
                 'x-message-ttl' => $delay,

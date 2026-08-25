@@ -179,7 +179,7 @@ framework:
                         # feature by default, which makes the transient delay queue
                         # declaration fail. Set this to true when running against such a
                         # broker. The delay queues are still cleaned up via `x-expires`.
-                        queue_durable: false
+                        durable: false
                         arguments: []
 ```
 
