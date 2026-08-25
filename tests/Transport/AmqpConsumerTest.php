@@ -123,7 +123,9 @@ class AmqpConsumerTest extends TestCase
                 $this->throwException(new AMQPTimeoutException()),
             );
 
-        iterator_to_array($consumer->consume('test_queue'));
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+        iterator_to_array($amqpEnvelopes);
     }
 
     public function testConsumeReRegistersAfterTheConsumerChannelIsDiscarded(): void
@@ -157,11 +159,15 @@ class AmqpConsumerTest extends TestCase
         $channel->method('wait')
             ->will($this->throwException(new AMQPTimeoutException()));
 
-        iterator_to_array($state->consumer->consume('test_queue'));
+        /** @var Traversable<AmqpEnvelope> $first */
+        $first = $state->consumer->consume('test_queue');
+        iterator_to_array($first);
 
         $state->invalidate = true;
 
-        iterator_to_array($state->consumer->consume('test_queue'));
+        /** @var Traversable<AmqpEnvelope> $second */
+        $second = $state->consumer->consume('test_queue');
+        iterator_to_array($second);
     }
 
     public function testConsumeWithUnexpectedAMQPException(): void

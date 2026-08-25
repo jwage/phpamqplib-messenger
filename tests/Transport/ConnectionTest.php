@@ -1165,7 +1165,9 @@ class ConnectionTest extends TestCase
             ->method('wait')
             ->willThrowException(new AMQPTimeoutException('poll timeout'));
 
-        iterator_to_array($connection->consume('queue_name'));
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+        iterator_to_array($envelopes);
     }
 
     public function testSetupWithAutoSetupDisabled(): void
