@@ -1,0 +1,28 @@
+{
+    "$schema": "https://raw.githubusercontent.com/infection/infection/0.35.2/resources/schema.json",
+    "source": {
+        "directories": [
+            "src"
+        ]
+    },
+    // Mutant processes share the functional-test RabbitMQ topology (fixed queue/exchange
+    // names). Parallel threads would race and produce false positives.
+    "threads": 1,
+    // Must exceed the slowest covering test. Too low and Infection skips mutants
+    // ("required more time than configured") instead of running them.
+    "timeout": 60,
+    "tmpDir": "var/infection",
+    "logs": {
+        "text": "var/infection.log",
+        "html": "var/infection.html",
+        "summaryJson": "var/infection-summary.json"
+    },
+    "testFramework": "phpunit",
+    // defaultTestSuite already excludes chaos; keep that explicit so Infection never
+    // uses live-broker fault tests as the initial run or as covering tests.
+    "testFrameworkExtraArgs": "--testsuite=default",
+    "ignoreMsiWithNoMutations": true,
+    // Baseline from a full local run: covered MSI 78.6% (213 killed, 58 escaped).
+    "minMsi": 75,
+    "minCoveredMsi": 75
+}

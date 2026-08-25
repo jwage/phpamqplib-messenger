@@ -406,3 +406,16 @@ docker compose up -d --wait
 ```
 
 See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the test catalog and how tests inject broker faults. CI runs them in a separate job. Do not run them in parallel with the default PHPUnit suite; they pause and restart the broker.
+
+### Mutation testing
+
+[Infection](https://infection.github.io/) mutates `src/` and checks that the **default** PHPUnit suite kills those mutants. It does not run the `chaos` suite.
+
+Functional tests need a broker. Infection uses a single thread so mutant processes do not share RabbitMQ topology.
+
+```bash
+docker compose up -d --wait
+composer infection
+```
+
+On pull requests, CI mutates only changed lines (`--git-diff-lines`). Pushes to `main` run the full set. Both fail if covered MSI drops below the threshold in `infection.json5.dist`.
