@@ -19,8 +19,9 @@
     },
     "testFramework": "phpunit",
     // defaultTestSuite already excludes chaos. Also exclude the `live` group:
-    // PHPUnit --filter=ConnectionTest also matches LiveConnectionTest, which needs
-    // a broker and is not a useful mutation killer (slow, environment-dependent).
+    // ConnectionLiveTest needs a broker and is not a useful mutation killer
+    // (slow, environment-dependent). Do not name extra tests *ConnectionTest;
+    // PHPUnit --filter=ConnectionTest is a regex and would match them.
     "testFrameworkExtraArgs": "--testsuite=default --exclude-group=live",
     "ignoreMsiWithNoMutations": true,
     "minMsi": 100,
