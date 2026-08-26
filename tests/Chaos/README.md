@@ -33,6 +33,8 @@ MESSENGER_TRANSPORT_PHPAMQPLIB_DSN='phpamqplib://guest:guest@127.0.0.1:5673/%2f/
 
 TLS tests use port **5671** (`MESSENGER_TRANSPORT_PHPAMQPLIB_SSL_DSN` if you need to override it).
 
+Wait/consume debug traces follow Symfony `kernel.debug` / `APP_DEBUG`. Chaos tests construct `Debug` enabled so those traces are always in `TEST_LOG_DIR` (defaults to `tests/_output`), along with NDJSON, consume stdout/stderr, and broker command logs.
+
 ## Broker faults
 
 Tests inject faults through `$this->harness->broker()` / `$this->harness->brokerLater()`, which run `tests/bin/chaos-broker`. That script is not a test runner; start and stop the broker with `docker compose`.

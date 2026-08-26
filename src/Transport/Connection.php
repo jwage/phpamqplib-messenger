@@ -6,6 +6,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use Closure;
 use InvalidArgumentException;
+use Jwage\PhpAmqpLibMessengerBundle\Debug;
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
@@ -19,6 +20,8 @@ use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use Psr\Log\LoggerInterface;
+use ReflectionProperty;
+use SplQueue;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Throwable;
 
@@ -29,6 +32,12 @@ use function array_sum;
 use function array_unshift;
 use function assert;
 use function count;
+use function is_int;
+use function is_object;
+use function is_resource;
+use function min;
+use function property_exists;
+use function stream_select;
 
 class Connection
 {
@@ -49,6 +58,12 @@ class Connection
 
     private AMQPChannel|null $pendingBatchConfirmChannel = null;
 
+    private ConsumerWaitCoordinator|null $waitCoordinator = null;
+
+    private bool $externalWaitEnabled = false;
+
+    private bool $registeredWithCoordinator = false;
+
     private bool $autoSetup;
 
     private bool $autoSetupDelay;
@@ -58,6 +73,7 @@ class Connection
         private AmqpConnectionFactory $amqpConnectionFactory,
         private ConnectionConfig $connectionConfig,
         private LoggerInterface|null $logger = null,
+        private Debug $debug = new Debug(),
     ) {
         $this->autoSetup      = $connectionConfig->autoSetup;
         $this->autoSetupDelay = $connectionConfig->delay->enabled && $connectionConfig->delay->autoSetup;
@@ -81,6 +97,66 @@ class Connection
         return $this->connectionConfig;
     }
 
+    public function setWaitCoordinator(ConsumerWaitCoordinator|null $waitCoordinator): void
+    {
+        $this->waitCoordinator = $waitCoordinator;
+    }
+
+    public function isExternalWaitEnabled(): bool
+    {
+        return $this->externalWaitEnabled;
+    }
+
+    public function enableExternalWait(): void
+    {
+        $this->externalWaitEnabled = true;
+    }
+
+    public function disableExternalWait(): void
+    {
+        $this->externalWaitEnabled = false;
+    }
+
+    public function isRegisteredWithWaitCoordinator(): bool
+    {
+        return $this->registeredWithCoordinator;
+    }
+
+    public function unregisterFromWaitCoordinator(): void
+    {
+        $this->waitCoordinator?->unregister($this);
+        $this->registeredWithCoordinator = false;
+    }
+
+    /**
+     * Marks get() as handled by the worker idle listener and starts consumers.
+     *
+     * Analogous to Symfony's PostgreSqlConnection::listen(). Direct get()
+     * without a worker keeps the blocking wait in AmqpConsumer.
+     *
+     * @param array<string>|null $queueNames
+     *
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     * @throws InvalidArgumentException
+     */
+    public function listen(array|null $queueNames = null): void
+    {
+        $this->enableExternalWait();
+        $this->startConsumers($queueNames);
+    }
+
+    public function getWaitTimeout(): float
+    {
+        $timeout = $this->connectionConfig->waitTimeout;
+
+        foreach ($this->connectionConfig->queues as $queueConfig) {
+            $timeout = min($timeout, $queueConfig->waitTimeout);
+        }
+
+        return (float) $timeout;
+    }
+
     public function isConnected(): bool
     {
         return $this->connection !== null && $this->connection->isConnected();
@@ -88,6 +164,9 @@ class Connection
 
     public function close(): void
     {
+        // Keep the wait-coordinator registration. getConsumerSocket() is null
+        // while disconnected; after reconnect the same Connection is selected
+        // again without waiting for the next WorkerStartedEvent.
         try {
             // Closing the connection cancels its consumers, so do not issue a separate
             // basic_cancel first. Besides being redundant, that round trip can block on
@@ -230,10 +309,255 @@ class Connection
     public function consume(string $queueName, int|null $fetchSize = null): iterable
     {
         if ($this->autoSetup) {
-            $this->setupExchangeAndQueues();
+            try {
+                $this->setupExchangeAndQueues();
+            } catch (TransportException $e) {
+                if (
+                    ! $this->isRegisteredWithWaitCoordinator()
+                    && ! $this->isExternalWaitEnabled()
+                ) {
+                    throw $e;
+                }
+
+                $this->logger?->warning('AMQP exception occurred while starting consumers: {message}', [
+                    'message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
+
+                if (
+                    $this->isRegisteredWithWaitCoordinator()
+                    && ! $this->isExternalWaitEnabled()
+                ) {
+                    $this->waitForDeliveries($this->getWaitTimeout());
+                }
+
+                return [];
+            }
         }
 
-        return ($this->consumers[$queueName] ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger))->consume($queueName, $fetchSize);
+        yield from $this->amqpConsumer($queueName)->consume($queueName, $fetchSize);
+
+        // Drain swallows a dead socket so messenger:consume keeps running.
+        // stream_select also returns early on EOF, so get() would otherwise
+        // return empty after a short wait and Worker leftover-sleeps --sleep
+        // before the next get() reconnects. Resume inside this get() so Retry
+        // starts immediately and mixed idle wait still has a live socket.
+        if (! $this->shouldResumeWaitAfterDisconnect()) {
+            return;
+        }
+
+        $this->debug->log('Reconnecting inside get() after the wait closed the connection');
+
+        try {
+            $this->consumerChannel();
+        } catch (TransportException $e) {
+            $this->logger?->warning('AMQP exception occurred while restarting consumer after wait: {message}', [
+                'message' => $e->getMessage(),
+                'exception' => $e,
+            ]);
+
+            return;
+        }
+
+        yield from $this->amqpConsumer($queueName)->consume($queueName, $fetchSize);
+    }
+
+    /**
+     * Registers basic_consume on each configured queue without blocking for deliveries.
+     *
+     * Used when a messenger worker is about to poll several transports so every
+     * socket is already subscribed before the first wait.
+     *
+     * @param array<string>|null $queueNames
+     *
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     * @throws InvalidArgumentException
+     */
+    public function startConsumers(array|null $queueNames = null): void
+    {
+        if ($this->autoSetup) {
+            try {
+                $this->setupExchangeAndQueues();
+            } catch (TransportException $e) {
+                $this->logger?->warning('AMQP exception occurred while starting consumers: {message}', [
+                    'message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
+            }
+        }
+
+        foreach ($queueNames ?? $this->getQueueNames() as $queueName) {
+            if (! isset($this->connectionConfig->queues[$queueName])) {
+                continue;
+            }
+
+            $consumer = $this->amqpConsumer($queueName);
+
+            try {
+                $consumer->ensureStarted($queueName);
+            } catch (TransportException $e) {
+                $this->logger?->warning('AMQP exception occurred while starting consumers: {message}', [
+                    'message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
+            }
+        }
+
+        if ($this->waitCoordinator !== null) {
+            $this->waitCoordinator->register($this);
+            $this->registeredWithCoordinator = true;
+        }
+    }
+
+    /**
+     * Blocks until a delivery is readable on any registered connection, or the
+     * timeout expires. Analogous to PostgreSqlConnection::waitForNotify().
+     *
+     * When $coalesce is true, only the first wait in a worker pass actually
+     * blocks; later transports drain. Mixed workers pass false so the idle
+     * listener always waits after every receiver has been polled.
+     */
+    public function waitForDeliveries(float $timeout, bool $coalesce = true): void
+    {
+        if ($this->waitCoordinator !== null) {
+            $this->debug->log('Waiting for deliveries through the wait coordinator', [
+                'timeout' => $timeout,
+                'coalesce' => $coalesce,
+            ]);
+            $this->waitCoordinator->wait($timeout, $coalesce);
+
+            return;
+        }
+
+        $this->debug->log('Waiting without a coordinator; draining only', ['timeout' => $timeout]);
+        $this->drainConsumerChannel();
+    }
+
+    /**
+     * Reads frames already available on the consumer channel without blocking.
+     *
+     * php-amqplib's wait(non_blocking: true) returns null when idle — it
+     * swallows AMQPNoDataException rather than throwing AMQPTimeoutException.
+     * Looping until timeout would busy-spin on a live consuming channel.
+     */
+    public function drainConsumerChannel(): bool
+    {
+        $channel = $this->consumerChannel;
+
+        if ($channel === null) {
+            return false;
+        }
+
+        $drained = false;
+
+        while ($channel->is_open() && $channel->is_consuming()) {
+            $hasWork = $channel->hasPendingMethods()
+                || $this->channelHasQueuedFrames($channel)
+                || $this->consumerSocketIsReadable();
+
+            try {
+                $channel->wait(
+                    allowed_methods: null,
+                    non_blocking: true,
+                );
+            } catch (AMQPTimeoutException) {
+                return $drained;
+            } catch (AMQPExceptionInterface $e) {
+                $this->logger?->warning('AMQP exception occurred while draining consumer channel: {message}', [
+                    'message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
+
+                $this->close();
+
+                return $drained;
+            }
+
+            if (! $hasWork) {
+                return $drained;
+            }
+
+            $drained = true;
+        }
+
+        return $drained;
+    }
+
+    public function hasBufferedDeliveries(): bool
+    {
+        foreach ($this->consumers as $consumer) {
+            if ($consumer->hasBufferedEnvelopes()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Underlying AMQP socket, or null when the connection is not open.
+     *
+     * php-amqplib deprecates getIO()/getSocket(); the stream is read via reflection
+     * so a worker can stream_select() several connections at once.
+     *
+     * @return resource|object|null
+     */
+    public function getConsumerSocket(): mixed
+    {
+        if ($this->connection === null || ! $this->connection->isConnected()) {
+            return null;
+        }
+
+        $ioProperty = new ReflectionProperty($this->connection, 'io');
+        $io         = $ioProperty->getValue($this->connection);
+        assert($io === null || is_object($io));
+
+        if (! is_object($io)) {
+            return null;
+        }
+
+        if (property_exists($io, 'sock')) {
+            $sockProperty = new ReflectionProperty($io, 'sock');
+            $socket       = $sockProperty->getValue($io);
+            assert($socket === null || is_object($socket) || is_resource($socket));
+
+            return $socket;
+        }
+
+        return null;
+    }
+
+    private function channelHasQueuedFrames(AMQPChannel $channel): bool
+    {
+        $property = new ReflectionProperty(AMQPChannel::class, 'frame_queue');
+
+        if (! $property->isInitialized($channel)) {
+            return false;
+        }
+
+        /** @var mixed $queue */
+        $queue = $property->getValue($channel);
+
+        return $queue instanceof SplQueue && ! $queue->isEmpty();
+    }
+
+    private function consumerSocketIsReadable(): bool
+    {
+        $socket = $this->getConsumerSocket();
+
+        if ($socket === null) {
+            return false;
+        }
+
+        $read   = [$socket];
+        $write  = null;
+        $except = null;
+
+        /** @psalm-suppress InvalidArgument */
+        $selected = stream_select($read, $write, $except, 0);
+
+        return is_int($selected) && $selected > 0;
     }
 
     /**
@@ -879,6 +1203,26 @@ class Connection
             routing_key: $delayQueueName,
             nowait: false,
         );
+    }
+
+    private function amqpConsumer(string $queueName): AmqpConsumer
+    {
+        return $this->consumers[$queueName] ??= new AmqpConsumer(
+            $this,
+            $this->connectionConfig,
+            $this->logger,
+            $this->debug,
+        );
+    }
+
+    /**
+     * True when a worker wait closed the AMQP connection and get() should
+     * reconnect before returning empty to Worker leftover --sleep.
+     */
+    private function shouldResumeWaitAfterDisconnect(): bool
+    {
+        return ! $this->isConnected()
+            && ($this->isRegisteredWithWaitCoordinator() || $this->isExternalWaitEnabled());
     }
 
     /** @throws AMQPExceptionInterface */

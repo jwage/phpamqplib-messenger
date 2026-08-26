@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use InvalidArgumentException;
+use Jwage\PhpAmqpLibMessengerBundle\Debug;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
@@ -29,6 +30,7 @@ class AmqpConsumer
         private Connection $connection,
         private ConnectionConfig $connectionConfig,
         private LoggerInterface|null $logger,
+        private Debug $debug = new Debug(),
     ) {
     }
 
@@ -43,25 +45,82 @@ class AmqpConsumer
     {
         $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
 
-        // Resolve the channel first. A dead cached channel must be discarded (and this
-        // consumer invalidated) before we decide whether the tag is still valid.
-        $this->connection->consumerChannel();
+        try {
+            $this->ensureStarted($queueName, $fetchSize);
+        } catch (TransportException $e) {
+            if (
+                ! $this->connection->isRegisteredWithWaitCoordinator()
+                && ! $this->connection->isExternalWaitEnabled()
+            ) {
+                throw $e;
+            }
 
-        $desiredPrefetch = max($fetchSize ?? $queueConfig->prefetchCount, $queueConfig->prefetchCount);
+            $this->logger?->warning('AMQP exception occurred while starting consumer: {message}', [
+                'message' => $e->getMessage(),
+                'exception' => $e,
+            ]);
 
-        if ($this->effectivePrefetchCount !== $desiredPrefetch || $this->consumerTag === null) {
-            $this->connection->consumerChannel()->basic_qos(
-                prefetch_size: 0,
-                prefetch_count: $desiredPrefetch,
-                a_global: false,
-            );
-            $this->effectivePrefetchCount = $desiredPrefetch;
+            if (
+                $this->connection->isRegisteredWithWaitCoordinator()
+                && ! $this->connection->isExternalWaitEnabled()
+            ) {
+                $this->connection->waitForDeliveries($this->connection->getWaitTimeout());
+            }
+
+            return;
         }
 
-        if ($this->consumerTag === null) {
-            $this->start($queueConfig);
-        }
+        if ($this->connection->isExternalWaitEnabled()) {
+            $this->debug->log('Consuming with drain-only external wait', [
+                'queue' => $queueName,
+                'fetch_size' => $fetchSize,
+                'buffered' => $this->buffer !== [],
+            ]);
 
+            if ($this->buffer === []) {
+                $this->connection->drainConsumerChannel();
+            }
+
+            yield from $this->releaseBuffer($fetchSize);
+        } elseif ($this->buffer !== []) {
+            $this->debug->log('Consuming buffered envelopes without waiting', [
+                'queue' => $queueName,
+                'fetch_size' => $fetchSize,
+                'buffered' => true,
+            ]);
+
+            yield from $this->releaseBuffer($fetchSize);
+        } elseif ($this->connection->isRegisteredWithWaitCoordinator()) {
+            $waitTimeout = $this->connection->getWaitTimeout();
+            $this->debug->log('Consuming with coalesced wait coordinator', [
+                'queue' => $queueName,
+                'fetch_size' => $fetchSize,
+                'wait_timeout' => $waitTimeout,
+                'has_buffered_deliveries' => $this->hasBufferedEnvelopes(),
+            ]);
+
+            $this->connection->waitForDeliveries($waitTimeout);
+
+            yield from $this->releaseBuffer($fetchSize);
+        } else {
+            $this->debug->log('Consuming with blocking per-queue wait', [
+                'queue' => $queueName,
+                'fetch_size' => $fetchSize,
+                'wait_timeout' => $queueConfig->waitTimeout,
+            ]);
+
+            yield from $this->waitForChannelDeliveries($queueConfig, $fetchSize);
+        }
+    }
+
+    /**
+     * @return iterable<AmqpEnvelope>
+     *
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     */
+    private function waitForChannelDeliveries(QueueConfig $queueConfig, int|null $fetchSize): iterable
+    {
         $stop = false;
 
         while ($this->connection->consumerChannel()->is_consuming()) {
@@ -88,25 +147,7 @@ class AmqpConsumer
                 break;
             }
 
-            if ($fetchSize === null) {
-                // Keep original snapshotting into local variable (for legacy code support)!
-                // We do not use this approach when $fetchSize is used, because it will
-                // not yield all items in case the caller breks mid-iteration forced by the $fetchSize
-                $buffer = $this->buffer;
-
-                $this->buffer = [];
-
-                yield from $buffer;
-            } else {
-                // Drain by shifting items off $this->buffer one-by-one rather than snapshotting it
-                // into a local and clearing the instance buffer up-front. If the caller breaks
-                // mid-iteration (e.g. AmqpReceiver honoring fetchSize), only the items already
-                // yielded are removed; the rest remain on $this->buffer and are picked up by the
-                // next consume() call instead of being silently dropped from PHP memory.
-                while (($amqpEnvelope = array_shift($this->buffer)) !== null) {
-                    yield $amqpEnvelope;
-                }
-            }
+            yield from $this->releaseBuffer($fetchSize);
 
             if ($stop) {
                 break;
@@ -114,9 +155,45 @@ class AmqpConsumer
         }
     }
 
+    /**
+     * Subscribes to the queue if needed, without waiting for deliveries.
+     *
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     * @throws InvalidArgumentException
+     */
+    public function ensureStarted(string $queueName, int|null $fetchSize = null): void
+    {
+        $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
+
+        // Resolve the channel first. A dead cached channel must be discarded (and this
+        // consumer invalidated) before we decide whether the tag is still valid.
+        $this->connection->consumerChannel();
+
+        $desiredPrefetch = max($fetchSize ?? $queueConfig->prefetchCount, $queueConfig->prefetchCount);
+
+        if ($this->effectivePrefetchCount !== $desiredPrefetch || $this->consumerTag === null) {
+            $this->connection->consumerChannel()->basic_qos(
+                prefetch_size: 0,
+                prefetch_count: $desiredPrefetch,
+                a_global: false,
+            );
+            $this->effectivePrefetchCount = $desiredPrefetch;
+        }
+
+        if ($this->consumerTag === null) {
+            $this->start($queueConfig);
+        }
+    }
+
     public function callback(AMQPMessage $amqpMessage): void
     {
         $this->buffer[] = new AmqpEnvelope($amqpMessage);
+    }
+
+    public function hasBufferedEnvelopes(): bool
+    {
+        return $this->buffer !== [];
     }
 
     /** @throws TransportException */
@@ -170,5 +247,29 @@ class AmqpConsumer
             nowait: false,
             callback: $this->callback(...),
         );
+    }
+
+    /** @return iterable<AmqpEnvelope> */
+    private function releaseBuffer(int|null $fetchSize): iterable
+    {
+        if ($fetchSize === null) {
+            // Keep original snapshotting into local variable (for legacy code support)!
+            // We do not use this approach when $fetchSize is used, because it will
+            // not yield all items in case the caller breaks mid-iteration forced by the $fetchSize
+            $buffer = $this->buffer;
+
+            $this->buffer = [];
+
+            yield from $buffer;
+        } else {
+            // Drain by shifting items off $this->buffer one-by-one rather than snapshotting it
+            // into a local and clearing the instance buffer up-front. If the caller breaks
+            // mid-iteration (e.g. AmqpReceiver honoring fetchSize), only the items already
+            // yielded are removed; the rest remain on $this->buffer and are picked up by the
+            // next consume() call instead of being silently dropped from PHP memory.
+            while (($amqpEnvelope = array_shift($this->buffer)) !== null) {
+                yield $amqpEnvelope;
+            }
+        }
     }
 }

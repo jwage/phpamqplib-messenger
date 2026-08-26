@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 COMPOSE=(docker compose)
+DOCKER=(docker)
 SERVICE=rabbitmq
 
 usage() {
@@ -36,6 +37,21 @@ need_docker() {
     echo "docker is required to inject chaos broker faults" >&2
     exit 1
   fi
+
+  if docker info >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+    DOCKER=(docker)
+    return
+  fi
+
+  if command -v run0 >/dev/null 2>&1 && run0 docker info >/dev/null 2>&1; then
+    COMPOSE=(run0 docker compose)
+    DOCKER=(run0 docker)
+    return
+  fi
+
+  echo "docker is required to inject chaos broker faults" >&2
+  exit 1
 }
 
 wait_ready() {
@@ -47,7 +63,8 @@ wait_ready() {
      && "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmq-diagnostics -q ping >/dev/null 2>&1; do
     if (( "$(date +%s)" - started >= timeout )); then
       echo "RabbitMQ did not become ready within ${timeout}s" >&2
-      exit 1
+      append_log "wait_ready_timeout" "timeout=${timeout}"
+      return 1
     fi
     sleep 1
   done
@@ -82,14 +99,59 @@ wait_for_no_alarms() {
   done
 }
 
+# Start existing containers without recreating them. `start`/`restart`
+# followed by `up -d --wait` can race: Compose recreates the just-started
+# container and `--wait` reports "container exited (0)".
+compose_up() {
+  append_log "compose_up"
+  "${COMPOSE[@]}" up -d --no-recreate "$SERVICE"
+}
+
+append_log() {
+  local dir="${TEST_LOG_DIR:-$ROOT/tests/_output}"
+  local message="$1"
+  local extra="${2:-}"
+
+  mkdir -p "$dir" || return 0
+  printf '{"t":%s,"event":"chaos-broker","command":"%s","message":"%s","extra":"%s"}\n' \
+    "$(date +%s)" \
+    "$cmd" \
+    "$(printf '%s' "$message" | tr '"\n' '  ')" \
+    "$(printf '%s' "$extra" | tr '"\n' '  ')" \
+    >> "$dir/chaos-broker.ndjson" 2>/dev/null || true
+}
+
+start_and_wait() {
+  local attempt=1
+
+  while true; do
+    append_log "start_and_wait" "attempt=${attempt}"
+    compose_up
+    if wait_ready 30; then
+      append_log "start_and_wait_ready" "attempt=${attempt}"
+      return 0
+    fi
+    if (( attempt >= 3 )); then
+      echo "RabbitMQ did not become ready after ${attempt} start attempts" >&2
+      append_log "start_and_wait_failed" "attempt=${attempt}"
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    echo "RabbitMQ start attempt failed; retrying (${attempt}/3)" >&2
+    sleep 2
+  done
+}
+
 need_docker
 
 cmd="${1:-}"
+append_log "begin"
 case "$cmd" in
   restart)
     "${COMPOSE[@]}" restart "$SERVICE"
-    "${COMPOSE[@]}" up -d --wait
-    wait_ready
+    if ! wait_ready 30; then
+      start_and_wait
+    fi
     ;;
   stop)
     "${COMPOSE[@]}" stop "$SERVICE"
@@ -98,14 +160,12 @@ case "$cmd" in
     "${COMPOSE[@]}" kill -s SIGKILL "$SERVICE"
     ;;
   start)
-    "${COMPOSE[@]}" start "$SERVICE"
-    "${COMPOSE[@]}" up -d --wait
-    wait_ready
+    start_and_wait
     ;;
   pause)
     id="$("${COMPOSE[@]}" ps -q "$SERVICE")"
     "${COMPOSE[@]}" pause "$SERVICE"
-    paused="$(docker inspect -f '{{.State.Paused}}' "$id")"
+    paused="$("${DOCKER[@]}" inspect -f '{{.State.Paused}}' "$id")"
     if [ "$paused" != "true" ]; then
       echo "RabbitMQ container was not paused" >&2
       exit 1
@@ -113,7 +173,7 @@ case "$cmd" in
     ;;
   unpause)
     id="$("${COMPOSE[@]}" ps -q "$SERVICE")"
-    paused="$(docker inspect -f '{{.State.Paused}}' "$id")"
+    paused="$("${DOCKER[@]}" inspect -f '{{.State.Paused}}' "$id")"
     if [ "$paused" = "true" ]; then
       "${COMPOSE[@]}" unpause "$SERVICE"
     fi

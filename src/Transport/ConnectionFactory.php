@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use InvalidArgumentException;
+use Jwage\PhpAmqpLibMessengerBundle\Debug;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Psr\Log\LoggerInterface;
 use SensitiveParameter;
@@ -16,6 +17,7 @@ class ConnectionFactory
         private RetryFactory $retryFactory,
         private AmqpConnectionFactory $amqpConnectionFactory,
         private LoggerInterface|null $logger = null,
+        private Debug $debug = new Debug(),
     ) {
     }
 
@@ -34,6 +36,7 @@ class ConnectionFactory
             $this->amqpConnectionFactory,
             $this->dsnParser->parseDsn($dsn, $options),
             $this->logger,
+            $this->debug,
         );
     }
 }

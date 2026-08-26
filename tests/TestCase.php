@@ -13,6 +13,22 @@ use function count;
 
 class TestCase extends BaseTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        /** @psalm-suppress InternalMethod */
+        TestLog::beginTest(static::class . '::' . $this->name());
+    }
+
+    protected function tearDown(): void
+    {
+        /** @psalm-suppress InternalMethod */
+        TestLog::endTest(static::class . '::' . $this->name());
+
+        parent::tearDown();
+    }
+
     /**
      * @param array<mixed> $firstCallArguments
      * @param array<mixed> ...$consecutiveCallsArguments
