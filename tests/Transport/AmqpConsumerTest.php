@@ -863,13 +863,22 @@ class AmqpConsumerTest extends TestCase
             'getQueueNames',
             'close',
             'isRegisteredWithWaitCoordinator',
+            'isExternalWaitEnabled',
+            'waitForDeliveries',
+            'getWaitTimeout',
         ]);
         $connection->expects(self::once())
             ->method('consumerChannel')
             ->willThrowException($exception);
-        $connection->expects(self::once())
-            ->method('isRegisteredWithWaitCoordinator')
+        $connection->method('isRegisteredWithWaitCoordinator')
             ->willReturn(true);
+        $connection->method('isExternalWaitEnabled')
+            ->willReturn(false);
+        $connection->method('getWaitTimeout')
+            ->willReturn(1.0);
+        $connection->expects(self::once())
+            ->method('waitForDeliveries')
+            ->with(1.0);
 
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::once())
@@ -894,13 +903,22 @@ class AmqpConsumerTest extends TestCase
             'getQueueNames',
             'close',
             'isRegisteredWithWaitCoordinator',
+            'isExternalWaitEnabled',
+            'waitForDeliveries',
+            'getWaitTimeout',
         ]);
         $connection->expects(self::once())
             ->method('consumerChannel')
             ->willThrowException(new TransportException('Broken pipe or closed connection'));
-        $connection->expects(self::once())
-            ->method('isRegisteredWithWaitCoordinator')
+        $connection->method('isRegisteredWithWaitCoordinator')
             ->willReturn(true);
+        $connection->method('isExternalWaitEnabled')
+            ->willReturn(false);
+        $connection->method('getWaitTimeout')
+            ->willReturn(1.0);
+        $connection->expects(self::once())
+            ->method('waitForDeliveries')
+            ->with(1.0);
 
         $consumer = new AmqpConsumer($connection, $this->connectionConfig, null);
 
@@ -924,6 +942,34 @@ class AmqpConsumerTest extends TestCase
         /** @var Traversable<mixed, AmqpEnvelope> $envelopes */
         $envelopes = $consumer->consume('test_queue');
         iterator_to_array($envelopes);
+    }
+
+    public function testConsumeDoesNotWaitWhenStartingTheConsumerFailsWithExternalWait(): void
+    {
+        $connection = $this->getTestConnection(onlyMethods: [
+            'consumerChannel',
+            'getQueueNames',
+            'close',
+            'isRegisteredWithWaitCoordinator',
+            'isExternalWaitEnabled',
+            'waitForDeliveries',
+        ]);
+        $connection->expects(self::once())
+            ->method('consumerChannel')
+            ->willThrowException(new TransportException('Broken pipe or closed connection'));
+        $connection->method('isRegisteredWithWaitCoordinator')
+            ->willReturn(true);
+        $connection->method('isExternalWaitEnabled')
+            ->willReturn(true);
+        $connection->expects(self::never())
+            ->method('waitForDeliveries');
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+
+        self::assertCount(0, iterator_to_array($amqpEnvelopes));
     }
 
     protected function setUp(): void

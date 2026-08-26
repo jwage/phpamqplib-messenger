@@ -1830,6 +1830,265 @@ class ConnectionTest extends TestCase
         self::assertTrue($connection->isRegisteredWithWaitCoordinator());
     }
 
+    public function testConsumeReconnectsInsideGetWhenWaitCoordinatorClosesTheConnection(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory       = $this->createMock(AmqpConnectionFactory::class);
+        $firstAmqp     = $this->createMock(AMQPStreamConnection::class);
+        $secondAmqp    = $this->createStub(AMQPStreamConnection::class);
+        $firstChannel  = $this->createMock(AMQPChannel::class);
+        $secondChannel = $this->createMock(AMQPChannel::class);
+        $logger        = new CollectingLogger();
+        $holder        = new stdClass();
+
+        $factory->expects(self::exactly(2))
+            ->method('create')
+            ->willReturnOnConsecutiveCalls($firstAmqp, $secondAmqp);
+
+        $firstAmqp->method('channel')->willReturn($firstChannel);
+        $firstAmqp->method('isConnected')->willReturn(true);
+        $firstAmqp->expects(self::once())
+            ->method('close');
+        $secondAmqp->method('channel')->willReturn($secondChannel);
+        $secondAmqp->method('isConnected')->willReturn(true);
+
+        $firstChannel->method('is_open')->willReturn(true);
+        $firstChannel->method('is_consuming')->willReturn(true);
+        $firstChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('tag-1');
+        $secondChannel->method('is_open')->willReturn(true);
+        $secondChannel->method('is_consuming')->willReturn(true);
+        $secondChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('tag-2');
+
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('register');
+        $coordinator->expects(self::exactly(2))
+            ->method('wait')
+            ->willReturnCallback(static function () use ($holder): void {
+                static $n = 0;
+
+                if (++$n === 1) {
+                    $holder->connection->close();
+                }
+            });
+
+        $connection         = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+            logger: $logger,
+            debug: new Debug($logger, true),
+        );
+        $holder->connection = $connection;
+        $connection->setWaitCoordinator($coordinator);
+        $connection->startConsumers();
+
+        /** @var Traversable<mixed, AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+
+        self::assertCount(0, iterator_to_array($envelopes));
+        self::assertTrue($connection->isConnected());
+        self::assertTrue($logger->hasTemplate('Reconnecting inside get() after the wait closed the connection'));
+    }
+
+    public function testConsumeDoesNotReconnectWhenTheWaitTimesOutWhileConnected(): void
+    {
+        $logger                     = new CollectingLogger();
+        [$connection, $coordinator] = $this->createConnectionRegisteredWithCoordinator();
+        $coordinator->expects(self::once())
+            ->method('wait');
+
+        $debug = new ReflectionProperty(Connection::class, 'debug');
+        $debug->setValue($connection, new Debug($logger, true));
+
+        /** @var Traversable<mixed, AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+
+        self::assertCount(0, iterator_to_array($envelopes));
+        self::assertTrue($connection->isConnected());
+        self::assertFalse($logger->hasTemplate('Reconnecting inside get() after the wait closed the connection'));
+    }
+
+    public function testConsumeDoesNotReconnectInsideAStandaloneGet(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory = $this->createMock(AmqpConnectionFactory::class);
+        $amqp    = $this->createMock(AMQPStreamConnection::class);
+        $channel = $this->createMock(AMQPChannel::class);
+        $logger  = new CollectingLogger();
+
+        $factory->expects(self::once())
+            ->method('create')
+            ->willReturn($amqp);
+        $amqp->method('channel')->willReturn($channel);
+        $amqp->method('isConnected')->willReturn(true);
+        $amqp->expects(self::once())
+            ->method('close');
+        $channel->method('is_open')->willReturn(true);
+        $channel->method('is_consuming')->willReturn(true);
+        $channel->method('basic_consume')->willReturn('tag-1');
+        $channel->expects(self::once())
+            ->method('wait')
+            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+            logger: $logger,
+            debug: new Debug($logger, true),
+        );
+
+        /** @var Traversable<mixed, AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+
+        self::assertCount(0, iterator_to_array($envelopes));
+        self::assertFalse($connection->isConnected());
+        self::assertFalse($logger->hasTemplate('Reconnecting inside get() after the wait closed the connection'));
+    }
+
+    public function testConsumeReconnectsInsideGetWhenExternalWaitDrainClosesTheConnection(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory       = $this->createMock(AmqpConnectionFactory::class);
+        $firstAmqp     = $this->createMock(AMQPStreamConnection::class);
+        $secondAmqp    = $this->createStub(AMQPStreamConnection::class);
+        $firstChannel  = $this->createMock(AMQPChannel::class);
+        $secondChannel = $this->createStub(AMQPChannel::class);
+        $logger        = new CollectingLogger();
+
+        $factory->expects(self::exactly(2))
+            ->method('create')
+            ->willReturnOnConsecutiveCalls($firstAmqp, $secondAmqp);
+
+        $firstAmqp->method('channel')->willReturn($firstChannel);
+        $firstAmqp->method('isConnected')->willReturn(true);
+        $firstAmqp->expects(self::once())
+            ->method('close');
+        $secondAmqp->method('channel')->willReturn($secondChannel);
+        $secondAmqp->method('isConnected')->willReturn(true);
+
+        $firstChannel->method('is_open')->willReturn(true);
+        $firstChannel->method('is_consuming')->willReturn(true);
+        $firstChannel->method('hasPendingMethods')->willReturn(true);
+        $firstChannel->method('basic_consume')->willReturn('tag-1');
+        $firstChannel->expects(self::once())
+            ->method('wait')
+            ->willThrowException(new AMQPConnectionClosedException('Broken pipe or closed connection'));
+        $secondChannel->method('is_open')->willReturn(true);
+        $secondChannel->method('is_consuming')->willReturn(true);
+        $secondChannel->method('basic_consume')->willReturn('tag-2');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+            logger: $logger,
+            debug: new Debug($logger, true),
+        );
+        $connection->enableExternalWait();
+        $connection->startConsumers();
+
+        /** @var Traversable<mixed, AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+
+        self::assertCount(0, iterator_to_array($envelopes));
+        self::assertTrue($connection->isConnected());
+        self::assertTrue($logger->hasTemplate('Reconnecting inside get() after the wait closed the connection'));
+    }
+
+    public function testConsumeReturnsEmptyWhenReconnectAfterWaitFails(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            retries: 0,
+            retryWaitTime: 0,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory = $this->createMock(AmqpConnectionFactory::class);
+        $amqp    = $this->createMock(AMQPStreamConnection::class);
+        $channel = $this->createStub(AMQPChannel::class);
+        $logger  = new CollectingLogger();
+        $holder  = new stdClass();
+
+        $factory->expects(self::exactly(2))
+            ->method('create')
+            ->willReturnCallback(static function () use ($amqp): AMQPStreamConnection {
+                static $n = 0;
+
+                if (++$n === 1) {
+                    return $amqp;
+                }
+
+                throw new AMQPIOException('connection refused');
+            });
+
+        $amqp->method('channel')->willReturn($channel);
+        $amqp->method('isConnected')->willReturn(true);
+        $amqp->expects(self::once())
+            ->method('close');
+        $channel->method('is_open')->willReturn(true);
+        $channel->method('is_consuming')->willReturn(true);
+        $channel->method('basic_consume')->willReturn('tag-1');
+
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('register');
+        $coordinator->expects(self::once())
+            ->method('wait')
+            ->willReturnCallback(static function () use ($holder): void {
+                $holder->connection->close();
+            });
+
+        $connection         = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+            logger: $logger,
+            debug: new Debug($logger, true),
+        );
+        $holder->connection = $connection;
+        $connection->setWaitCoordinator($coordinator);
+        $connection->startConsumers();
+
+        /** @var Traversable<mixed, AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+
+        self::assertCount(0, iterator_to_array($envelopes));
+        self::assertFalse($connection->isConnected());
+        self::assertTrue($logger->hasTemplate('Reconnecting inside get() after the wait closed the connection'));
+        self::assertTrue($logger->hasTemplate('AMQP exception occurred while restarting consumer after wait: {message}'));
+    }
+
     public function testStartConsumersHonorsAnExplicitQueueList(): void
     {
         $connectionConfig = new ConnectionConfig(
@@ -2103,13 +2362,16 @@ class ConnectionTest extends TestCase
                 }),
             );
 
-        $connection = new Connection(
+        $connection  = new Connection(
             retryFactory: new RetryFactory(),
             amqpConnectionFactory: $factory,
             connectionConfig: $connectionConfig,
             logger: $logger,
         );
-        $connection->setWaitCoordinator(new ConsumerWaitCoordinator());
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('wait');
+        $connection->setWaitCoordinator($coordinator);
         $registered = new ReflectionProperty(Connection::class, 'registeredWithCoordinator');
         $registered->setValue($connection, true);
 
@@ -2135,12 +2397,15 @@ class ConnectionTest extends TestCase
         $factory->method('create')
             ->willThrowException(new AMQPIOException('connection refused'));
 
-        $connection = new Connection(
+        $connection  = new Connection(
             retryFactory: new RetryFactory(),
             amqpConnectionFactory: $factory,
             connectionConfig: $connectionConfig,
         );
-        $connection->setWaitCoordinator(new ConsumerWaitCoordinator());
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('wait');
+        $connection->setWaitCoordinator($coordinator);
         $registered = new ReflectionProperty(Connection::class, 'registeredWithCoordinator');
         $registered->setValue($connection, true);
 
@@ -2196,12 +2461,18 @@ class ConnectionTest extends TestCase
         $factory->method('create')
             ->willThrowException(new AMQPIOException('connection refused'));
 
-        $connection = new Connection(
+        $connection  = new Connection(
             retryFactory: new RetryFactory(),
             amqpConnectionFactory: $factory,
             connectionConfig: $connectionConfig,
         );
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::never())
+            ->method('wait');
+        $connection->setWaitCoordinator($coordinator);
         $connection->enableExternalWait();
+        $registered = new ReflectionProperty(Connection::class, 'registeredWithCoordinator');
+        $registered->setValue($connection, true);
 
         /** @var Traversable<mixed, AmqpEnvelope> $envelopes */
         $envelopes = $connection->consume('queue_name');

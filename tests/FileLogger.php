@@ -60,9 +60,7 @@ final class FileLogger extends AbstractLogger
         file_put_contents($this->file, $encoded . "\n", FILE_APPEND | LOCK_EX);
     }
 
-    /**
-     * @param array<array-key, mixed> $context
-     */
+    /** @param array<array-key, mixed> $context */
     private function interpolate(string $message, array $context): string
     {
         $replace = [];

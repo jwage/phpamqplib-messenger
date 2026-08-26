@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 COMPOSE=(docker compose)
+DOCKER=(docker)
 SERVICE=rabbitmq
 
 usage() {
@@ -36,6 +37,21 @@ need_docker() {
     echo "docker is required to inject chaos broker faults" >&2
     exit 1
   fi
+
+  if docker info >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+    DOCKER=(docker)
+    return
+  fi
+
+  if command -v run0 >/dev/null 2>&1 && run0 docker info >/dev/null 2>&1; then
+    COMPOSE=(run0 docker compose)
+    DOCKER=(run0 docker)
+    return
+  fi
+
+  echo "docker is required to inject chaos broker faults" >&2
+  exit 1
 }
 
 wait_ready() {
@@ -149,7 +165,7 @@ case "$cmd" in
   pause)
     id="$("${COMPOSE[@]}" ps -q "$SERVICE")"
     "${COMPOSE[@]}" pause "$SERVICE"
-    paused="$(docker inspect -f '{{.State.Paused}}' "$id")"
+    paused="$("${DOCKER[@]}" inspect -f '{{.State.Paused}}' "$id")"
     if [ "$paused" != "true" ]; then
       echo "RabbitMQ container was not paused" >&2
       exit 1
@@ -157,7 +173,7 @@ case "$cmd" in
     ;;
   unpause)
     id="$("${COMPOSE[@]}" ps -q "$SERVICE")"
-    paused="$(docker inspect -f '{{.State.Paused}}' "$id")"
+    paused="$("${DOCKER[@]}" inspect -f '{{.State.Paused}}' "$id")"
     if [ "$paused" = "true" ]; then
       "${COMPOSE[@]}" unpause "$SERVICE"
     fi

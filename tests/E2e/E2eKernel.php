@@ -219,7 +219,7 @@ class E2eKernel extends Kernel
 
     public function getCacheDir(): string
     {
-        return sys_get_temp_dir() . '/phpamqplib-messenger-e2e/' . ($_SERVER['E2E_CACHE'] ?? $this->environment);
+        return sys_get_temp_dir() . '/phpamqplib-messenger-e2e/' . ($_SERVER['E2E_CACHE'] ?? $this->environment) . ($this->isDebug() ? '-debug' : '');
     }
 
     public function getLogDir(): string

@@ -9,7 +9,6 @@ use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferrableStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\ConfirmMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\TransactionMessage;
-use Jwage\PhpAmqpLibMessengerBundle\Tests\TestLog;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;

@@ -97,8 +97,9 @@ abstract class E2eTestCase extends TestCase
 
         $this->env = [
             'APP_ENV' => 'test',
-            'APP_DEBUG' => '0',
-            'E2E_CACHE' => 'e2e-v5',
+            // kernel.debug so wait/consume traces land in E2E_DEBUG_LOG / TEST_LOG_DIR.
+            'APP_DEBUG' => '1',
+            'E2E_CACHE' => 'e2e-v6',
             'E2E_LOG' => $this->logFile,
             'E2E_DEBUG_LOG' => $this->debugLogFile,
             'TEST_LOG_DIR' => $testLogDir,
@@ -120,7 +121,7 @@ abstract class E2eTestCase extends TestCase
 
         $this->applyEnv($this->env);
 
-        $this->kernel = new E2eKernel('test', false);
+        $this->kernel = new E2eKernel('test', true);
         $this->kernel->boot();
 
         foreach (

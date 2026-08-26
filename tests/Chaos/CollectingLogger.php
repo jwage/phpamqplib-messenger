@@ -75,9 +75,7 @@ final class CollectingLogger extends AbstractLogger
         return false;
     }
 
-    /**
-     * @return list<string>
-     */
+    /** @return list<string> */
     public function templates(): array
     {
         $templates = [];
@@ -89,9 +87,7 @@ final class CollectingLogger extends AbstractLogger
         return $templates;
     }
 
-    /**
-     * @param array<array-key, mixed> $context
-     */
+    /** @param array<array-key, mixed> $context */
     private function interpolate(string $message, array $context): string
     {
         $replace = [];

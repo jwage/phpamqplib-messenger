@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
-use Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos\CollectingLogger;
 use JsonException;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos\CollectingLogger;
 use Throwable;
 
 use function file_get_contents;
@@ -69,9 +69,7 @@ final class TestLog
         return self::$currentTest;
     }
 
-    /**
-     * @param array<array-key, mixed> $payload
-     */
+    /** @param array<array-key, mixed> $payload */
     public static function event(string $event, array $payload = []): void
     {
         $record = [
@@ -139,7 +137,7 @@ final class TestLog
 
     public static function redact(string $value): string
     {
-        $redacted = preg_replace('#(phpamqplibs?://[^:/?#]+:)[^@/]+@#', '$1***@', $value);
+        $redacted = preg_replace('~(phpamqplibs?://[^:/?#]+:)[^@/]+@~', '$1***@', $value);
 
         return $redacted ?? $value;
     }

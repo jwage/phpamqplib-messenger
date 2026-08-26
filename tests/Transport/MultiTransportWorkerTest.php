@@ -258,6 +258,7 @@ class MultiTransportWorkerTest extends TestCase
             'read_timeout' => 0.2,
             'write_timeout' => 0.2,
             'rpc_timeout' => 0.2,
+            'wait_timeout' => 0.05,
         ]));
         $transport  = new AmqpTransport($connection);
         $listener   = new AmqpWorkerListener(new ConsumerWaitCoordinator());

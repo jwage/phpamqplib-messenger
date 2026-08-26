@@ -6,7 +6,6 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use Jwage\PhpAmqpLibMessengerBundle\Middleware\DeduplicationPluginMiddleware;
 use Jwage\PhpAmqpLibMessengerBundle\PhpAmqpLibMessengerBundle;
-use Jwage\PhpAmqpLibMessengerBundle\Tests\FileLogger;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\ConfirmMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\TransactionMessage;
 use Psr\Log\LoggerInterface;
@@ -18,6 +17,7 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\HttpKernel\Kernel;
 
 use function dirname;
+use function sys_get_temp_dir;
 
 class TestKernel extends Kernel implements CompilerPassInterface
 {

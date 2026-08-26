@@ -60,6 +60,13 @@ class AmqpConsumer
                 'exception' => $e,
             ]);
 
+            if (
+                $this->connection->isRegisteredWithWaitCoordinator()
+                && ! $this->connection->isExternalWaitEnabled()
+            ) {
+                $this->connection->waitForDeliveries($this->connection->getWaitTimeout());
+            }
+
             return;
         }
 

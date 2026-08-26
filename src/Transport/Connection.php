@@ -324,11 +324,42 @@ class Connection
                     'exception' => $e,
                 ]);
 
+                if (
+                    $this->isRegisteredWithWaitCoordinator()
+                    && ! $this->isExternalWaitEnabled()
+                ) {
+                    $this->waitForDeliveries($this->getWaitTimeout());
+                }
+
                 return [];
             }
         }
 
-        return ($this->consumers[$queueName] ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger, $this->debug))->consume($queueName, $fetchSize);
+        yield from $this->amqpConsumer($queueName)->consume($queueName, $fetchSize);
+
+        // Drain swallows a dead socket so messenger:consume keeps running.
+        // stream_select also returns early on EOF, so get() would otherwise
+        // return empty after a short wait and Worker leftover-sleeps --sleep
+        // before the next get() reconnects. Resume inside this get() so Retry
+        // starts immediately and mixed idle wait still has a live socket.
+        if (! $this->shouldResumeWaitAfterDisconnect()) {
+            return;
+        }
+
+        $this->debug->log('Reconnecting inside get() after the wait closed the connection');
+
+        try {
+            $this->consumerChannel();
+        } catch (TransportException $e) {
+            $this->logger?->warning('AMQP exception occurred while restarting consumer after wait: {message}', [
+                'message' => $e->getMessage(),
+                'exception' => $e,
+            ]);
+
+            return;
+        }
+
+        yield from $this->amqpConsumer($queueName)->consume($queueName, $fetchSize);
     }
 
     /**
@@ -361,12 +392,7 @@ class Connection
                 continue;
             }
 
-            $consumer = $this->consumers[$queueName] ??= new AmqpConsumer(
-                $this,
-                $this->connectionConfig,
-                $this->logger,
-                $this->debug,
-            );
+            $consumer = $this->amqpConsumer($queueName);
 
             try {
                 $consumer->ensureStarted($queueName);
@@ -1177,6 +1203,26 @@ class Connection
             routing_key: $delayQueueName,
             nowait: false,
         );
+    }
+
+    private function amqpConsumer(string $queueName): AmqpConsumer
+    {
+        return $this->consumers[$queueName] ??= new AmqpConsumer(
+            $this,
+            $this->connectionConfig,
+            $this->logger,
+            $this->debug,
+        );
+    }
+
+    /**
+     * True when a worker wait closed the AMQP connection and get() should
+     * reconnect before returning empty to Worker leftover --sleep.
+     */
+    private function shouldResumeWaitAfterDisconnect(): bool
+    {
+        return ! $this->isConnected()
+            && ($this->isRegisteredWithWaitCoordinator() || $this->isExternalWaitEnabled());
     }
 
     /** @throws AMQPExceptionInterface */

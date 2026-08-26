@@ -319,22 +319,75 @@ class AmqpWorkerListenerTest extends TestCase
         $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
     }
 
-    public function testIdleWaitIsSkippedWhenSleepCapIsZero(): void
+    public function testIdleWaitUsesWaitTimeoutWhenSleepIsZero(): void
     {
-        if (! method_exists(WorkerStartedEvent::class, 'getIdleTimeout')) {
-            self::markTestSkipped('WorkerStartedEvent::getIdleTimeout() requires Symfony 8.1+');
+        $connection = $this->createMock(Connection::class);
+        $connection->method('listen');
+        $connection->method('getWaitTimeout')
+            ->willReturn(1.5);
+        $connection->expects(self::once())
+            ->method('waitForDeliveries')
+            ->with(1.5, false);
+
+        $logger   = new CollectingLogger();
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class), new Debug($logger, true));
+        $listener->addConnection('async', $connection);
+        $this->dispatchConsumeSleep($listener, 0);
+
+        $worker = $this->createWorker(['async', 'redis']);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, idleTimeout: 0));
+        $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
+
+        self::assertTrue($logger->hasTemplate('Mixed worker idle wait'));
+    }
+
+    public function testIdleWaitWithZeroSleepIsStillSkippedWhenTheDeadlineHasPassed(): void
+    {
+        if (! method_exists(WorkerStartedEvent::class, 'getDeadline')) {
+            self::markTestSkipped('WorkerStartedEvent::getDeadline() requires Symfony 8.1+');
         }
 
         $connection = $this->createMock(Connection::class);
         $connection->method('listen');
+        $connection->method('getWaitTimeout')
+            ->willReturn(1.5);
         $connection->expects(self::never())
             ->method('waitForDeliveries');
 
-        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $logger   = new CollectingLogger();
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class), new Debug($logger, true));
         $listener->addConnection('async', $connection);
+        $this->dispatchConsumeSleep($listener, 0);
 
         $worker = $this->createWorker(['async', 'redis']);
-        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, idleTimeout: 0));
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, deadline: microtime(true) - 1.0, idleTimeout: 0));
+        $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
+
+        self::assertTrue($logger->hasTemplate('Mixed worker idle wait skipped; no time remaining'));
+    }
+
+    public function testIdleWaitWithZeroSleepIsCappedByTheWorkerDeadline(): void
+    {
+        if (! method_exists(WorkerStartedEvent::class, 'getDeadline')) {
+            self::markTestSkipped('WorkerStartedEvent::getDeadline() requires Symfony 8.1+');
+        }
+
+        $connection = $this->createMock(Connection::class);
+        $connection->method('listen');
+        $connection->method('getWaitTimeout')
+            ->willReturn(10.0);
+        $connection->expects(self::once())
+            ->method('waitForDeliveries')
+            ->with(self::callback(static function (float $timeout): bool {
+                return $timeout > 0.0 && $timeout <= 2.5;
+            }), false);
+
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $listener->addConnection('async', $connection);
+        $this->dispatchConsumeSleep($listener, 0);
+
+        $worker = $this->createWorker(['async', 'redis']);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, deadline: microtime(true) + 2.0, idleTimeout: 0));
         $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
     }
 

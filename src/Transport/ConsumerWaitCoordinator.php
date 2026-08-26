@@ -17,6 +17,7 @@ use function pcntl_signal_dispatch;
 use function round;
 use function spl_object_id;
 use function stream_select;
+use function usleep;
 
 /**
  * Multiplexed AMQP wait used by phpamqplib messenger:consume workers.
@@ -141,6 +142,13 @@ class ConsumerWaitCoordinator
                 'connections' => count($this->connections),
             ]);
 
+            // Registered connections with no socket (broker down) must still
+            // block. Returning immediately plus messenger:consume --sleep=0
+            // busy-loops start-failure warnings.
+            if ($this->connections !== []) {
+                $this->sleepWithoutSockets($timeout);
+            }
+
             return;
         }
 
@@ -188,6 +196,18 @@ class ConsumerWaitCoordinator
         foreach ($indexed as $connection) {
             $connection->drainConsumerChannel();
         }
+    }
+
+    private function sleepWithoutSockets(float $timeout): void
+    {
+        [$sec, $usec] = $this->splitTimeout($timeout);
+        $microseconds = $sec * 1_000_000 + $usec;
+
+        if ($microseconds <= 0) {
+            return;
+        }
+
+        usleep($microseconds);
     }
 
     /** @return array{0: int, 1: int} */

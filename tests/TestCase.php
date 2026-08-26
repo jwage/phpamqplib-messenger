@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
-use Jwage\PhpAmqpLibMessengerBundle\Tests\TestLog;
 use PHPUnit\Framework\Constraint\Callback;
 use PHPUnit\Framework\Constraint\Constraint;
 use PHPUnit\Framework\TestCase as BaseTestCase;

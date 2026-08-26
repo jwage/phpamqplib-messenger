@@ -66,9 +66,9 @@ bin/console messenger:consume transport2
 
 A single `messenger:consume` process can still listen to several phpamqplib transports, including alongside Doctrine, Redis, or other receivers.
 
-When every receiver is phpamqplib, the first `get()` of a worker pass waits on all of those sockets at once. That wait is at least `messenger:consume --sleep` and not shorter than the shortest `wait_timeout` on that connection (connection-level or per-queue), so leftover `--sleep` does not sit between idle and the next message with no socket selected. Later transports in the same pass only drain. A delivery is therefore handled in that same iteration. SIGINT and idle checks stay close to one wait rather than scaling with the number of phpamqplib transports.
+When every receiver is phpamqplib, the first `get()` of a worker pass waits on all of those sockets at once. That wait is at least `messenger:consume --sleep` and not shorter than the shortest `wait_timeout` on that connection (connection-level or per-queue), so leftover `--sleep` does not sit between idle and the next message with no socket selected. Later transports in the same pass only drain. A delivery is therefore handled in that same iteration. SIGINT and idle checks stay close to one wait rather than scaling with the number of phpamqplib transports. If that wait returns early because the socket died, `get()` reconnects before returning empty so Worker leftover `--sleep` does not delay Retry. If there is no socket yet (the broker is down), the wait still lasts `wait_timeout`, so `--sleep=0` cannot busy-loop start-failure warnings.
 
-When the same worker also consumes a non-phpamqplib transport, `get()` only drains frames that already arrived. After every receiver has been checked and the worker is idle, it waits on all phpamqplib sockets for `messenger:consume --sleep` (or until the worker deadline). That keeps AMQP sockets selected for the whole idle interval so leftover `--sleep` does not run with no socket selected, and the other transports keep being polled on that same interval. Direct `get()` calls outside `messenger:consume` still wait per queue, which is what tests and custom consumers do.
+When the same worker also consumes a non-phpamqplib transport, `get()` only drains frames that already arrived. After every receiver has been checked and the worker is idle, it waits on all phpamqplib sockets for `messenger:consume --sleep` (or until the worker deadline). That keeps AMQP sockets selected for the whole idle interval so leftover `--sleep` does not run with no socket selected, and the other transports keep being polled on that same interval. When `--sleep` is 0, that idle wait uses `wait_timeout` instead so the process does not busy-poll. Direct `get()` calls outside `messenger:consume` still wait per queue, which is what tests and custom consumers do.
 
 A single transport can declare multiple queues. The receiver subscribes to each queue rather than only the first. Messages that arrive for another already-subscribed queue during a wait are buffered and returned when that queue is polled. When a fetch size is in effect (CLI argument or transport default), the receiver stops after that many envelopes across those queues.
 
@@ -413,6 +413,8 @@ If the broker is down or unreachable, functional tests **fail** (they do not ski
 ### Wait and consume debug traces
 
 Detailed wait/consume traces follow Symfony's **kernel debug** flag (`APP_DEBUG`). They are off in production even though the application logger still exists. In the `dev` environment they are written at `debug`. Retry and AMQP-exception **warning/info** logs are separate and always follow your logger.
+
+This package's tests keep traces on so wait/get/drain behavior can be inspected under `TEST_LOG_DIR` (defaults to `tests/_output`): `KernelTestCase` boots with debug, e2e `messenger:consume` sets `APP_DEBUG=1`, and chaos constructs `Debug` enabled.
 
 ### Live broker failure tests
 

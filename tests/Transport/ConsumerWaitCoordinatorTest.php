@@ -107,7 +107,12 @@ class ConsumerWaitCoordinatorTest extends TestCase
         $coordinator = new ConsumerWaitCoordinator();
         $coordinator->register($connection);
         $coordinator->unregister($connection);
-        $coordinator->wait(0.01);
+
+        $start = hrtime(true);
+        $coordinator->wait(0.3);
+        $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+
+        self::assertLessThan(100, $elapsedMs);
     }
 
     public function testWaitKeepaliveFailuresDoNotStopTheWait(): void
@@ -397,7 +402,7 @@ class ConsumerWaitCoordinatorTest extends TestCase
         }
     }
 
-    public function testWaitReturnsImmediatelyWhenNoSocketsAreAvailable(): void
+    public function testWaitBlocksWhenNoSocketsAreAvailable(): void
     {
         $connection = $this->createMock(Connection::class);
         $connection->method('getConsumerSocket')->willReturn(null);
@@ -411,16 +416,35 @@ class ConsumerWaitCoordinatorTest extends TestCase
         $coordinator->register($connection);
 
         $start = hrtime(true);
-        $coordinator->wait(0.5);
+        $coordinator->wait(0.15);
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
 
-        self::assertLessThan(150, $elapsedMs);
+        self::assertGreaterThan(100, $elapsedMs);
         self::assertTrue($logger->hasTemplate('No AMQP sockets to wait on'));
+    }
+
+    public function testWaitReturnsImmediatelyWhenNoSocketsAndTimeoutIsZero(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getConsumerSocket')->willReturn(null);
+        $connection->method('hasBufferedDeliveries')->willReturn(false);
+        $connection->expects(self::once())
+            ->method('drainConsumerChannel')
+            ->willReturn(false);
+
+        $coordinator = new ConsumerWaitCoordinator();
+        $coordinator->register($connection);
+
+        $start = hrtime(true);
+        $coordinator->wait(0.0);
+        $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+
+        self::assertLessThan(50, $elapsedMs);
     }
 
     public function testWaitDoesNotLogWhenDebugIsDisabled(): void
     {
-        $connection = $this->createMock(Connection::class);
+        $connection = $this->createStub(Connection::class);
         $connection->method('getConsumerSocket')->willReturn(null);
         $connection->method('hasBufferedDeliveries')->willReturn(false);
         $connection->method('drainConsumerChannel')->willReturn(false);
@@ -431,7 +455,7 @@ class ConsumerWaitCoordinatorTest extends TestCase
 
         $coordinator = new ConsumerWaitCoordinator(new Debug($logger, false));
         $coordinator->register($connection);
-        $coordinator->wait(0.01);
+        $coordinator->wait(0.0);
     }
 
     /** @param list{int, int} $expected */

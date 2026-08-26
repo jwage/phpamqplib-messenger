@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos;
 
+use Jwage\PhpAmqpLibMessengerBundle\Debug;
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestLog;
@@ -72,6 +73,7 @@ final class Harness
             new RetryFactory($this->logger),
             new AmqpConnectionFactory(),
             $this->logger,
+            new Debug($this->logger, true), // wait/consume traces in TEST_LOG_DIR
         );
     }
 

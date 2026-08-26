@@ -35,7 +35,8 @@ use function min;
  * --sleep does not delay the next message. Mixed workers match Symfony's
  * PostgreSqlNotifyOnIdleListener: get() only drains, and the wait happens
  * after every receiver has been polled, for --sleep, so leftover Worker
- * usleep does not run with no AMQP socket selected.
+ * usleep does not run with no AMQP socket selected. When --sleep is 0 that
+ * idle wait uses wait_timeout so the worker does not busy-poll.
  */
 class AmqpWorkerListener implements EventSubscriberInterface
 {
@@ -252,6 +253,10 @@ class AmqpWorkerListener implements EventSubscriberInterface
         }
 
         $timeout = $sleepCap;
+
+        if ($timeout <= 0) {
+            $timeout = $this->activeConnection->getWaitTimeout();
+        }
 
         if ($this->deadline !== null) {
             $timeout = min($timeout, $this->deadline - microtime(true));
