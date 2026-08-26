@@ -47,7 +47,7 @@ wait_ready() {
      && "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmq-diagnostics -q ping >/dev/null 2>&1; do
     if (( "$(date +%s)" - started >= timeout )); then
       echo "RabbitMQ did not become ready within ${timeout}s" >&2
-      exit 1
+      return 1
     fi
     sleep 1
   done
@@ -82,14 +82,40 @@ wait_for_no_alarms() {
   done
 }
 
+# Start existing containers without recreating them. `start`/`restart`
+# followed by `up -d --wait` can race: Compose recreates the just-started
+# container and `--wait` reports "container exited (0)".
+compose_up() {
+  "${COMPOSE[@]}" up -d --no-recreate "$SERVICE"
+}
+
+start_and_wait() {
+  local attempt=1
+
+  while true; do
+    compose_up
+    if wait_ready 30; then
+      return 0
+    fi
+    if (( attempt >= 3 )); then
+      echo "RabbitMQ did not become ready after ${attempt} start attempts" >&2
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    echo "RabbitMQ start attempt failed; retrying (${attempt}/3)" >&2
+    sleep 2
+  done
+}
+
 need_docker
 
 cmd="${1:-}"
 case "$cmd" in
   restart)
     "${COMPOSE[@]}" restart "$SERVICE"
-    "${COMPOSE[@]}" up -d --wait
-    wait_ready
+    if ! wait_ready 30; then
+      start_and_wait
+    fi
     ;;
   stop)
     "${COMPOSE[@]}" stop "$SERVICE"
@@ -98,9 +124,7 @@ case "$cmd" in
     "${COMPOSE[@]}" kill -s SIGKILL "$SERVICE"
     ;;
   start)
-    "${COMPOSE[@]}" start "$SERVICE"
-    "${COMPOSE[@]}" up -d --wait
-    wait_ready
+    start_and_wait
     ;;
   pause)
     id="$("${COMPOSE[@]}" ps -q "$SERVICE")"

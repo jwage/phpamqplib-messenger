@@ -415,6 +415,12 @@ final class Harness
             }
         }
 
+        try {
+            $this->broker('start');
+        } catch (Throwable $exception) {
+            $this->info('Failed to ensure broker is running during cleanup: ' . $exception->getMessage());
+        }
+
         if ($this->memoryAlarmed) {
             try {
                 $this->broker('memory-ok');
