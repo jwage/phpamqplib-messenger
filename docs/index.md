@@ -66,7 +66,7 @@ bin/console messenger:consume transport2
 
 A single `messenger:consume` process can still listen to several phpamqplib transports, including alongside Doctrine, Redis, or other receivers.
 
-When every receiver is phpamqplib, the first `get()` of a worker pass waits on all of those sockets at once. That wait is at least `messenger:consume --sleep` and not shorter than `wait_timeout`, so leftover `--sleep` does not sit between idle and the next message with no socket selected. Later transports in the same pass only drain. A delivery is therefore handled in that same iteration. SIGINT and idle checks stay close to one wait rather than scaling with the number of phpamqplib transports.
+When every receiver is phpamqplib, the first `get()` of a worker pass waits on all of those sockets at once. That wait is at least `messenger:consume --sleep` and not shorter than the shortest `wait_timeout` on that connection (connection-level or per-queue), so leftover `--sleep` does not sit between idle and the next message with no socket selected. Later transports in the same pass only drain. A delivery is therefore handled in that same iteration. SIGINT and idle checks stay close to one wait rather than scaling with the number of phpamqplib transports.
 
 When the same worker also consumes a non-phpamqplib transport, `get()` only drains frames that already arrived. After every receiver has been checked and the worker is idle, it waits on all phpamqplib sockets at once, capped by `messenger:consume --sleep` so the other transports keep being polled on their usual interval. Direct `get()` calls outside `messenger:consume` still wait per queue, which is what tests and custom consumers do.
 

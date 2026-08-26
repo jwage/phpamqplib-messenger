@@ -1683,6 +1683,21 @@ class ConnectionTest extends TestCase
         self::assertTrue($connection->isExternalWaitEnabled());
     }
 
+    public function testGetWaitTimeoutUsesTheShortestQueueTimeout(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            waitTimeout: 5.0,
+            queues: [
+                'slow' => new QueueConfig(name: 'slow', waitTimeout: 5.0),
+                'fast' => new QueueConfig(name: 'fast', waitTimeout: 0.2),
+            ],
+        ));
+
+        self::assertSame(0.2, $connection->getWaitTimeout());
+    }
+
     public function testUnregisterFromWaitCoordinatorNotifiesTheCoordinatorAndClearsTheFlag(): void
     {
         [$connection, $coordinator] = $this->createConnectionRegisteredWithCoordinator();

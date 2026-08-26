@@ -32,6 +32,7 @@ use function assert;
 use function count;
 use function is_object;
 use function is_resource;
+use function min;
 use function property_exists;
 
 class Connection
@@ -142,7 +143,13 @@ class Connection
 
     public function getWaitTimeout(): float
     {
-        return (float) $this->connectionConfig->waitTimeout;
+        $timeout = (float) $this->connectionConfig->waitTimeout;
+
+        foreach ($this->connectionConfig->queues as $queueConfig) {
+            $timeout = min($timeout, (float) $queueConfig->waitTimeout);
+        }
+
+        return $timeout;
     }
 
     public function isConnected(): bool
