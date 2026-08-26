@@ -15,9 +15,18 @@
 >
     <testsuites>
         <testsuite name="default">
-            <directory>tests</directory>
-            <exclude>tests/Chaos</exclude>
-            <exclude>tests/bin</exclude>
+            <directory>tests/Unit</directory>
+            <directory>tests/Functional</directory>
+            <directory>tests/E2e</directory>
+        </testsuite>
+        <testsuite name="unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="functional">
+            <directory>tests/Functional</directory>
+        </testsuite>
+        <testsuite name="e2e">
+            <directory>tests/E2e</directory>
         </testsuite>
         <testsuite name="chaos">
             <directory suffix="Test.php">tests/Chaos</directory>

@@ -83,7 +83,7 @@ jobs:
         run: echo "name=phpunit-logs-php${{ matrix.php }}-sf$(echo '${{ matrix.symfony_version }}' | tr '*' 'x')-${{ matrix.dependencies }}" >> "$GITHUB_OUTPUT"
 
       - name: PHPUnit
-        run: ./vendor/bin/phpunit --log-junit test-logs/junit.xml --testdox-text test-logs/testdox.txt
+        run: ./vendor/bin/phpunit --testsuite unit,functional,e2e --log-junit test-logs/junit.xml --testdox-text test-logs/testdox.txt
         env:
           TEST_LOG_DIR: ${{ github.workspace }}/test-logs
           MESSENGER_TRANSPORT_PHPAMQPLIB_DSN: "phpamqplib://guest:guest@127.0.0.1:${{ job.services.rabbitmq.ports['5672'] }}/%2f/messages"

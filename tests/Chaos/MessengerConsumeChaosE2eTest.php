@@ -7,7 +7,6 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\E2e\E2eMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\E2e\E2eSslMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\E2e\E2eTestCase;
-use PHPUnit\Framework\Attributes\Group;
 use Throwable;
 
 use function microtime;
@@ -15,9 +14,6 @@ use function putenv;
 use function sprintf;
 use function usleep;
 
-#[Group('chaos')]
-#[Group('e2e')]
-#[Group('live')]
 class MessengerConsumeChaosE2eTest extends E2eTestCase
 {
     private Harness $harness;

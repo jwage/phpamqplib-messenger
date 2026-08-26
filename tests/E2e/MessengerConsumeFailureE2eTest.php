@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\E2e;
 
-use PHPUnit\Framework\Attributes\Group;
 use Throwable;
 
 use function array_key_last;
 
-#[Group('live')]
-#[Group('e2e')]
 class MessengerConsumeFailureE2eTest extends E2eTestCase
 {
     public function testHandlerFailureIsRetriedThenSucceeds(): void

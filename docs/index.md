@@ -396,7 +396,27 @@ framework:
 
 ## Running Tests
 
-Functional tests need a RabbitMQ broker. Port `5672` is often already taken by another local broker, so this suite defaults to **port 5673**.
+Tests are split by folder into PHPUnit suites. `./vendor/bin/phpunit` runs **unit**, **functional**, and **e2e**. **chaos** is excluded because it pauses and restarts the broker.
+
+| Suite | Path | Broker | Mutates broker |
+|---|---|---|---|
+| `unit` | `tests/Unit` | no | no |
+| `functional` | `tests/Functional` | yes | no |
+| `e2e` | `tests/E2e` | yes | no |
+| `chaos` | `tests/Chaos` | yes | yes |
+
+```bash
+./vendor/bin/phpunit --testsuite unit
+# or: composer test:unit
+
+docker compose up -d --wait
+./vendor/bin/phpunit --testsuite functional
+./vendor/bin/phpunit --testsuite e2e
+./vendor/bin/phpunit --testsuite unit,functional,e2e   # same as ./vendor/bin/phpunit
+docker compose down
+```
+
+Functional and e2e tests need a RabbitMQ broker. Port `5672` is often already taken by another local broker, so this suite defaults to **port 5673**.
 
 ```bash
 docker compose up -d --wait
@@ -410,7 +430,7 @@ Override the DSN if needed:
 MESSENGER_TRANSPORT_PHPAMQPLIB_DSN='phpamqplib://guest:guest@127.0.0.1:5673/%2f/messages' ./vendor/bin/phpunit
 ```
 
-If the broker is down or unreachable, functional tests **fail** (they do not skip).
+If the broker is down or unreachable, functional and e2e tests **fail** (they do not skip).
 
 ### Wait and consume debug traces
 
@@ -420,7 +440,7 @@ This package's tests keep traces on so wait/get/drain behavior can be inspected 
 
 ### Live broker failure tests
 
-Broker mutations (restart, pause, overflow NACK, memory alarm, TLS listener) are PHPUnit tests in a **separate `chaos` testsuite**. They are excluded from `./vendor/bin/phpunit` so they do not pause the functional-test broker.
+Broker mutations (restart, pause, overflow NACK, memory alarm, TLS listener) are PHPUnit tests in the **`chaos` testsuite** (`tests/Chaos`). They are excluded from `./vendor/bin/phpunit` so they do not pause the functional-test broker.
 
 ```bash
 docker compose up -d --wait
@@ -428,11 +448,11 @@ docker compose up -d --wait
 # or: composer chaos
 ```
 
-See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the test catalog and how tests inject broker faults. CI runs them in a separate job. Do not run them in parallel with the default PHPUnit suite; they pause and restart the broker.
+See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the test catalog and how tests inject broker faults. CI runs them in a separate job. Do not run them in parallel with unit, functional, or e2e; they pause and restart the broker.
 
 ### Mutation testing
 
-[Infection](https://infection.github.io/) mutates `src/` and checks that the **default** PHPUnit suite kills those mutants. It does not run the `chaos` suite or tests in the `live` group.
+[Infection](https://infection.github.io/) mutates `src/` and checks that the **unit** and **functional** suites kill those mutants. It does not run `chaos`, `e2e`, `ConnectionLiveTest`, or `MultiTransportWorkerTest`.
 
 Functional tests need a broker. Infection uses a single thread so mutant processes do not share RabbitMQ topology.
 

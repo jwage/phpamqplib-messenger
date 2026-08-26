@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use JsonException;
-use Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos\CollectingLogger;
 use Throwable;
 
 use function file_get_contents;

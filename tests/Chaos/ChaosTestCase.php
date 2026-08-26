@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
-use PHPUnit\Framework\Attributes\Group;
 use Throwable;
 
-#[Group('chaos')]
 abstract class ChaosTestCase extends TestCase
 {
     protected Harness $harness;

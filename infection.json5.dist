@@ -18,11 +18,10 @@
         "summaryJson": "var/infection-summary.json"
     },
     "testFramework": "phpunit",
-    // defaultTestSuite already excludes chaos. Also exclude the `live` group:
-    // ConnectionLiveTest needs a broker and is not a useful mutation killer
-    // (slow, environment-dependent). Do not name extra tests *ConnectionTest;
-    // PHPUnit --filter=ConnectionTest is a regex and would match them.
-    "testFrameworkExtraArgs": "--testsuite=default --exclude-group=live",
+    // Unit plus TransportFunctionalTest. Exclude ConnectionLiveTest and
+    // MultiTransportWorkerTest: they need a broker and are not useful mutation
+    // killers (slow, environment-dependent). Chaos and e2e are separate suites.
+    "testFrameworkExtraArgs": "--testsuite=unit,functional --exclude-filter=ConnectionLiveTest|MultiTransportWorkerTest",
     "ignoreMsiWithNoMutations": true,
     "minMsi": 100,
     "minCoveredMsi": 100,

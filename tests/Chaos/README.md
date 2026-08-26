@@ -2,7 +2,7 @@
 
 These are PHPUnit tests in the `chaos` testsuite. They talk to the docker compose broker, mutate it (restart, pause, overflow, memory alarm), and assert at-least-once publish behaviour.
 
-They are **excluded from the default suite** (`./vendor/bin/phpunit`) so they do not pause or restart the broker used by functional tests. CI runs them in a separate job.
+They are **excluded from the default suite** (`./vendor/bin/phpunit`, which runs `unit`, `functional`, and `e2e`) so they do not pause or restart the broker used by those suites. CI runs them in a separate job.
 
 `Harness` is a fixture helper (unique topology names, DSN, consume, broker faults). Assertions are PHPUnit's.
 
@@ -10,7 +10,7 @@ They are **excluded from the default suite** (`./vendor/bin/phpunit`) so they do
 
 Use these after changing publish, flush, confirm, retry, or channel-retirement code — especially when an agent needs to prove a failure mode that mocks only simulate.
 
-Do not run them at the same time as the default PHPUnit suite. They pause and restart the same RabbitMQ instance.
+Do not run them at the same time as the unit, functional, or e2e suites. They pause and restart the same RabbitMQ instance.
 
 ## How to run
 
@@ -77,7 +77,7 @@ Tests inject faults through `$this->harness->broker()` / `$this->harness->broker
 | `SslPublishTest::testPublishAndConsumeOverTls` | `phpamqplibs://` publish/consume works against the compose TLS listener |
 | `SslPublishTest::testPublishFailsWhenPeerVerificationRejectsTheSelfSignedCertificate` | `verify_peer: true` without a trusted CA rejects the self-signed compose cert |
 
-Live cases that do **not** mutate the broker run in the default suite (`ConnectionLiveTest`): confirms-disabled publish/flush, isolated channel close, ack/nack/decode-fail, auto_setup until `setup()`, abandoned in-memory batch, wrong-password auth, and idle heartbeat.
+Live cases that do **not** mutate the broker run in the `functional` suite (`tests/Functional/Transport/ConnectionLiveTest.php`): confirms-disabled publish/flush, isolated channel close, ack/nack/decode-fail, auto_setup until `setup()`, abandoned in-memory batch, wrong-password auth, and idle heartbeat.
 
 ## Failure coverage
 
