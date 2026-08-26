@@ -46,6 +46,13 @@ class AmqpConsumer
         try {
             $this->ensureStarted($queueName, $fetchSize);
         } catch (TransportException $e) {
+            if (
+                ! $this->connection->isRegisteredWithWaitCoordinator()
+                && ! $this->connection->isExternalWaitEnabled()
+            ) {
+                throw $e;
+            }
+
             $this->logger?->warning('AMQP exception occurred while starting consumer: {message}', [
                 'message' => $e->getMessage(),
                 'exception' => $e,

@@ -830,9 +830,18 @@ class AmqpConsumerTest extends TestCase
     {
         $exception = new TransportException('Broken pipe or closed connection');
 
-        $connection = $this->getTestConnectionStub();
-        $connection->method('consumerChannel')
+        $connection = $this->getTestConnection(onlyMethods: [
+            'consumerChannel',
+            'getQueueNames',
+            'close',
+            'isRegisteredWithWaitCoordinator',
+        ]);
+        $connection->expects(self::once())
+            ->method('consumerChannel')
             ->willThrowException($exception);
+        $connection->expects(self::once())
+            ->method('isRegisteredWithWaitCoordinator')
+            ->willReturn(true);
 
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::once())
@@ -852,9 +861,18 @@ class AmqpConsumerTest extends TestCase
 
     public function testConsumeReturnsEmptyWhenStartingTheConsumerFailsWithoutALogger(): void
     {
-        $connection = $this->getTestConnectionStub();
-        $connection->method('consumerChannel')
+        $connection = $this->getTestConnection(onlyMethods: [
+            'consumerChannel',
+            'getQueueNames',
+            'close',
+            'isRegisteredWithWaitCoordinator',
+        ]);
+        $connection->expects(self::once())
+            ->method('consumerChannel')
             ->willThrowException(new TransportException('Broken pipe or closed connection'));
+        $connection->expects(self::once())
+            ->method('isRegisteredWithWaitCoordinator')
+            ->willReturn(true);
 
         $consumer = new AmqpConsumer($connection, $this->connectionConfig, null);
 
@@ -862,6 +880,20 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
+    }
+
+    public function testConsumePropagatesStartFailureOutsideAWorker(): void
+    {
+        $connection = $this->getTestConnectionStub();
+        $connection->method('consumerChannel')
+            ->willThrowException(new TransportException('Broken pipe or closed connection'));
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $this->expectException(TransportException::class);
+        $this->expectExceptionMessage('Broken pipe or closed connection');
+
+        iterator_to_array($consumer->consume('test_queue'));
     }
 
     protected function setUp(): void
