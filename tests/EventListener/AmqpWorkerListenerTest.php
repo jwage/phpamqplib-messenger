@@ -225,9 +225,15 @@ class AmqpWorkerListenerTest extends TestCase
             ->method('unregisterFromWaitCoordinator');
 
         $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $floors      = [];
         $coordinator->expects(self::once())
             ->method('register')
             ->with($connection);
+        $coordinator->expects(self::exactly(2))
+            ->method('setWaitFloor')
+            ->willReturnCallback(static function (float $floor) use (&$floors): void {
+                $floors[] = $floor;
+            });
 
         $listener = new AmqpWorkerListener($coordinator);
         $listener->addConnection('async', $connection);
@@ -235,6 +241,8 @@ class AmqpWorkerListenerTest extends TestCase
         $worker = $this->createWorker(['async']);
         $listener->onWorkerStarted($this->createWorkerStartedEvent($worker));
         $listener->onWorkerStopped(new WorkerStoppedEvent($worker));
+
+        self::assertSame([1.0, 0.0], $floors);
     }
 
     public function testOnWorkerStartedMatchesPhpAmqpLibTransportsAfterUnmatchedOnes(): void
@@ -394,11 +402,33 @@ class AmqpWorkerListenerTest extends TestCase
 
         $input = $this->createMock(InputInterface::class);
         $input->expects(self::never())
+            ->method('hasOption');
+        $input->expects(self::never())
             ->method('getOption');
 
         $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
         $listener->onConsoleCommand(new ConsoleCommandEvent(
             $command,
+            $input,
+            $this->createStub(OutputInterface::class),
+        ));
+
+        $method = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
+
+        self::assertSame(1.0, $method->invoke($listener, new stdClass()));
+    }
+
+    public function testConsoleSleepIsIgnoredWhenTheCommandIsMissing(): void
+    {
+        $input = $this->createMock(InputInterface::class);
+        $input->expects(self::never())
+            ->method('hasOption');
+        $input->expects(self::never())
+            ->method('getOption');
+
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $listener->onConsoleCommand(new ConsoleCommandEvent(
+            null,
             $input,
             $this->createStub(OutputInterface::class),
         ));

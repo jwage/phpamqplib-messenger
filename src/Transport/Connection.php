@@ -143,13 +143,13 @@ class Connection
 
     public function getWaitTimeout(): float
     {
-        $timeout = (float) $this->connectionConfig->waitTimeout;
+        $timeout = $this->connectionConfig->waitTimeout;
 
         foreach ($this->connectionConfig->queues as $queueConfig) {
-            $timeout = min($timeout, (float) $queueConfig->waitTimeout);
+            $timeout = min($timeout, $queueConfig->waitTimeout);
         }
 
-        return $timeout;
+        return (float) $timeout;
     }
 
     public function isConnected(): bool
@@ -386,7 +386,7 @@ class Connection
     {
         $channel = $this->consumerChannel;
 
-        if ($channel === null || ! $channel->is_open() || ! $channel->is_consuming()) {
+        if ($channel === null) {
             return;
         }
 

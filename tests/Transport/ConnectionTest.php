@@ -1688,14 +1688,26 @@ class ConnectionTest extends TestCase
         $connection = $this->createConnectionWithStubs(new ConnectionConfig(
             autoSetup: false,
             confirmEnabled: false,
-            waitTimeout: 5.0,
+            waitTimeout: 5,
             queues: [
-                'slow' => new QueueConfig(name: 'slow', waitTimeout: 5.0),
-                'fast' => new QueueConfig(name: 'fast', waitTimeout: 0.2),
+                'slow' => new QueueConfig(name: 'slow', waitTimeout: 5),
+                'fast' => new QueueConfig(name: 'fast', waitTimeout: 2),
             ],
         ));
 
-        self::assertSame(0.2, $connection->getWaitTimeout());
+        self::assertSame(2.0, $connection->getWaitTimeout());
+    }
+
+    public function testGetWaitTimeoutCastsAnIntegerConnectionTimeout(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            waitTimeout: 5,
+            queues: [],
+        ));
+
+        self::assertSame(5.0, $connection->getWaitTimeout());
     }
 
     public function testUnregisterFromWaitCoordinatorNotifiesTheCoordinatorAndClearsTheFlag(): void
@@ -1705,6 +1717,15 @@ class ConnectionTest extends TestCase
         $coordinator->expects(self::once())
             ->method('unregister')
             ->with($connection);
+
+        $connection->unregisterFromWaitCoordinator();
+
+        self::assertFalse($connection->isRegisteredWithWaitCoordinator());
+    }
+
+    public function testUnregisterFromWaitCoordinatorIsSafeWhenNoCoordinatorIsSet(): void
+    {
+        $connection = $this->createConnectionWithStubs();
 
         $connection->unregisterFromWaitCoordinator();
 
@@ -1914,12 +1935,14 @@ class ConnectionTest extends TestCase
         );
 
         $factory        = $this->createStub(AmqpConnectionFactory::class);
-        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
         $channel        = $this->createMock(AMQPChannel::class);
 
         $factory->method('create')->willReturn($amqpConnection);
         $amqpConnection->method('channel')->willReturn($channel);
         $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::never())
+            ->method('close');
         $channel->method('is_open')->willReturn(true);
         $channel->method('is_consuming')->willReturn(true);
         $channel->expects(self::exactly(3))
@@ -1933,6 +1956,147 @@ class ConnectionTest extends TestCase
                 null,
                 self::throwException(new AMQPTimeoutException('no more frames')),
             );
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+        $connection->consumerChannel();
+        $connection->drainConsumerChannel();
+    }
+
+    public function testDrainConsumerChannelDoesNothingWhenTheChannelIsNotConsuming(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $channel        = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($channel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $channel->method('is_open')->willReturn(true);
+        $channel->method('is_consuming')->willReturn(false);
+        $channel->expects(self::never())
+            ->method('wait');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+        $connection->consumerChannel();
+        $connection->drainConsumerChannel();
+    }
+
+    public function testDrainConsumerChannelDoesNothingWhenTheChannelIsClosed(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $channel        = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($channel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $channel->method('is_open')->willReturn(false);
+        $channel->method('is_consuming')->willReturn(true);
+        $channel->expects(self::never())
+            ->method('wait');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+        $connection->consumerChannel();
+        $connection->drainConsumerChannel();
+    }
+
+    public function testDrainConsumerChannelClosesOnAmqpException(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $channel        = $this->createMock(AMQPChannel::class);
+        $logger         = $this->createMock(LoggerInterface::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($channel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::once())
+            ->method('close');
+        $channel->method('is_open')->willReturn(true);
+        $channel->method('is_consuming')->willReturn(true);
+        $channel->expects(self::once())
+            ->method('wait')
+            ->willThrowException(new AMQPChannelClosedException('channel closed'));
+        $logger->expects(self::once())
+            ->method('warning')
+            ->with(
+                'AMQP exception occurred while draining consumer channel: {message}',
+                self::callback(static function (array $context): bool {
+                    return $context['message'] === 'channel closed'
+                        && $context['exception'] instanceof AMQPChannelClosedException;
+                }),
+            );
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+            logger: $logger,
+        );
+        $connection->consumerChannel();
+        $connection->drainConsumerChannel();
+    }
+
+    public function testDrainConsumerChannelClosesOnAmqpExceptionWithoutALogger(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $channel        = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($channel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::once())
+            ->method('close');
+        $channel->method('is_open')->willReturn(true);
+        $channel->method('is_consuming')->willReturn(true);
+        $channel->expects(self::once())
+            ->method('wait')
+            ->willThrowException(new AMQPChannelClosedException('channel closed'));
 
         $connection = new Connection(
             retryFactory: new RetryFactory(),
