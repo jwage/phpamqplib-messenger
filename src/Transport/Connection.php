@@ -8,6 +8,7 @@ use Closure;
 use InvalidArgumentException;
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use PhpAmqpLib\Channel\AMQPChannel;
@@ -760,12 +761,15 @@ class Connection
             : [null];
 
         foreach ($bindings as $bindingConfig) {
+            $routingKey = $bindingConfig instanceof BindingConfig ? $bindingConfig->routingKey : '';
+            $arguments  = $bindingConfig instanceof BindingConfig ? $bindingConfig->arguments : [];
+
             $this->channel()->queue_bind(
                 queue: $queueConfig->name,
                 exchange: $this->connectionConfig->exchange->name,
-                routing_key: $bindingConfig?->routingKey ?? '',
+                routing_key: $routingKey,
                 nowait: false,
-                arguments: new AMQPTable($bindingConfig?->arguments ?? []),
+                arguments: new AMQPTable($arguments),
             );
         }
     }

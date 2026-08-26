@@ -21,6 +21,7 @@
     },
     "require-dev": {
         "doctrine/coding-standard": "^13.0",
+        "infection/infection": "^0.35.2",
         "phpunit/phpunit": "^12.1",
         "psalm/plugin-phpunit": "^0.19.5",
         "psalm/plugin-symfony": "^5.2",
@@ -42,11 +43,13 @@
     "config": {
         "sort-packages": true,
         "allow-plugins": {
-            "dealerdirect/phpcodesniffer-composer-installer": true
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "infection/extension-installer": true
         }
     },
     "minimum-stability": "stable",
     "scripts": {
-        "chaos": "php vendor/bin/phpunit --testsuite chaos"
+        "chaos": "php vendor/bin/phpunit --testsuite chaos",
+        "infection": "php vendor/bin/infection --only-covering-test-cases"
     }
 }
