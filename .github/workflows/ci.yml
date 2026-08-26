@@ -146,7 +146,7 @@ jobs:
 
       - name: Infection (changed lines)
         if: github.event_name == 'pull_request'
-        run: composer infection -- --git-diff-lines --git-diff-base=origin/${{ github.base_ref }} --no-progress --logger-github=true
+        run: composer infection -- --git-diff-lines --git-diff-base=origin/${{ github.base_ref }} --map-source-class-to-test --no-progress --logger-github=true
         env:
           MESSENGER_TRANSPORT_PHPAMQPLIB_DSN: "phpamqplib://guest:guest@127.0.0.1:${{ job.services.rabbitmq.ports['5672'] }}/%2f/messages"
 
