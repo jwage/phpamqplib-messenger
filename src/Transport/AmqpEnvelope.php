@@ -16,6 +16,7 @@ class AmqpEnvelope
 {
     public function __construct(
         private AMQPMessage $amqpMessage,
+        private bool $noAck = false,
     ) {
     }
 
@@ -35,11 +36,19 @@ class AmqpEnvelope
 
     public function ack(): void
     {
+        if ($this->noAck) {
+            return;
+        }
+
         $this->amqpMessage->ack();
     }
 
     public function nack(): void
     {
+        if ($this->noAck) {
+            return;
+        }
+
         $this->amqpMessage->nack();
     }
 

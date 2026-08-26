@@ -15,6 +15,7 @@ final readonly class QueueConfig
         'name',
         'prefetch_count',
         'wait_timeout',
+        'no_ack',
         'passive',
         'durable',
         'exclusive',
@@ -29,6 +30,8 @@ final readonly class QueueConfig
     public int $prefetchCount;
 
     public int|float|null $waitTimeout;
+
+    public bool $noAck;
 
     public bool $passive;
 
@@ -54,6 +57,7 @@ final readonly class QueueConfig
         string|null $name = null,
         int|null $prefetchCount = null,
         int|float|null $waitTimeout = null,
+        bool|null $noAck = null,
         bool|null $passive = null,
         bool|null $durable = null,
         bool|null $exclusive = null,
@@ -72,6 +76,7 @@ final readonly class QueueConfig
         $this->name          = $name;
         $this->prefetchCount = $prefetchCount ?? ConnectionConfig::DEFAULT_PREFETCH_COUNT;
         $this->waitTimeout   = $waitTimeout ?? ConnectionConfig::DEFAULT_WAIT_TIMEOUT;
+        $this->noAck         = $noAck ?? false;
         $this->passive       = $passive ?? false;
         $this->durable       = $durable ?? true;
         $this->exclusive     = $exclusive ?? false;
@@ -85,6 +90,7 @@ final readonly class QueueConfig
      *     name?: string,
      *     prefetch_count?: int|mixed,
      *     wait_timeout?: int|float|mixed,
+     *     no_ack?: bool|mixed,
      *     passive?: bool|mixed,
      *     durable?: bool|mixed,
      *     exclusive?: bool|mixed,
@@ -144,6 +150,7 @@ final readonly class QueueConfig
             name: ConfigHelper::getString($queueConfig, 'name'),
             prefetchCount: ConfigHelper::getInt($queueConfig, 'prefetch_count'),
             waitTimeout: ConfigHelper::getFloat($queueConfig, 'wait_timeout'),
+            noAck: ConfigHelper::getBool($queueConfig, 'no_ack'),
             passive: ConfigHelper::getBool($queueConfig, 'passive'),
             durable: ConfigHelper::getBool($queueConfig, 'durable'),
             exclusive: ConfigHelper::getBool($queueConfig, 'exclusive'),

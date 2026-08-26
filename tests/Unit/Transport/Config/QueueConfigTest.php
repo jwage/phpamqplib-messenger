@@ -32,6 +32,11 @@ class QueueConfigTest extends TestCase
         self::assertTrue((new QueueConfig(name: 'queue_name', autoDelete: true))->autoDelete);
     }
 
+    public function testNoAckCanBeEnabled(): void
+    {
+        self::assertTrue((new QueueConfig(name: 'queue_name', noAck: true))->noAck);
+    }
+
     public function testFromArrayWithEmptyArray(): void
     {
         self::expectException(InvalidArgumentException::class);
@@ -83,6 +88,7 @@ class QueueConfigTest extends TestCase
             'name' => 'queue_name',
             'prefetch_count' => 10,
             'wait_timeout' => 2.0,
+            'no_ack' => true,
             'passive' => true,
             'durable' => false,
             'exclusive' => true,
@@ -94,6 +100,7 @@ class QueueConfigTest extends TestCase
         self::assertSame('queue_name', $queueConfig->name);
         self::assertSame(10, $queueConfig->prefetchCount);
         self::assertSame(2.0, $queueConfig->waitTimeout);
+        self::assertTrue($queueConfig->noAck);
         self::assertTrue($queueConfig->passive);
         self::assertFalse($queueConfig->durable);
         self::assertTrue($queueConfig->exclusive);
@@ -188,6 +195,7 @@ class QueueConfigTest extends TestCase
         self::assertSame('queue_name', $queueConfig->name);
         self::assertSame(ConnectionConfig::DEFAULT_PREFETCH_COUNT, $queueConfig->prefetchCount);
         self::assertSame(ConnectionConfig::DEFAULT_WAIT_TIMEOUT, $queueConfig->waitTimeout);
+        self::assertFalse($queueConfig->noAck);
         self::assertFalse($queueConfig->passive);
         self::assertTrue($queueConfig->durable);
         self::assertFalse($queueConfig->exclusive);

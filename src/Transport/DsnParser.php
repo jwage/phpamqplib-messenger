@@ -73,6 +73,7 @@ class DsnParser
          *     prefetch_count?: int|mixed,
          *     fetch_size?: int|mixed,
          *     wait_timeout?: int|float|mixed,
+         *     no_ack?: bool|mixed,
          *     confirm_enabled?: bool|mixed,
          *     confirm_timeout?: int|float|mixed,
          *     retries_enabled?: bool|mixed,

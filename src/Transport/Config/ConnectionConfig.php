@@ -47,6 +47,7 @@ readonly class ConnectionConfig
         'prefetch_count',
         'fetch_size',
         'wait_timeout',
+        'no_ack',
         'confirm_enabled',
         'confirm_timeout',
         'transactions_enabled',
@@ -96,6 +97,8 @@ readonly class ConnectionConfig
 
     public int|float|null $waitTimeout;
 
+    public bool $noAck;
+
     public bool $confirmEnabled;
 
     public int|float $confirmTimeout;
@@ -144,6 +147,7 @@ readonly class ConnectionConfig
         bool|null $keepaliveEnabled = null,
         int|null $prefetchCount = null,
         int|float|null $waitTimeout = null,
+        bool|null $noAck = null,
         bool|null $confirmEnabled = null,
         int|float|null $confirmTimeout = null,
         bool|null $transactionsEnabled = null,
@@ -196,6 +200,7 @@ readonly class ConnectionConfig
         $this->keepaliveEnabled    = $keepaliveEnabled ?? false;
         $this->prefetchCount       = $prefetchCount ?? self::DEFAULT_PREFETCH_COUNT;
         $this->waitTimeout         = $waitTimeout ?? self::DEFAULT_WAIT_TIMEOUT;
+        $this->noAck               = $noAck ?? false;
         $this->confirmEnabled      = $confirmEnabled ?? true;
         $this->confirmTimeout      = $confirmTimeout ?? self::DEFAULT_CONFIRM_TIMEOUT;
         $this->transactionsEnabled = $transactionsEnabled ?? false;
@@ -230,6 +235,7 @@ readonly class ConnectionConfig
      *     prefetch_count?: int|mixed,
      *     fetch_size?: int|mixed,
      *     wait_timeout?: int|float|mixed,
+     *     no_ack?: bool|mixed,
      *     confirm_enabled?: bool|mixed,
      *     confirm_timeout?: int|float|mixed,
      *     transactions_enabled?: bool|mixed,
@@ -274,6 +280,7 @@ readonly class ConnectionConfig
      *         name?: string,
      *         prefetch_count?: int|mixed,
      *         wait_timeout?: int|float|mixed,
+     *         no_ack?: bool|mixed,
      *         passive?: bool|mixed,
      *         durable?: bool|mixed,
      *         exclusive?: bool|mixed,
@@ -295,12 +302,14 @@ readonly class ConnectionConfig
 
         $prefetchCount = ConfigHelper::getInt($connectionConfig, 'prefetch_count');
         $waitTimeout   = ConfigHelper::getFloat($connectionConfig, 'wait_timeout');
+        $noAck         = ConfigHelper::getBool($connectionConfig, 'no_ack');
 
         /**
          * @var array<int|string, array{
          *     name?: string,
          *     prefetch_count?: int|mixed,
          *     wait_timeout?: int|float|mixed,
+         *     no_ack?: bool|mixed,
          *     passive?: bool|mixed,
          *     durable?: bool|mixed,
          *     exclusive?: bool|mixed,
@@ -331,6 +340,10 @@ readonly class ConnectionConfig
                 $queue['wait_timeout'] = $waitTimeout;
             }
 
+            if ($noAck !== null && ! isset($queue['no_ack'])) {
+                $queue['no_ack'] = $noAck;
+            }
+
             $queueName = $queue['name'] ?? '';
 
             $queueConfigs[$queueName] = QueueConfig::fromArray($queue);
@@ -357,6 +370,7 @@ readonly class ConnectionConfig
             prefetchCount: $prefetchCount,
             fetchSize: ConfigHelper::getInt($connectionConfig, 'fetch_size'),
             waitTimeout: $waitTimeout,
+            noAck: $noAck,
             confirmEnabled: ConfigHelper::getBool($connectionConfig, 'confirm_enabled'),
             confirmTimeout: ConfigHelper::getFloat($connectionConfig, 'confirm_timeout'),
             transactionsEnabled: ConfigHelper::getBool($connectionConfig, 'transactions_enabled'),
