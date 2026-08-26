@@ -162,6 +162,12 @@ framework:
                     # Disable only if you cannot make handlers idempotent and
                     # accept possible loss when a connection fails during publish.
                     retries_enabled: true
+                    # Retry attempts after the first failure. Defaults to 3.
+                    retries: 3
+                    # Milliseconds to wait between retry attempts (jittered
+                    # between 0 and this value). Defaults to 1000. Three retries
+                    # therefore stall at most about 3 seconds before failing.
+                    retry_wait_time: 1000
 
                     # Connection name (optional for easier identification in server logs and management UI)
                     connection_name: ''
@@ -236,6 +242,7 @@ phpamqplib://guest:guest@localhost?heartbeat=60&read_timeout=5.0
 phpamqplib://guest:guest@localhost?heartbeat=10&keepalive_enabled=true
 phpamqplib://guest:guest@localhost?fetch_size=10
 phpamqplib://guest:guest@localhost?retries_enabled=false
+phpamqplib://guest:guest@localhost?retries=2&retry_wait_time=500
 ```
 
 `fetch_size` on the DSN is the transport default described above, not `messenger:consume --fetch-size`.
@@ -243,6 +250,8 @@ phpamqplib://guest:guest@localhost?retries_enabled=false
 `keepalive_enabled=true` has no effect unless `heartbeat` is greater than 0. It also requires Symfony >= 7.2, the `pcntl` extension, and `messenger:consume --keepalive`.
 
 `retries_enabled=false` disables transport retries of retryable connection and channel failures. See [Delivery Reliability](#delivery-reliability).
+
+When retries are enabled, the transport retries up to `retries` times (default 3) and waits up to `retry_wait_time` milliseconds between attempts (default 1000, jittered). That bounds a failed operation to about 3 seconds before the exception is thrown. Raise these only when you need a longer recovery window, such as waiting out a broker restart.
 
 ## AmqpStamp
 
@@ -284,7 +293,7 @@ $bus->dispatch($envelope);
 
 The transport implements **at-least-once**, not exactly-once, publishing semantics. Publisher confirms are enabled by default, messages are persistent, and exchanges and queues are durable by default. After a retryable connection or channel failure, the transport either retries messages it still owns or throws so the caller can retry. If RabbitMQ accepted a publish before the connection failed, recovery may publish that message twice, so handlers must be idempotent.
 
-Retries are enabled by default (`retries_enabled: true`). Disable them only if you cannot make handlers idempotent and accept that a connection failure during publish may lose the message.
+Retries are enabled by default (`retries_enabled: true`) with 3 retries and a jittered wait of up to 1000ms between attempts. Disable them only if you cannot make handlers idempotent and accept that a connection failure during publish may lose the message. Raise `retries` or `retry_wait_time` when a longer recovery window is required.
 
 Publisher confirms and transactions are mutually exclusive. If both are disabled, a successful socket write cannot prove durable broker acceptance. End-to-end durability also depends on keeping messages persistent, topology durable, and RabbitMQ configured for the durability guarantees your application requires.
 

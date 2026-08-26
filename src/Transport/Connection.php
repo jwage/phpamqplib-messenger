@@ -678,7 +678,7 @@ class Connection
         return $this->retryFactory->retry(
             $run,
             $this->resolveRetries($retries),
-            $waitTime,
+            $this->resolveWaitTime($waitTime),
             $jitter,
         )
             ->beforeRetry(function (): void {
@@ -700,7 +700,7 @@ class Connection
         return $this->retryFactory->retry(
             $run,
             $this->resolveRetries($retries),
-            $waitTime,
+            $this->resolveWaitTime($waitTime),
             $jitter,
         );
     }
@@ -725,7 +725,7 @@ class Connection
         return $this->retryFactory->retry(
             $run,
             $this->resolveRetries($retries),
-            $waitTime,
+            $this->resolveWaitTime($waitTime),
             $jitter,
         )
             ->beforeRetry(function (): void {
@@ -744,6 +744,32 @@ class Connection
 
         if (! $this->connectionConfig->retriesEnabled) {
             return 0;
+        }
+
+        // A non-default transport budget wins. The default still uses
+        // Retry::$defaultRetries so callers can override the global statics.
+        if ($this->connectionConfig->retries !== ConnectionConfig::DEFAULT_RETRIES) {
+            return $this->connectionConfig->retries;
+        }
+
+        return null;
+    }
+
+    /**
+     * Uses the configured wait unless the caller passed an explicit wait time.
+     *
+     * @param positive-int|0 $waitTime
+     *
+     * @return positive-int|0|null
+     */
+    private function resolveWaitTime(int|null $waitTime): int|null
+    {
+        if ($waitTime !== null) {
+            return $waitTime;
+        }
+
+        if ($this->connectionConfig->retryWaitTime !== ConnectionConfig::DEFAULT_RETRY_WAIT_TIME) {
+            return $this->connectionConfig->retryWaitTime;
         }
 
         return null;

@@ -41,7 +41,9 @@ class DsnParserTest extends TestCase
         self::assertSame(0, $connectionConfig->heartbeat);
         self::assertSame(true, $connectionConfig->keepalive);
         self::assertSame(false, $connectionConfig->keepaliveEnabled);
-        self::assertSame(true, $connectionConfig->retriesEnabled);
+        self::assertTrue($connectionConfig->retriesEnabled);
+        self::assertSame(ConnectionConfig::DEFAULT_RETRIES, $connectionConfig->retries);
+        self::assertSame(ConnectionConfig::DEFAULT_RETRY_WAIT_TIME, $connectionConfig->retryWaitTime);
         self::assertNull($connectionConfig->ssl);
         self::assertEquals(new ExchangeConfig(name: 'messages'), $connectionConfig->exchange);
         self::assertEquals(new DelayConfig(), $connectionConfig->delay);
@@ -240,6 +242,27 @@ class DsnParserTest extends TestCase
         $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', ['retries_enabled' => true]);
 
         self::assertTrue($connectionConfig->retriesEnabled);
+    }
+
+    public function testRetriesAndRetryWaitTime(): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1');
+
+        self::assertSame(ConnectionConfig::DEFAULT_RETRIES, $connectionConfig->retries);
+        self::assertSame(ConnectionConfig::DEFAULT_RETRY_WAIT_TIME, $connectionConfig->retryWaitTime);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1?retries=2&retry_wait_time=500');
+
+        self::assertSame(2, $connectionConfig->retries);
+        self::assertSame(500, $connectionConfig->retryWaitTime);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', [
+            'retries' => 1,
+            'retry_wait_time' => 0,
+        ]);
+
+        self::assertSame(1, $connectionConfig->retries);
+        self::assertSame(0, $connectionConfig->retryWaitTime);
     }
 
     public function testFetchSize(): void

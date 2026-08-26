@@ -40,6 +40,34 @@ class RetryTest extends TestCase
         self::assertSame('foo', $return);
     }
 
+    public function testDefaultRetryCount(): void
+    {
+        $runs                   = 0;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                (new Retry())
+                    ->catch(RuntimeException::class)
+                    ->run(static function () use (&$runs): void {
+                        $runs++;
+
+                        throw new RuntimeException('always');
+                    });
+
+                self::fail('Expected exhausted retries to wrap the exception.');
+            } catch (TransportException $exception) {
+                self::assertSame('always', $exception->getMessage());
+            }
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        self::assertSame(Retry::DEFAULT_RETRIES, Retry::$defaultRetries);
+        self::assertSame(1 + Retry::DEFAULT_RETRIES, $runs);
+    }
+
     public function testBeforeRetry(): void
     {
         $retries = 0;
