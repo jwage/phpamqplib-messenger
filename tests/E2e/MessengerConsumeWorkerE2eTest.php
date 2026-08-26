@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\E2e;
 
-use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\Console\SignalRegistry\SignalRegistry;
 use Symfony\Component\Messenger\Transport\Receiver\KeepaliveReceiverInterface;
 
@@ -14,8 +13,6 @@ use function interface_exists;
 use function microtime;
 use function sort;
 
-#[Group('live')]
-#[Group('e2e')]
 class MessengerConsumeWorkerE2eTest extends E2eTestCase
 {
     public function testTwoConsumersShareWorkWithoutLosingMessages(): void

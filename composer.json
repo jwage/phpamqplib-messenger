@@ -49,6 +49,9 @@
     },
     "minimum-stability": "stable",
     "scripts": {
+        "test:unit": "php vendor/bin/phpunit --testsuite unit",
+        "test:functional": "php vendor/bin/phpunit --testsuite functional",
+        "test:e2e": "php vendor/bin/phpunit --testsuite e2e",
         "chaos": "php vendor/bin/phpunit --testsuite chaos",
         "infection": "php vendor/bin/infection --only-covering-test-cases"
     }

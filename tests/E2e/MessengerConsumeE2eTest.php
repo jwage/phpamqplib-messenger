@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\E2e;
 
 use Jwage\PhpAmqpLibMessengerBundle\Batch;
-use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 
@@ -21,8 +20,6 @@ use const SIGTERM;
 /**
  * Real messenger:consume against RabbitMQ: throughput, idle wake, ack, signals.
  */
-#[Group('live')]
-#[Group('e2e')]
 class MessengerConsumeE2eTest extends E2eTestCase
 {
     public function testQueuedMessagesAreConsumedWithoutSleepingBetweenThem(): void

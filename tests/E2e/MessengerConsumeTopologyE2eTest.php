@@ -5,15 +5,12 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\E2e;
 
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
-use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\Messenger\Envelope;
 use Throwable;
 
 use function array_column;
 use function usort;
 
-#[Group('live')]
-#[Group('e2e')]
 class MessengerConsumeTopologyE2eTest extends E2eTestCase
 {
     public function testQueuesOptionConsumesOnlyTheNamedQueue(): void
