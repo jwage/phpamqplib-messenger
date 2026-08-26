@@ -272,16 +272,21 @@ class MultiTransportWorkerTest extends TestCase
             $dispatcher,
         );
 
+        $registeredWhileRunning = false;
         $dispatcher->addListener(
             WorkerRunningEvent::class,
-            static function () use ($worker): void {
+            static function () use ($worker, $connection, &$registeredWhileRunning): void {
+                $registeredWhileRunning = $connection->isRegisteredWithWaitCoordinator();
                 $worker->stop();
             },
         );
 
         $worker->run(['sleep' => 0]);
 
-        self::assertTrue($connection->isRegisteredWithWaitCoordinator());
+        self::assertTrue(
+            $registeredWhileRunning,
+            'Worker started without wait-coordinator registration',
+        );
     }
 
     protected function setUp(): void
