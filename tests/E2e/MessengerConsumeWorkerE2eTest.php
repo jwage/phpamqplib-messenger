@@ -52,6 +52,22 @@ class MessengerConsumeWorkerE2eTest extends E2eTestCase
         $consume->wait(10.0);
     }
 
+    public function testConsumeDoesNotCrashWhenTheBrokerIsUnreachableAtStart(): void
+    {
+        $this->setConsumeEnv(
+            'E2E_HIGH_DSN',
+            'phpamqplib://guest:guest@127.0.0.1:1/%2f/e2e_down'
+            . '?retries=0&retry_wait_time=0&connect_timeout=0.2&read_timeout=0.2&write_timeout=0.2',
+        );
+
+        $started = microtime(true);
+        $this->startConsume(['e2e_high'], timeLimit: 2, sleep: 0);
+        $this->assertConsumeExitsSuccessfully();
+
+        self::assertLessThan(8.0, microtime(true) - $started);
+        self::assertSame([], $this->recordsOfType(E2eMessage::class, failed: null));
+    }
+
     public function testKeepaliveAllowsAHandlerLongerThanTheHeartbeatInterval(): void
     {
         if (! interface_exists(KeepaliveReceiverInterface::class)) {

@@ -213,6 +213,11 @@ abstract class E2eTestCase extends TestCase
         return $process;
     }
 
+    protected function setConsumeEnv(string $name, string $value): void
+    {
+        $this->env[$name] = $value;
+    }
+
     /** @param list<string> $arguments */
     protected function runConsole(array $arguments, float $timeout = 15.0): int
     {

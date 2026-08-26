@@ -10,6 +10,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\PublisherNack;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PHPUnit\Framework\AssertionFailedError;
@@ -19,6 +20,7 @@ use stdClass;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Exception\TransportException;
+use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 use Throwable;
 use Traversable;
 
@@ -434,6 +436,83 @@ class ConnectionLiveTest extends TestCase
         }
 
         self::assertTrue($threw, 'Expected the broker to close the connection after missed heartbeats');
+    }
+
+    public function testDrainConsumerChannelReturnsOnAnIdleLiveConsumer(): void
+    {
+        $name       = $this->harness->topologyName('drain_idle');
+        $connection = $this->harness->connect($this->harness->topology($name, extra: ['confirm_enabled' => false]));
+        $connection->setup();
+        $connection->startConsumers();
+
+        $started = microtime(true);
+        $connection->drainConsumerChannel();
+        $elapsed = microtime(true) - $started;
+
+        self::assertLessThan(0.3, $elapsed, 'drainConsumerChannel busy-looped on an idle consumer');
+    }
+
+    public function testDrainConsumerChannelReadsEveryReadyDelivery(): void
+    {
+        $name       = $this->harness->topologyName('drain_all');
+        $connection = $this->harness->connect($this->harness->topology(
+            $name,
+            ['prefetch_count' => 10],
+            ['prefetch_count' => 10, 'confirm_enabled' => false],
+        ));
+        $connection->setup();
+
+        $transport = new AmqpTransport($connection, serializer: new PhpSerializer());
+        $transport->send(new Envelope(new stdClass()));
+        $transport->send(new Envelope(new stdClass()));
+        $transport->send(new Envelope(new stdClass()));
+        $this->harness->waitForMessageCount($connection, 3);
+
+        $connection->listen();
+        $envelopes = iterator_to_array($transport->get(10), false);
+
+        self::assertCount(3, $envelopes, 'Only one ready AMQP frame was drained per get()');
+
+        foreach ($envelopes as $envelope) {
+            $transport->ack($envelope);
+        }
+    }
+
+    public function testCloseKeepsWaitCoordinatorRegistrationOnALiveConnection(): void
+    {
+        $name       = $this->harness->topologyName('close_reg');
+        $connection = $this->harness->connect($this->harness->topology($name, extra: ['confirm_enabled' => false]));
+        $connection->setWaitCoordinator(new ConsumerWaitCoordinator());
+        $connection->setup();
+        $connection->startConsumers();
+
+        self::assertTrue($connection->isRegisteredWithWaitCoordinator());
+
+        $connection->close();
+
+        self::assertTrue(
+            $connection->isRegisteredWithWaitCoordinator(),
+            'close() dropped the wait-coordinator registration',
+        );
+    }
+
+    public function testGetPropagatesConnectionFailureOutsideAWorker(): void
+    {
+        $name       = $this->harness->topologyName('dead_get');
+        $connection = $this->harness->connect($this->harness->topology($name, extra: [
+            'host' => '127.0.0.1',
+            'port' => 1,
+            'retries' => 0,
+            'retry_wait_time' => 0,
+            'connect_timeout' => 0.2,
+            'read_timeout' => 0.2,
+            'write_timeout' => 0.2,
+        ]));
+        $transport  = new AmqpTransport($connection);
+
+        $this->expectException(TransportException::class);
+
+        iterator_to_array($transport->get(), false);
     }
 
     protected function setUp(): void

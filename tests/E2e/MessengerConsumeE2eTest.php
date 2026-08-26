@@ -133,16 +133,17 @@ class MessengerConsumeE2eTest extends E2eTestCase
     {
         $id = $this->uniqueId('mixed');
 
-        $this->startConsume(['e2e_high', 'e2e_memory'], limit: 1, sleep: 0.2);
+        $this->startConsume(['e2e_high', 'e2e_memory'], limit: 1, sleep: 2.0);
         $this->waitUntilConsuming();
-        usleep(300_000);
+        // wait_timeout is 1s; leftover Worker --sleep after that wait would be unselected.
+        usleep(1_500_000);
 
         $dispatchedAt = microtime(true);
         $this->bus()->dispatch(new E2eMessage($id));
         $record = $this->waitForRecord(E2eMessage::class, $id);
 
         self::assertLessThan(
-            0.6,
+            0.5,
             $record['t'] - $dispatchedAt,
             'Mixed worker did not wake for AMQP (leftover --sleep or idle wait too long)',
         );
