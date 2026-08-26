@@ -16,11 +16,15 @@ use function usleep;
 
 class Retry
 {
+    public const int DEFAULT_RETRIES = 3;
+
+    public const int DEFAULT_WAIT_TIME = 1000;
+
     /** @var positive-int|0 $defaultRetries */
-    public static int $defaultRetries = 10;
+    public static int $defaultRetries = self::DEFAULT_RETRIES;
 
     /** @var positive-int|0 $defaultWaitTime */
-    public static int $defaultWaitTime = 2000;
+    public static int $defaultWaitTime = self::DEFAULT_WAIT_TIME;
 
     public static bool $defaultJitter = true;
 

@@ -76,6 +76,8 @@ class DsnParser
          *     confirm_enabled?: bool|mixed,
          *     confirm_timeout?: int|float|mixed,
          *     retries_enabled?: bool|mixed,
+         *     retries?: int|mixed,
+         *     retry_wait_time?: int|mixed,
          *     ssl: array{
          *         cafile?: string,
          *         capath?: string,

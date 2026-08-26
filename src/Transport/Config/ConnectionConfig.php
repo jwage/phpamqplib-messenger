@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport\Config;
 
 use InvalidArgumentException;
+use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use PhpAmqpLib\Connection\AMQPConnectionConfig;
 use SensitiveParameter;
 
@@ -20,6 +21,10 @@ readonly class ConnectionConfig
     public const int DEFAULT_WAIT_TIMEOUT = 1;
 
     public const int DEFAULT_CONFIRM_TIMEOUT = 3;
+
+    public const int DEFAULT_RETRIES = Retry::DEFAULT_RETRIES;
+
+    public const int DEFAULT_RETRY_WAIT_TIME = Retry::DEFAULT_WAIT_TIME;
 
     private const array AVAILABLE_OPTIONS = [
         'auto_setup',
@@ -46,6 +51,8 @@ readonly class ConnectionConfig
         'confirm_timeout',
         'transactions_enabled',
         'retries_enabled',
+        'retries',
+        'retry_wait_time',
         'ssl',
         'exchange',
         'delay',
@@ -97,6 +104,12 @@ readonly class ConnectionConfig
 
     public bool $retriesEnabled;
 
+    /** @var positive-int|0 */
+    public int $retries;
+
+    /** @var positive-int|0 */
+    public int $retryWaitTime;
+
     public ExchangeConfig $exchange;
 
     public DelayConfig $delay;
@@ -135,6 +148,8 @@ readonly class ConnectionConfig
         int|float|null $confirmTimeout = null,
         bool|null $transactionsEnabled = null,
         bool|null $retriesEnabled = null,
+        int|null $retries = null,
+        int|null $retryWaitTime = null,
         public SslConfig|null $ssl = null,
         ExchangeConfig|null $exchange = null,
         DelayConfig|null $delay = null,
@@ -153,6 +168,14 @@ readonly class ConnectionConfig
 
         if ($transactionsEnabled && $confirmEnabled) {
             throw new InvalidArgumentException('Transactions and confirms cannot be enabled at the same time. You must choose one.');
+        }
+
+        if ($retries !== null && $retries < 0) {
+            throw new InvalidArgumentException('Connection retries cannot be negative.');
+        }
+
+        if ($retryWaitTime !== null && $retryWaitTime < 0) {
+            throw new InvalidArgumentException('Connection retry wait time cannot be negative.');
         }
 
         $this->autoSetup           = $autoSetup ?? true;
@@ -177,6 +200,8 @@ readonly class ConnectionConfig
         $this->confirmTimeout      = $confirmTimeout ?? self::DEFAULT_CONFIRM_TIMEOUT;
         $this->transactionsEnabled = $transactionsEnabled ?? false;
         $this->retriesEnabled      = $retriesEnabled ?? true;
+        $this->retries             = $retries ?? self::DEFAULT_RETRIES;
+        $this->retryWaitTime       = $retryWaitTime ?? self::DEFAULT_RETRY_WAIT_TIME;
         $this->exchange            = $exchange ?? new ExchangeConfig();
         $this->delay               = $delay ?? new DelayConfig();
         $this->queues              = self::indexByQueueName($queues ?? []);
@@ -209,6 +234,8 @@ readonly class ConnectionConfig
      *     confirm_timeout?: int|float|mixed,
      *     transactions_enabled?: bool|mixed,
      *     retries_enabled?: bool|mixed,
+     *     retries?: int|mixed,
+     *     retry_wait_time?: int|mixed,
      *     ssl?: array{
      *         cafile?: string|null,
      *         capath?: string|null,
@@ -334,6 +361,8 @@ readonly class ConnectionConfig
             confirmTimeout: ConfigHelper::getFloat($connectionConfig, 'confirm_timeout'),
             transactionsEnabled: ConfigHelper::getBool($connectionConfig, 'transactions_enabled'),
             retriesEnabled: ConfigHelper::getBool($connectionConfig, 'retries_enabled'),
+            retries: ConfigHelper::getInt($connectionConfig, 'retries'),
+            retryWaitTime: ConfigHelper::getInt($connectionConfig, 'retry_wait_time'),
             ssl: isset($connectionConfig['ssl']) ? SslConfig::fromArray($connectionConfig['ssl']) : null,
             exchange: isset($connectionConfig['exchange']) ? ExchangeConfig::fromArray($connectionConfig['exchange']) : null,
             delay: isset($connectionConfig['delay']) ? DelayConfig::fromArray($connectionConfig['delay']) : null,
