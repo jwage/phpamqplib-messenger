@@ -307,7 +307,23 @@ class Connection
     public function consume(string $queueName, int|null $fetchSize = null): iterable
     {
         if ($this->autoSetup) {
-            $this->setupExchangeAndQueues();
+            try {
+                $this->setupExchangeAndQueues();
+            } catch (TransportException $e) {
+                if (
+                    ! $this->isRegisteredWithWaitCoordinator()
+                    && ! $this->isExternalWaitEnabled()
+                ) {
+                    throw $e;
+                }
+
+                $this->logger?->warning('AMQP exception occurred while starting consumers: {message}', [
+                    'message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
+
+                return [];
+            }
         }
 
         return ($this->consumers[$queueName] ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger))->consume($queueName, $fetchSize);
