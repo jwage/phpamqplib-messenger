@@ -119,20 +119,22 @@ class MessengerConsumeTopologyE2eTest extends E2eTestCase
 
     public function testBusyFirstTransportIsDrainedBeforeTheSecondIsPolled(): void
     {
+        // e2e_greedy prefetches 20, so the first transport still has client-buffered
+        // deliveries after fetch_size=1 and Worker restarts from that receiver.
         for ($i = 0; $i < 6; $i++) {
-            $this->bus()->dispatch(new E2eMessage($this->uniqueId('busy')));
+            $this->bus()->dispatch(new E2eGreedyMessage($this->uniqueId('busy')));
         }
 
         $low = $this->uniqueId('fair-low');
         $this->bus()->dispatch(new E2eLowMessage($low));
 
-        $this->startConsume(['e2e_high', 'e2e_low'], limit: 7);
+        $this->startConsume(['e2e_greedy', 'e2e_low'], limit: 7);
         $this->assertConsumeExitsSuccessfully();
 
         $lowRecords = $this->recordsOfType(E2eLowMessage::class);
         self::assertSame([$low], $this->idsOf($lowRecords));
 
-        $high = $this->recordsOfType(E2eMessage::class);
+        $high = $this->recordsOfType(E2eGreedyMessage::class);
         self::assertCount(6, $high);
         self::assertGreaterThan($high[5]['t'], $lowRecords[0]['t']);
     }

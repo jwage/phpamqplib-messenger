@@ -120,16 +120,6 @@ class Connection
         return $this->registeredWithCoordinator;
     }
 
-    public function hasDeliveredThisPass(): bool
-    {
-        return $this->waitCoordinator?->hasDeliveredThisPass() ?? false;
-    }
-
-    public function markDelivered(): void
-    {
-        $this->waitCoordinator?->markDelivered();
-    }
-
     public function unregisterFromWaitCoordinator(): void
     {
         $this->waitCoordinator?->unregister($this);

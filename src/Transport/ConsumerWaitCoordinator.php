@@ -30,8 +30,6 @@ class ConsumerWaitCoordinator
 
     private bool $waitedThisPass = false;
 
-    private bool $deliveredThisPass = false;
-
     private float $waitFloor = 0.0;
 
     public function register(Connection $connection): void
@@ -46,18 +44,7 @@ class ConsumerWaitCoordinator
 
     public function reset(): void
     {
-        $this->waitedThisPass    = false;
-        $this->deliveredThisPass = false;
-    }
-
-    public function hasDeliveredThisPass(): bool
-    {
-        return $this->deliveredThisPass;
-    }
-
-    public function markDelivered(): void
-    {
-        $this->deliveredThisPass = true;
+        $this->waitedThisPass = false;
     }
 
     public function setWaitFloor(float $waitFloor): void

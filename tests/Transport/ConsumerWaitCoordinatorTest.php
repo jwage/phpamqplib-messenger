@@ -71,21 +71,6 @@ class ConsumerWaitCoordinatorTest extends TestCase
         $coordinator->wait(0.01);
     }
 
-    public function testResetClearsDeliveredThisPass(): void
-    {
-        $coordinator = new ConsumerWaitCoordinator();
-
-        self::assertFalse($coordinator->hasDeliveredThisPass());
-
-        $coordinator->markDelivered();
-
-        self::assertTrue($coordinator->hasDeliveredThisPass());
-
-        $coordinator->reset();
-
-        self::assertFalse($coordinator->hasDeliveredThisPass());
-    }
-
     public function testWaitWithoutCoalesceAlwaysSelects(): void
     {
         $connection = $this->createMock(Connection::class);

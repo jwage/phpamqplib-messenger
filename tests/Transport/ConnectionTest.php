@@ -1778,38 +1778,6 @@ class ConnectionTest extends TestCase
         self::assertFalse($connection->isRegisteredWithWaitCoordinator());
     }
 
-    public function testHasDeliveredThisPassTracksTheCoordinatorUntilReset(): void
-    {
-        $connection  = $this->createConnectionWithStubs(new ConnectionConfig(
-            autoSetup: false,
-            confirmEnabled: false,
-        ));
-        $coordinator = new ConsumerWaitCoordinator();
-        $connection->setWaitCoordinator($coordinator);
-
-        self::assertFalse($connection->hasDeliveredThisPass());
-
-        $connection->markDelivered();
-
-        self::assertTrue($connection->hasDeliveredThisPass());
-
-        $coordinator->reset();
-
-        self::assertFalse($connection->hasDeliveredThisPass());
-    }
-
-    public function testMarkDeliveredIsSafeWhenNoCoordinatorIsSet(): void
-    {
-        $connection = $this->createConnectionWithStubs(new ConnectionConfig(
-            autoSetup: false,
-            confirmEnabled: false,
-        ));
-
-        $connection->markDelivered();
-
-        self::assertFalse($connection->hasDeliveredThisPass());
-    }
-
     public function testCloseKeepsWaitCoordinatorRegistration(): void
     {
         [$connection, $coordinator] = $this->createConnectionRegisteredWithCoordinator();
