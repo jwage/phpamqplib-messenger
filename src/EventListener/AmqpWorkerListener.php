@@ -33,7 +33,8 @@ use function min;
  * way a delivery is yielded in the same worker iteration and leftover
  * --sleep does not delay the next message. Mixed workers match Symfony's
  * PostgreSqlNotifyOnIdleListener: get() only drains, and the wait happens
- * after every receiver has been polled, capped by --sleep.
+ * after every receiver has been polled, for --sleep, so leftover Worker
+ * usleep does not run with no AMQP socket selected.
  */
 class AmqpWorkerListener implements EventSubscriberInterface
 {
@@ -229,13 +230,11 @@ class AmqpWorkerListener implements EventSubscriberInterface
             return;
         }
 
-        $timeout = $this->activeConnection->getWaitTimeout();
+        $timeout = $sleepCap;
 
         if ($this->deadline !== null) {
             $timeout = min($timeout, $this->deadline - microtime(true));
         }
-
-        $timeout = min($timeout, $sleepCap);
 
         if ($timeout <= 0) {
             return;

@@ -98,8 +98,6 @@ class AmqpWorkerListenerTest extends TestCase
     {
         $connection = $this->createMock(Connection::class);
         $connection->method('listen');
-        $connection->method('getWaitTimeout')
-            ->willReturn(5.0);
         $connection->expects(self::never())
             ->method('waitForDeliveries');
 
@@ -111,18 +109,19 @@ class AmqpWorkerListenerTest extends TestCase
         $listener->onWorkerRunning(new WorkerRunningEvent($worker, false));
     }
 
-    public function testOnWorkerRunningWaitsWithTheConnectionTimeoutWhenIdleAndMixed(): void
+    public function testOnWorkerRunningWaitsTheWorkerSleepWhenIdleAndMixed(): void
     {
         $connection = $this->createMock(Connection::class);
         $connection->method('listen');
-        $connection->method('getWaitTimeout')
-            ->willReturn(0.5);
+        $connection->expects(self::never())
+            ->method('getWaitTimeout');
         $connection->expects(self::once())
             ->method('waitForDeliveries')
-            ->with(0.5, false);
+            ->with(2.0, false);
 
         $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
         $listener->addConnection('async', $connection);
+        $this->dispatchConsumeSleep($listener, 2.0);
 
         $worker = $this->createWorker(['async', 'redis']);
         $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, idleTimeout: 2_000_000));
@@ -162,8 +161,6 @@ class AmqpWorkerListenerTest extends TestCase
 
         $connection = $this->createMock(Connection::class);
         $connection->method('listen');
-        $connection->method('getWaitTimeout')
-            ->willReturn(5.0);
         $connection->expects(self::once())
             ->method('waitForDeliveries')
             ->with(2.0, false);
@@ -184,8 +181,6 @@ class AmqpWorkerListenerTest extends TestCase
 
         $connection = $this->createMock(Connection::class);
         $connection->method('listen');
-        $connection->method('getWaitTimeout')
-            ->willReturn(60.0);
         $connection->expects(self::once())
             ->method('waitForDeliveries')
             ->with(self::callback(static function (float $timeout): bool {
@@ -208,8 +203,6 @@ class AmqpWorkerListenerTest extends TestCase
 
         $connection = $this->createMock(Connection::class);
         $connection->method('listen');
-        $connection->method('getWaitTimeout')
-            ->willReturn(60.0);
         $connection->expects(self::never())
             ->method('waitForDeliveries');
 
@@ -277,22 +270,19 @@ class AmqpWorkerListenerTest extends TestCase
     {
         $first = $this->createMock(Connection::class);
         $first->method('listen');
-        $first->method('getWaitTimeout')
-            ->willReturn(0.4);
         $first->expects(self::once())
             ->method('waitForDeliveries')
-            ->with(0.4, false);
+            ->with(2.0, false);
 
         $second = $this->createMock(Connection::class);
         $second->method('listen');
-        $second->method('getWaitTimeout')
-            ->willReturn(9.0);
         $second->expects(self::never())
             ->method('waitForDeliveries');
 
         $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
         $listener->addConnection('high', $first);
         $listener->addConnection('low', $second);
+        $this->dispatchConsumeSleep($listener, 2.0);
 
         $worker = $this->createWorker(['high', 'low', 'redis']);
         $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, idleTimeout: 2_000_000));
@@ -307,8 +297,6 @@ class AmqpWorkerListenerTest extends TestCase
 
         $connection = $this->createMock(Connection::class);
         $connection->method('listen');
-        $connection->method('getWaitTimeout')
-            ->willReturn(5.0);
         $connection->expects(self::never())
             ->method('waitForDeliveries');
 
@@ -441,6 +429,27 @@ class AmqpWorkerListenerTest extends TestCase
         ));
     }
 
+    public function testOnWorkerStartedUsesConsoleSleepAsWaitFloorWhenTheEventOmitsIdleTimeout(): void
+    {
+        if (method_exists(WorkerStartedEvent::class, 'getIdleTimeout')) {
+            self::markTestSkipped('WorkerStartedEvent::getIdleTimeout() is used on Symfony 8.1+');
+        }
+
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('setWaitFloor')
+            ->with(0.5);
+
+        $connection = $this->createMock(Connection::class);
+        $connection->expects(self::once())
+            ->method('startConsumers');
+
+        $listener = new AmqpWorkerListener($coordinator);
+        $listener->addConnection('async', $connection);
+        $this->dispatchConsumeSleep($listener, 0.5);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($this->createWorker(['async'])));
+    }
+
     public function testOnWorkerStartedClearsTheWaitFloorWhenTransportsAreMixed(): void
     {
         $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
@@ -465,8 +474,6 @@ class AmqpWorkerListenerTest extends TestCase
 
         $connection = $this->createMock(Connection::class);
         $connection->method('listen');
-        $connection->method('getWaitTimeout')
-            ->willReturn(5.0);
         $connection->expects(self::once())
             ->method('waitForDeliveries')
             ->with(0.2, false);
