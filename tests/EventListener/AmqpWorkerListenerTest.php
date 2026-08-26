@@ -242,7 +242,10 @@ class AmqpWorkerListenerTest extends TestCase
         $listener->onWorkerStarted($this->createWorkerStartedEvent($worker));
         $listener->onWorkerStopped(new WorkerStoppedEvent($worker));
 
-        self::assertSame([1.0, 0.0], $floors);
+        self::assertSame(
+            [method_exists(WorkerStartedEvent::class, 'getIdleTimeout') ? 1.0 : 0.0, 0.0],
+            $floors,
+        );
     }
 
     public function testOnWorkerStartedMatchesPhpAmqpLibTransportsAfterUnmatchedOnes(): void
@@ -321,7 +324,7 @@ class AmqpWorkerListenerTest extends TestCase
         $method   = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
         $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
 
-        self::assertSame(1.0, $method->invoke($listener, new stdClass()));
+        self::assertNull($method->invoke($listener, new stdClass()));
     }
 
     public function testIdleTimeoutFallsBackWhenTheValueIsNotNumeric(): void
@@ -336,7 +339,7 @@ class AmqpWorkerListenerTest extends TestCase
         $method   = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
         $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
 
-        self::assertSame(1.0, $method->invoke($listener, $event));
+        self::assertNull($method->invoke($listener, $event));
     }
 
     public function testIdleTimeoutUsesConsoleSleepWhenTheEventValueIsNotNumeric(): void
@@ -391,7 +394,7 @@ class AmqpWorkerListenerTest extends TestCase
 
         $method = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
 
-        self::assertSame(1.0, $method->invoke($listener, new stdClass()));
+        self::assertNull($method->invoke($listener, new stdClass()));
     }
 
     public function testConsoleSleepIsIgnoredForOtherCommands(): void
@@ -415,7 +418,7 @@ class AmqpWorkerListenerTest extends TestCase
 
         $method = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
 
-        self::assertSame(1.0, $method->invoke($listener, new stdClass()));
+        self::assertNull($method->invoke($listener, new stdClass()));
     }
 
     public function testConsoleSleepIsIgnoredWhenTheCommandIsMissing(): void
@@ -435,12 +438,12 @@ class AmqpWorkerListenerTest extends TestCase
 
         $method = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
 
-        self::assertSame(1.0, $method->invoke($listener, new stdClass()));
+        self::assertNull($method->invoke($listener, new stdClass()));
     }
 
     public function testOnWorkerStartedSetsAWaitFloorForAllPhpAmqpLibWorkers(): void
     {
-        $expectedFloor = method_exists(WorkerStartedEvent::class, 'getIdleTimeout') ? 2.0 : 1.0;
+        $expectedFloor = method_exists(WorkerStartedEvent::class, 'getIdleTimeout') ? 2.0 : 0.0;
 
         $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
         $coordinator->expects(self::once())

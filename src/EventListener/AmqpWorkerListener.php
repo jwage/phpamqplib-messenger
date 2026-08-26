@@ -115,11 +115,20 @@ class AmqpWorkerListener implements EventSubscriberInterface
 
         // When non-phpamqplib transports are also consumed, cap the idle wait to
         // the worker's sleep duration so those transports are still polled regularly.
-        $idleTimeout    = $this->getWorkerIdleTimeoutSeconds($event);
+        $knownIdle = $this->getWorkerIdleTimeoutSeconds($event);
+
+        if ($knownIdle === null) {
+            $idleTimeout = 1.0;
+            $waitFloor   = 0.0;
+        } else {
+            $idleTimeout = $knownIdle;
+            $waitFloor   = $knownIdle;
+        }
+
         $this->sleepCap = count($matched) < count($allTransportNames)
             ? $idleTimeout
             : null;
-        $this->coordinator->setWaitFloor($this->sleepCap === null ? $idleTimeout : 0.0);
+        $this->coordinator->setWaitFloor($this->sleepCap === null ? $waitFloor : 0.0);
 
         foreach ($matched as $connection) {
             try {
@@ -198,12 +207,13 @@ class AmqpWorkerListener implements EventSubscriberInterface
     /**
      * Worker sleep duration in seconds. Symfony 8.1+ exposes this as
      * WorkerStartedEvent::getIdleTimeout() (microseconds). Earlier versions
-     * read messenger:consume --sleep from the console command, then fall back
-     * to the Worker default of 1 second.
+     * read messenger:consume --sleep from the console command. Mixed workers
+     * fall back to the Worker default of 1 second; all-phpamqplib wait floor
+     * stays 0 unless --sleep is known.
      *
-     * @param object $event WorkerStartedEvent, or a stand-in without Symfony 8.1 methods.
+     * @return float|null Seconds, or null when the worker did not expose --sleep.
      */
-    private function getWorkerIdleTimeoutSeconds(object $event): float
+    private function getWorkerIdleTimeoutSeconds(object $event): float|null
     {
         $getter = [$event, 'getIdleTimeout'];
 
@@ -217,11 +227,7 @@ class AmqpWorkerListener implements EventSubscriberInterface
             }
         }
 
-        if ($this->consoleIdleTimeoutSeconds !== null) {
-            return $this->consoleIdleTimeoutSeconds;
-        }
-
-        return 1.0;
+        return $this->consoleIdleTimeoutSeconds;
     }
 
     private function waitWhileIdle(WorkerRunningEvent $event, float $sleepCap): void
