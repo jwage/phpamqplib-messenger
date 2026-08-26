@@ -1696,17 +1696,16 @@ class ConnectionTest extends TestCase
         self::assertFalse($connection->isRegisteredWithWaitCoordinator());
     }
 
-    public function testCloseUnregistersFromTheWaitCoordinator(): void
+    public function testCloseKeepsWaitCoordinatorRegistration(): void
     {
         [$connection, $coordinator] = $this->createConnectionRegisteredWithCoordinator();
 
-        $coordinator->expects(self::once())
-            ->method('unregister')
-            ->with($connection);
+        $coordinator->expects(self::never())
+            ->method('unregister');
 
         $connection->close();
 
-        self::assertFalse($connection->isRegisteredWithWaitCoordinator());
+        self::assertTrue($connection->isRegisteredWithWaitCoordinator());
     }
 
     public function testStartConsumersHonorsAnExplicitQueueList(): void

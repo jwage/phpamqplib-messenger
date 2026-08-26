@@ -152,8 +152,9 @@ class Connection
 
     public function close(): void
     {
-        $this->unregisterFromWaitCoordinator();
-
+        // Keep the wait-coordinator registration. getConsumerSocket() is null
+        // while disconnected; after reconnect the same Connection is selected
+        // again without waiting for the next WorkerStartedEvent.
         try {
             // Closing the connection cancels its consumers, so do not issue a separate
             // basic_cancel first. Besides being redundant, that round trip can block on
