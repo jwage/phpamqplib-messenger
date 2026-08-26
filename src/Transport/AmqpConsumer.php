@@ -26,6 +26,8 @@ class AmqpConsumer
 
     private int|null $effectivePrefetchCount = null;
 
+    private bool $noAck = false;
+
     public function __construct(
         private Connection $connection,
         private ConnectionConfig $connectionConfig,
@@ -188,7 +190,7 @@ class AmqpConsumer
 
     public function callback(AMQPMessage $amqpMessage): void
     {
-        $this->buffer[] = new AmqpEnvelope($amqpMessage);
+        $this->buffer[] = new AmqpEnvelope($amqpMessage, noAck: $this->noAck);
     }
 
     public function hasBufferedEnvelopes(): bool
@@ -238,11 +240,18 @@ class AmqpConsumer
      */
     private function start(QueueConfig $queueConfig): void
     {
+        $this->noAck = $queueConfig->noAck;
+
+        $this->debug->log('Registering AMQP consumer', [
+            'queue' => $queueConfig->name,
+            'no_ack' => $this->noAck,
+        ]);
+
         $this->consumerTag = $this->connection->consumerChannel()->basic_consume(
             queue: $queueConfig->name,
             consumer_tag: '',
             no_local: false,
-            no_ack: false,
+            no_ack: $this->noAck,
             exclusive: false,
             nowait: false,
             callback: $this->callback(...),

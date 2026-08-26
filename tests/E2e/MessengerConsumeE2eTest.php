@@ -299,4 +299,26 @@ class MessengerConsumeE2eTest extends E2eTestCase
         self::assertSame([$id], $handled);
         $this->assertQueueEventuallyEmpty('e2e_high');
     }
+
+    public function testNoAckConsumerAcksWithoutUnknownDeliveryTag(): void
+    {
+        $this->setupTransport('e2e_no_ack');
+
+        $ids = [
+            $this->uniqueId('no-ack-a'),
+            $this->uniqueId('no-ack-b'),
+        ];
+
+        $this->bus()->dispatch(new E2eNoAckMessage($ids[0]));
+        $this->bus()->dispatch(new E2eNoAckMessage($ids[1]));
+
+        $this->startConsume(['e2e_no_ack'], limit: 2);
+        $this->assertConsumeExitsSuccessfully();
+
+        $output = $this->lastProcess()->stdout() . $this->lastProcess()->stderr();
+        self::assertStringNotContainsString('PRECONDITION_FAILED', $output, $this->lastProcess()->debugOutput());
+        self::assertStringNotContainsString('unknown delivery tag', $output, $this->lastProcess()->debugOutput());
+        self::assertSame($ids, $this->idsOf($this->recordsOfType(E2eNoAckMessage::class)));
+        $this->assertQueueEventuallyEmpty('e2e_no_ack');
+    }
 }

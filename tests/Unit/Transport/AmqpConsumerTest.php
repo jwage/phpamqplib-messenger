@@ -19,6 +19,7 @@ use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Exception\AMQPProtocolChannelException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use Psr\Log\LoggerInterface;
@@ -1013,6 +1014,91 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
+    }
+
+    #[TestWith([false])]
+    #[TestWith([true])]
+    public function testConsumeRespectsNoAck(bool $noAck): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            queues: [
+                'test_queue' => new QueueConfig(
+                    name: 'test_queue',
+                    prefetchCount: 20,
+                    waitTimeout: 2,
+                    noAck: $noAck,
+                ),
+            ],
+        );
+
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnectionStub(connectionConfig: $connectionConfig);
+        $connection->method('consumerChannel')
+            ->willReturn($channel);
+        $connection->method('getQueueNames')
+            ->willReturn(['test_queue']);
+
+        $logger   = new CollectingLogger();
+        $consumer = $this->getTestConsumer(
+            connectionConfig: $connectionConfig,
+            connection: $connection,
+            logger: $logger,
+            debug: new Debug($logger, true),
+        );
+
+        $channel->expects(self::once())
+            ->method('basic_qos');
+
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->with(
+                queue: 'test_queue',
+                consumer_tag: '',
+                no_local: false,
+                no_ack: $noAck,
+                exclusive: false,
+                nowait: false,
+                callback: self::isInstanceOf(Closure::class),
+            )
+            ->willReturn('consumer_tag');
+
+        $channel->expects(self::once())
+            ->method('is_consuming')
+            ->willReturn(true);
+
+        $channel->expects(self::once())
+            ->method('wait')
+            ->will($this->throwException(new AMQPTimeoutException()));
+
+        /** @var Traversable<AmqpEnvelope> $started */
+        $started = $consumer->consume('test_queue');
+        iterator_to_array($started);
+
+        self::assertSame(
+            [
+                'queue' => 'test_queue',
+                'no_ack' => $noAck,
+            ],
+            $logger->contextFor('Registering AMQP consumer'),
+        );
+
+        $message = $this->createMock(AMQPMessage::class);
+        $message->expects($noAck ? self::never() : self::once())
+            ->method('ack');
+        $message->expects($noAck ? self::never() : self::once())
+            ->method('nack');
+
+        $consumer->callback($message);
+
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+        $envelopes     = iterator_to_array($amqpEnvelopes);
+
+        self::assertCount(1, $envelopes);
+
+        $envelopes[0]->ack();
+        $envelopes[0]->nack();
     }
 
     protected function setUp(): void

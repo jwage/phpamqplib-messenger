@@ -280,6 +280,29 @@ class DsnParserTest extends TestCase
         self::assertSame(5, $connectionConfig->fetchSize);
     }
 
+    public function testNoAck(): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1');
+
+        self::assertFalse($connectionConfig->noAck);
+        self::assertFalse($connectionConfig->queues['messages']->noAck);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1?no_ack=true');
+
+        self::assertTrue($connectionConfig->noAck);
+        self::assertTrue($connectionConfig->queues['messages']->noAck);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', ['no_ack' => true]);
+
+        self::assertTrue($connectionConfig->noAck);
+        self::assertTrue($connectionConfig->queues['messages']->noAck);
+
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', ['no_ack' => false]);
+
+        self::assertFalse($connectionConfig->noAck);
+        self::assertFalse($connectionConfig->queues['messages']->noAck);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -305,6 +328,7 @@ class DsnParserTest extends TestCase
         self::assertSame(true, $connectionConfig->keepalive);
         self::assertSame('connection_name', $connectionConfig->connectionName);
         self::assertFalse($connectionConfig->retriesEnabled);
+        self::assertTrue($connectionConfig->noAck);
 
         self::assertEquals(new SslConfig(
             cafile: 'cacert',
@@ -337,6 +361,7 @@ class DsnParserTest extends TestCase
         self::assertEquals([
             'queue1' => new QueueConfig(
                 name: 'queue1',
+                noAck: true,
                 passive: true,
                 durable: true,
                 exclusive: true,
@@ -351,6 +376,7 @@ class DsnParserTest extends TestCase
             ),
             'queue2' => new QueueConfig(
                 name: 'queue2',
+                noAck: true,
                 passive: true,
                 durable: true,
                 exclusive: true,
@@ -384,6 +410,7 @@ class DsnParserTest extends TestCase
             'heartbeat' => 5,
             'keepalive' => true,
             'retries_enabled' => false,
+            'no_ack' => true,
             'ssl' => ['cafile' => 'cacert'],
             'exchange' => [
                 'name' => 'exchange_name',

@@ -99,7 +99,7 @@ abstract class E2eTestCase extends TestCase
             'APP_ENV' => 'test',
             // kernel.debug so wait/consume traces land in E2E_DEBUG_LOG / TEST_LOG_DIR.
             'APP_DEBUG' => '1',
-            'E2E_CACHE' => 'e2e-v6',
+            'E2E_CACHE' => 'e2e-v7',
             'E2E_LOG' => $this->logFile,
             'E2E_DEBUG_LOG' => $this->debugLogFile,
             'TEST_LOG_DIR' => $testLogDir,
@@ -116,6 +116,7 @@ abstract class E2eTestCase extends TestCase
             'E2E_KEEPALIVE_DSN' => $this->dsnForExchange($prefix . '_keepalive'),
             'E2E_SSL_DSN' => $this->sslDsnForPrefix($prefix),
             'E2E_AUTO_DSN' => $this->dsnForExchange($prefix . '_auto'),
+            'E2E_NO_ACK_DSN' => $this->dsnForExchange($prefix . '_no_ack'),
             'SHELL_VERBOSITY' => '3',
         ];
 
@@ -168,6 +169,7 @@ abstract class E2eTestCase extends TestCase
                     'e2e_keepalive',
                     'e2e_ssl',
                     'e2e_auto',
+                    'e2e_no_ack',
                 ] as $transport
             ) {
                 $this->deleteTransportTopology($transport);

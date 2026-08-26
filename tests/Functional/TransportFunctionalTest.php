@@ -49,6 +49,8 @@ class TransportFunctionalTest extends KernelTestCase
 
     private AmqpTransport $multipleQueuesTransport;
 
+    private AmqpTransport $noAckTransport;
+
     public function testTransportWithConfirms(): void
     {
         $envelopes = $this->getEnvelopes($this->confirmsTransport, 0);
@@ -845,6 +847,61 @@ class TransportFunctionalTest extends KernelTestCase
         self::assertSame('expired', $amqpEnvelope->getHeader('x-first-death-reason'));
     }
 
+    public function testNoAckAckDoesNotRaiseUnknownDeliveryTag(): void
+    {
+        $this->noAckTransport->send(Envelope::wrap(new ConfirmMessage(2101)));
+        $this->noAckTransport->send(Envelope::wrap(new ConfirmMessage(2102)));
+
+        $envelopes = $this->getEnvelopes($this->noAckTransport, 2);
+
+        self::assertSame(2101, $envelopes[0]->getMessage()->count);
+        self::assertSame(2102, $envelopes[1]->getMessage()->count);
+        self::assertSame(0, $this->noAckTransport->getMessageCount());
+    }
+
+    public function testNoAckRejectDoesNotRaiseUnknownDeliveryTag(): void
+    {
+        $this->noAckTransport->send(Envelope::wrap(new ConfirmMessage(2103)));
+
+        /** @var Traversable<Envelope> $receivedEnvelopes */
+        $receivedEnvelopes = $this->noAckTransport->get();
+
+        /** @var list<Envelope> $received */
+        $received = iterator_to_array($receivedEnvelopes, false);
+        self::assertCount(1, $received);
+        self::assertSame(2103, $received[0]->getMessage()->count);
+
+        $this->noAckTransport->reject($received[0]);
+        $this->noAckTransport->getConnection()->close();
+
+        self::assertSame(0, $this->noAckTransport->getMessageCount());
+
+        /** @var Traversable<Envelope> $afterReject */
+        $afterReject = $this->noAckTransport->get();
+        self::assertCount(0, iterator_to_array($afterReject, false));
+    }
+
+    public function testNoAckDeliveryIsNotRedeliveredAfterCloseWithoutAck(): void
+    {
+        $this->noAckTransport->send(Envelope::wrap(new ConfirmMessage(2104)));
+
+        /** @var Traversable<Envelope> $receivedEnvelopes */
+        $receivedEnvelopes = $this->noAckTransport->get();
+
+        /** @var list<Envelope> $received */
+        $received = iterator_to_array($receivedEnvelopes, false);
+        self::assertCount(1, $received);
+        self::assertSame(2104, $received[0]->getMessage()->count);
+
+        $this->noAckTransport->getConnection()->close();
+
+        self::assertSame(0, $this->noAckTransport->getMessageCount());
+
+        /** @var Traversable<Envelope> $afterClose */
+        $afterClose = $this->noAckTransport->get();
+        self::assertCount(0, iterator_to_array($afterClose, false));
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -878,14 +935,21 @@ class TransportFunctionalTest extends KernelTestCase
 
         $this->multipleQueuesTransport = $multipleQueuesTransport;
 
+        $noAckTransport = $container->get('messenger.transport.with_no_ack');
+        assert($noAckTransport instanceof AmqpTransport);
+
+        $this->noAckTransport = $noAckTransport;
+
         $this->confirmsTransport->setup();
         $this->transactionsTransport->setup();
         $this->fetchSizeTransport->setup();
         $this->multipleQueuesTransport->setup();
+        $this->noAckTransport->setup();
         $this->drainTransport($this->confirmsTransport);
         $this->drainTransport($this->transactionsTransport);
         $this->drainTransport($this->fetchSizeTransport);
         $this->drainTransport($this->multipleQueuesTransport);
+        $this->drainTransport($this->noAckTransport);
     }
 
     protected function tearDown(): void
@@ -894,6 +958,7 @@ class TransportFunctionalTest extends KernelTestCase
         $this->transactionsTransport->getConnection()->close();
         $this->fetchSizeTransport->getConnection()->close();
         $this->multipleQueuesTransport->getConnection()->close();
+        $this->noAckTransport->getConnection()->close();
 
         /** @psalm-suppress InternalMethod */
         TestLog::endTest(static::class . '::' . $this->name());

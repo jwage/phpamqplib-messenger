@@ -51,6 +51,7 @@ class E2eKernel extends Kernel
                 'phpamqplib://guest:guest@127.0.0.1:5673/%2f/e2e_keepalive',
                 'phpamqplib://guest:guest@127.0.0.1:5673/%2f/e2e_ssl',
                 'phpamqplib://guest:guest@127.0.0.1:5673/%2f/e2e_auto',
+                'phpamqplib://guest:guest@127.0.0.1:5673/%2f/e2e_no_ack',
             ];
 
             $container->setParameter('env(MESSENGER_TRANSPORT_PHPAMQPLIB_DSN)', $defaults[0]);
@@ -64,6 +65,7 @@ class E2eKernel extends Kernel
             $container->setParameter('env(E2E_KEEPALIVE_DSN)', $defaults[8]);
             $container->setParameter('env(E2E_SSL_DSN)', $defaults[9]);
             $container->setParameter('env(E2E_AUTO_DSN)', $defaults[10]);
+            $container->setParameter('env(E2E_NO_ACK_DSN)', $defaults[11]);
             $container->setParameter('env(E2E_MULTI_EXCHANGE)', 'e2e_multi');
             $container->setParameter('env(E2E_ORDER_QUEUE)', 'e2e_order');
             $container->setParameter('env(E2E_QUOTE_QUEUE)', 'e2e_quote');
@@ -165,6 +167,7 @@ class E2eKernel extends Kernel
                             ],
                         ]),
                         'e2e_auto' => $amqp('%env(E2E_AUTO_DSN)%'),
+                        'e2e_no_ack' => $amqp('%env(E2E_NO_ACK_DSN)%', ['no_ack' => true]),
                         'e2e_memory' => 'in-memory://',
                     ],
                     'routing' => [
@@ -179,6 +182,7 @@ class E2eKernel extends Kernel
                         E2eMemoryMessage::class => 'e2e_memory',
                         E2eSslMessage::class => 'e2e_ssl',
                         E2eAutoMessage::class => 'e2e_auto',
+                        E2eNoAckMessage::class => 'e2e_no_ack',
                     ],
                 ],
             ]);
@@ -203,6 +207,7 @@ class E2eKernel extends Kernel
             $handler->addTag('messenger.message_handler', ['method' => 'handleMemory', 'handles' => E2eMemoryMessage::class]);
             $handler->addTag('messenger.message_handler', ['method' => 'handleSsl', 'handles' => E2eSslMessage::class]);
             $handler->addTag('messenger.message_handler', ['method' => 'handleAuto', 'handles' => E2eAutoMessage::class]);
+            $handler->addTag('messenger.message_handler', ['method' => 'handleNoAck', 'handles' => E2eNoAckMessage::class]);
 
             $container->register('logger', FileLogger::class)
                 ->setArgument('$file', '%env(E2E_DEBUG_LOG)%')

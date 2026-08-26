@@ -80,6 +80,7 @@ class ConnectionConfigTest extends TestCase
             'prefetch_count' => 15,
             'fetch_size' => 10,
             'wait_timeout' => 2.0,
+            'no_ack' => true,
             'confirm_enabled' => true,
             'confirm_timeout' => 10.0,
             'retries_enabled' => false,
@@ -130,6 +131,7 @@ class ConnectionConfigTest extends TestCase
         self::assertSame(15, $connectionConfig->prefetchCount);
         self::assertSame(10, $connectionConfig->fetchSize);
         self::assertSame(2.0, $connectionConfig->waitTimeout);
+        self::assertTrue($connectionConfig->noAck);
         self::assertTrue($connectionConfig->confirmEnabled);
         self::assertSame(10.0, $connectionConfig->confirmTimeout);
         self::assertFalse($connectionConfig->retriesEnabled);
@@ -157,11 +159,13 @@ class ConnectionConfigTest extends TestCase
                 name: 'queue1',
                 prefetchCount: 20,
                 waitTimeout: 3.0,
+                noAck: true,
             ),
             'queue2' => new QueueConfig(
                 name: 'queue2',
                 prefetchCount: 30,
                 waitTimeout: 4.0,
+                noAck: true,
             ),
         ], $connectionConfig->queues);
 
@@ -270,6 +274,7 @@ class ConnectionConfigTest extends TestCase
         $connectionConfig = ConnectionConfig::fromArray([
             'prefetch_count' => 10,
             'wait_timeout' => 2,
+            'no_ack' => true,
             'queues' => [
                 'queue1' => [],
             ],
@@ -277,6 +282,7 @@ class ConnectionConfigTest extends TestCase
 
         self::assertSame(10, $connectionConfig->getQueueConfig('queue1')->prefetchCount);
         self::assertSame(2.0, $connectionConfig->getQueueConfig('queue1')->waitTimeout);
+        self::assertTrue($connectionConfig->getQueueConfig('queue1')->noAck);
     }
 
     public function testQueueConfigOverridesConnectionConfig(): void
@@ -284,16 +290,19 @@ class ConnectionConfigTest extends TestCase
         $connectionConfig = ConnectionConfig::fromArray([
             'prefetch_count' => 10,
             'wait_timeout' => 2,
+            'no_ack' => true,
             'queues' => [
                 'queue1' => [
                     'prefetch_count' => 20,
                     'wait_timeout' => 4,
+                    'no_ack' => false,
                 ],
             ],
         ]);
 
         self::assertSame(20, $connectionConfig->getQueueConfig('queue1')->prefetchCount);
         self::assertSame(4.0, $connectionConfig->getQueueConfig('queue1')->waitTimeout);
+        self::assertFalse($connectionConfig->getQueueConfig('queue1')->noAck);
     }
 
     #[TestWith([0])]
@@ -424,6 +433,7 @@ class ConnectionConfigTest extends TestCase
         self::assertSame(1, $connectionConfig->prefetchCount);
         self::assertNull($connectionConfig->fetchSize);
         self::assertSame(1, $connectionConfig->waitTimeout);
+        self::assertFalse($connectionConfig->noAck);
         self::assertTrue($connectionConfig->confirmEnabled);
         self::assertSame(3, $connectionConfig->confirmTimeout);
         self::assertFalse($connectionConfig->transactionsEnabled);

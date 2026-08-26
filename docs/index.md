@@ -140,6 +140,12 @@ framework:
                     # Prefetch settings (AMQP QoS: max unacked deliveries on the channel)
                     prefetch_count: 1
 
+                    # Auto-acknowledge deliveries on consume (AMQP no-ack). Off
+                    # by default so the broker holds each delivery until
+                    # Messenger acks or nacks it. When true, the broker treats
+                    # a delivery as done immediately. See Delivery Reliability.
+                    no_ack: false
+
                     # Default for get() when the caller omits $fetchSize (Symfony < 8.1
                     # Worker). Same hint as messenger:consume --fetch-size. Omit for
                     # unlimited. Ignored when get($fetchSize) is passed, including
@@ -202,6 +208,7 @@ framework:
                         orders_messages:
                             prefetch_count: 5 # overrides the connection prefetch_count: 1
                             wait_timeout: 2.0 # overrides the connection wait_timeout: 1.0
+                            no_ack: false # optional; queues inherit the connection value unless overridden
                             passive: false
                             durable: true
                             exclusive: false
@@ -243,11 +250,14 @@ Any option can be specified in the DSN as an alternative to defining it in the `
 phpamqplib://guest:guest@localhost?heartbeat=60&read_timeout=5.0
 phpamqplib://guest:guest@localhost?heartbeat=10&keepalive_enabled=true
 phpamqplib://guest:guest@localhost?fetch_size=10
+phpamqplib://guest:guest@localhost?no_ack=true
 phpamqplib://guest:guest@localhost?retries_enabled=false
 phpamqplib://guest:guest@localhost?retries=2&retry_wait_time=500
 ```
 
 `fetch_size` on the DSN is the transport default described above, not `messenger:consume --fetch-size`.
+
+`no_ack=true` auto-acknowledges deliveries. See [Delivery Reliability](#delivery-reliability).
 
 `keepalive_enabled=true` has no effect unless `heartbeat` is greater than 0. It also requires Symfony >= 7.2, the `pcntl` extension, and `messenger:consume --keepalive`.
 
@@ -294,6 +304,10 @@ $bus->dispatch($envelope);
 ## Delivery Reliability
 
 The transport implements **at-least-once**, not exactly-once, publishing semantics. Publisher confirms are enabled by default, messages are persistent, and exchanges and queues are durable by default. After a retryable connection or channel failure, the transport either retries messages it still owns or throws so the caller can retry. If RabbitMQ accepted a publish before the connection failed, recovery may publish that message twice, so handlers must be idempotent.
+
+Consume is also at-least-once unless `no_ack` is enabled. With the default (`no_ack: false`), the broker holds each delivery until Messenger acks or nacks it, so a crash during handling requeues the message. `no_ack: true` tells the broker to consider the message consumed on delivery. That avoids the ack round-trip and the `PRECONDITION_FAILED - unknown delivery tag` error that happens if you auto-ack but still send `basic.ack`.
+
+Messenger `retry_strategy` still works: it republishes a new envelope, then acks the original (a no-op). A failure transport still works: it copies the message, then rejects (also a no-op). Requeue via `basic.nack` does not, so a dead-letter exchange that depends on nack will not see handler or decode failures. A crash during handling can lose the message. AMQP `prefetch_count` has no effect because there are no unacked deliveries; the broker may push freely. `fetch_size` only limits how many envelopes the Worker yields, not how many the client has already been given.
 
 Retries are enabled by default (`retries_enabled: true`) with 3 retries and a jittered wait of up to 1000ms between attempts. Disable them only if you cannot make handlers idempotent and accept that a connection failure during publish may lose the message. Raise `retries` or `retry_wait_time` when a longer recovery window is required.
 

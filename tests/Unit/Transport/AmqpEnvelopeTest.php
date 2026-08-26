@@ -60,6 +60,24 @@ class AmqpEnvelopeTest extends TestCase
         $envelope->nack();
     }
 
+    public function testAckDoesNothingWhenNoAck(): void
+    {
+        $message = $this->createMock(AMQPMessage::class);
+        $message->expects(self::never())
+            ->method('ack');
+
+        (new AmqpEnvelope($message, noAck: true))->ack();
+    }
+
+    public function testNackDoesNothingWhenNoAck(): void
+    {
+        $message = $this->createMock(AMQPMessage::class);
+        $message->expects(self::never())
+            ->method('nack');
+
+        (new AmqpEnvelope($message, noAck: true))->nack();
+    }
+
     public function testGetBody(): void
     {
         [$message, $envelope] = $this->createMockEnvelope();
