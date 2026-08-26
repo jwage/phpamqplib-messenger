@@ -12,7 +12,7 @@ class BundleBaseTest extends TestCase
 {
     public function testIsAbstract(): void
     {
-        self::assertTrue(new ReflectionClass(BundleBase::class)->isAbstract());
+        self::assertTrue((new ReflectionClass(BundleBase::class))->isAbstract());
     }
 
     public function testConcreteSubclassIsABundleBase(): void
