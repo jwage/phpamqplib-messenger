@@ -348,6 +348,28 @@ class ConnectionConfigTest extends TestCase
         ConnectionConfig::fromArray(['fetch_size' => 0]);
     }
 
+    public function testFetchSizeOfOneIsAllowed(): void
+    {
+        self::assertSame(1, (new ConnectionConfig(fetchSize: 1))->fetchSize);
+    }
+
+    public function testFromArrayPrefersUserOverLogin(): void
+    {
+        $connectionConfig = ConnectionConfig::fromArray([
+            'user' => 'from-user',
+            'login' => 'from-login',
+        ]);
+
+        self::assertSame('from-user', $connectionConfig->user);
+    }
+
+    public function testFromArrayUsesLoginWhenUserIsOmitted(): void
+    {
+        $connectionConfig = ConnectionConfig::fromArray(['login' => 'from-login']);
+
+        self::assertSame('from-login', $connectionConfig->user);
+    }
+
     public function testTransactionsAndConfirmsCannotBeEnabledAtTheSameTime(): void
     {
         self::expectException(InvalidArgumentException::class);
@@ -404,6 +426,7 @@ class ConnectionConfigTest extends TestCase
         self::assertSame(1, $connectionConfig->waitTimeout);
         self::assertTrue($connectionConfig->confirmEnabled);
         self::assertSame(3, $connectionConfig->confirmTimeout);
+        self::assertFalse($connectionConfig->transactionsEnabled);
         self::assertTrue($connectionConfig->retriesEnabled);
         self::assertSame(ConnectionConfig::DEFAULT_RETRIES, $connectionConfig->retries);
         self::assertSame(ConnectionConfig::DEFAULT_RETRY_WAIT_TIME, $connectionConfig->retryWaitTime);

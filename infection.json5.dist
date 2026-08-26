@@ -1,0 +1,29 @@
+{
+    "$schema": "https://raw.githubusercontent.com/infection/infection/0.35.2/resources/schema.json",
+    "source": {
+        "directories": [
+            "src"
+        ]
+    },
+    // Mutant processes share the functional-test RabbitMQ topology (fixed queue/exchange
+    // names). Parallel threads would race and produce false positives.
+    "threads": 1,
+    // Must exceed the slowest covering test. Too low and Infection skips mutants
+    // ("required more time than configured") instead of running them.
+    "timeout": 60,
+    "tmpDir": "var/infection",
+    "logs": {
+        "text": "var/infection.log",
+        "html": "var/infection.html",
+        "summaryJson": "var/infection-summary.json"
+    },
+    "testFramework": "phpunit",
+    // defaultTestSuite already excludes chaos. Also exclude the `live` group:
+    // ConnectionLiveTest needs a broker and is not a useful mutation killer
+    // (slow, environment-dependent). Do not name extra tests *ConnectionTest;
+    // PHPUnit --filter=ConnectionTest is a regex and would match them.
+    "testFrameworkExtraArgs": "--testsuite=default --exclude-group=live",
+    "ignoreMsiWithNoMutations": true,
+    "minMsi": 100,
+    "minCoveredMsi": 100
+}

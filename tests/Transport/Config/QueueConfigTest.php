@@ -27,6 +27,11 @@ class QueueConfigTest extends TestCase
         self::assertDefaultQueueConfig(new QueueConfig(name: 'queue_name'));
     }
 
+    public function testAutoDeleteCanBeEnabled(): void
+    {
+        self::assertTrue((new QueueConfig(name: 'queue_name', autoDelete: true))->autoDelete);
+    }
+
     public function testFromArrayWithEmptyArray(): void
     {
         self::expectException(InvalidArgumentException::class);
@@ -124,6 +129,19 @@ class QueueConfigTest extends TestCase
         self::assertSame('queue_name', $queueConfig->name);
         self::assertSame('routing_key', $queueConfig->bindings['routing_key']->routingKey);
         self::assertSame([], $queueConfig->bindings['routing_key']->arguments);
+    }
+
+    public function testFromArrayDoesNotTreatNumericBindingKeysAsRoutingKeys(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Binding routing key is required');
+
+        QueueConfig::fromArray([
+            'name' => 'queue_name',
+            'bindings' => [
+                ['arguments' => ['arg' => 'value']],
+            ],
+        ]);
     }
 
     public function testFromArrayWithInvalidTypes(): void

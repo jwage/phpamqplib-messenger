@@ -1,5 +1,7 @@
 .phpunit.cache
 composer.lock
 config/reference.php
+infection.log
+infection.html
 var
 vendor

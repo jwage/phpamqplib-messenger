@@ -59,6 +59,47 @@ class DsnParserTest extends TestCase
         $this->dsnParser->parseDsn('phpamqplibs://');
     }
 
+    public function testEmptySslConfigIsTreatedAsMissing(): void
+    {
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('No ssl configuration has been provided. Alternatively, you can use phpamqplib:// to use without SSL.');
+
+        $this->dsnParser->parseDsn('phpamqplibs://', ['ssl' => []]);
+    }
+
+    public function testPathSetsVhostAndExchangeName(): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://guest:guest@127.0.0.1/myvhost/orders');
+
+        self::assertSame('myvhost', $connectionConfig->vhost);
+        self::assertSame('orders', $connectionConfig->exchange->name);
+        self::assertArrayHasKey('orders', $connectionConfig->queues);
+    }
+
+    public function testAmqpsDefaultPort(): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplibs://127.0.0.1', ['ssl' => ['cafile' => 'ca.pem']]);
+
+        self::assertSame(5671, $connectionConfig->port);
+    }
+
+    public function testQueueIntegerArgumentsAreNormalized(): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://127.0.0.1', [
+            'queues' => [
+                'orders' => [
+                    'arguments' => [
+                        'x-message-ttl' => '10',
+                        'x-max-priority' => '5',
+                    ],
+                ],
+            ],
+        ]);
+
+        self::assertSame(10, $connectionConfig->queues['orders']->arguments['x-message-ttl']);
+        self::assertSame(5, $connectionConfig->queues['orders']->arguments['x-max-priority']);
+    }
+
     public function testParseFullDsn(): void
     {
         $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://username:password@127.0.0.1:1234/vhost');
@@ -68,6 +109,7 @@ class DsnParserTest extends TestCase
         self::assertSame('username', $connectionConfig->user);
         self::assertSame('password', $connectionConfig->password);
         self::assertSame('vhost', $connectionConfig->vhost);
+        self::assertSame('messages', $connectionConfig->exchange->name);
     }
 
     public function testQueryParams(): void

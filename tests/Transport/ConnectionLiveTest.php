@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
+namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos\Harness;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
@@ -30,7 +31,7 @@ use function strtolower;
 use function usleep;
 
 #[Group('live')]
-class LiveConnectionTest extends TestCase
+class ConnectionLiveTest extends TestCase
 {
     private Harness $harness;
 

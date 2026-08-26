@@ -60,7 +60,7 @@ class Retry
     }
 
     /** @param array<class-string>|class-string $catch */
-    public function catch(array|string $catch): self
+    public function catch(array|string $catch): static
     {
         if (! is_array($catch)) {
             $catch = [$catch];
@@ -72,7 +72,7 @@ class Retry
     }
 
     /** @param array<class-string>|class-string $except */
-    public function except(array|string $except): self
+    public function except(array|string $except): static
     {
         if (! is_array($except)) {
             $except = [$except];
@@ -83,14 +83,14 @@ class Retry
         return $this;
     }
 
-    public function setLogger(LoggerInterface|null $logger): self
+    public function setLogger(LoggerInterface|null $logger): static
     {
         $this->logger = $logger;
 
         return $this;
     }
 
-    public function beforeRetry(Closure $beforeRetry): self
+    public function beforeRetry(Closure $beforeRetry): static
     {
         $this->beforeRetry = $beforeRetry;
 
@@ -136,7 +136,7 @@ class Retry
 
             $this->retries--;
 
-            usleep($this->getTimeToWait() * 1000);
+            $this->sleep($this->getTimeToWait() * 1000);
 
             $this->isRetry = true;
 
@@ -156,14 +156,15 @@ class Retry
         return $this->waitTime;
     }
 
+    protected function sleep(int $microseconds): void
+    {
+        usleep($microseconds);
+    }
+
     private function isExceptionToCatch(Throwable $e): bool
     {
         // An empty catch list means catch nothing. The constructor default remains
         // [Throwable::class]; RetryFactory always passes an explicit non-empty list.
-        if ($this->catch === []) {
-            return false;
-        }
-
         foreach ($this->catch as $exceptionClass) {
             if ($e instanceof $exceptionClass) {
                 if ($this->except !== []) {

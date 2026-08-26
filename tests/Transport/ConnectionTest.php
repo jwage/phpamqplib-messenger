@@ -28,6 +28,8 @@ use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use PHPUnit\Framework\MockObject\MockObject;
+use Psr\Log\LoggerInterface;
+use ReflectionMethod;
 use ReflectionProperty;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Traversable;
@@ -515,6 +517,22 @@ class ConnectionTest extends TestCase
         self::assertSame([], $bufferProperty->getValue($consumer));
     }
 
+    public function testDestructorInvalidatesConsumers(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+        ));
+
+        $consumer = $this->createMock(AmqpConsumer::class);
+        $consumer->expects(self::once())
+            ->method('invalidate');
+
+        (new ReflectionProperty(Connection::class, 'consumers'))->setValue($connection, ['queue_name' => $consumer]);
+
+        $connection->__destruct();
+    }
+
     public function testCloseClearsConnectionSoNextChannelOpensFresh(): void
     {
         $factory         = $this->createMock(AmqpConnectionFactory::class);
@@ -609,12 +627,16 @@ class ConnectionTest extends TestCase
             ->method('close')
             ->willThrowException($closeException);
 
+        $amqpConnection->method('isConnected')->willReturn(true);
+
         try {
             $connection->close();
             self::fail('Expected connection close to fail.');
         } catch (AMQPConnectionClosedException $exception) {
             self::assertSame($closeException, $exception);
         }
+
+        self::assertFalse($connection->isConnected());
 
         // A failing close() still resets the connection state, but the pending batch
         // survives so the next flush() publishes it onto a fresh connection.
@@ -1094,6 +1116,60 @@ class ConnectionTest extends TestCase
         $connection->setup();
     }
 
+    public function testSetupBindsWithAnEmptyRoutingKeyWhenTheQueueHasNoBindings(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            queues: ['queue_name' => new QueueConfig(name: 'queue_name')],
+        ));
+
+        $amqpChannel->expects(self::once())
+            ->method('queue_bind')
+            ->with(
+                queue: 'queue_name',
+                exchange: 'exchange_name',
+                routing_key: '',
+                nowait: false,
+                arguments: new AMQPTable([]),
+            );
+
+        $connection->setup();
+    }
+
+    public function testConsumeSetsUpTopologyWhenAutoSetupIsEnabled(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock();
+
+        $amqpChannel->expects(self::once())
+            ->method('exchange_declare')
+            ->with(
+                'exchange_name',
+                'fanout',
+                false,
+                true,
+                false,
+                false,
+                false,
+                new AMQPTable([]),
+            );
+        $amqpChannel->expects(self::once())
+            ->method('queue_declare');
+        $amqpChannel->method('is_open')->willReturn(true);
+        $amqpChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag');
+        $amqpChannel->expects(self::once())
+            ->method('is_consuming')
+            ->willReturn(true);
+        $amqpChannel->expects(self::once())
+            ->method('wait')
+            ->willThrowException(new AMQPTimeoutException('poll timeout'));
+
+        /** @var Traversable<AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+        iterator_to_array($envelopes);
+    }
+
     public function testSetupWithAutoSetupDisabled(): void
     {
         [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
@@ -1220,6 +1296,7 @@ class ConnectionTest extends TestCase
 
         $this->expectException(TransportException::class);
         $this->expectExceptionMessage('connection closed');
+        $this->expectExceptionCode(0);
 
         $connection->keepalive();
     }
@@ -1258,6 +1335,66 @@ class ConnectionTest extends TestCase
 
         self::assertSame($amqpChannel, $connection->channel());
         self::assertSame($amqpChannel, $connection->channel());
+    }
+
+    public function testChannelOpensWhenTheBrokerIsBlockedAndNoChannelsAreRetired(): void
+    {
+        [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks(
+            new ConnectionConfig(confirmEnabled: false),
+        );
+
+        $amqpChannel2 = $this->createMock(AMQPChannel::class);
+        $blocked      = false;
+
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->method('isBlocked')->willReturnCallback(
+            static function () use (&$blocked): bool {
+                return $blocked;
+            },
+        );
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel, $amqpChannel2);
+        $amqpChannel->expects(self::never())
+            ->method('confirm_select');
+        $amqpChannel2->expects(self::never())
+            ->method('confirm_select');
+
+        $connection->channel();
+
+        $blocked = true;
+        (new ReflectionProperty(Connection::class, 'channel'))->setValue($connection, null);
+
+        self::assertSame($amqpChannel2, $connection->channel());
+    }
+
+    public function testChannelForgetsAPublisherChannelWhenTheConnectionIsDead(): void
+    {
+        [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks(
+            new ConnectionConfig(confirmEnabled: false),
+        );
+
+        $amqpChannel2 = $this->createMock(AMQPChannel::class);
+        $connected    = true;
+
+        $amqpConnection->method('isConnected')->willReturnCallback(
+            static function () use (&$connected): bool {
+                return $connected;
+            },
+        );
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel, $amqpChannel2);
+        $amqpChannel->expects(self::never())
+            ->method('confirm_select');
+        $amqpChannel2->expects(self::never())
+            ->method('confirm_select');
+        $amqpChannel->expects(self::once())
+            ->method('closeIfDisconnected');
+
+        $connection->channel();
+        $connected = false;
+        $connection->channel();
     }
 
     public function testGet(): void
@@ -1433,6 +1570,141 @@ class ConnectionTest extends TestCase
         $connection->publish(body: 'test body', headers: $headers);
     }
 
+    public function testPublishParameterDefaultsAreImmediateAndUnbatched(): void
+    {
+        $parameters = (new ReflectionMethod(Connection::class, 'publish'))->getParameters();
+
+        self::assertSame(0, $parameters[2]->getDefaultValue());
+        self::assertSame(1, $parameters[3]->getDefaultValue());
+    }
+
+    public function testPublishSetsUpTopologyOnceWhenAutoSetupIsEnabled(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock();
+
+        $amqpChannel->expects(self::once())
+            ->method('exchange_declare');
+        $amqpChannel->expects(self::once())
+            ->method('queue_declare');
+        $amqpChannel->expects(self::exactly(2))
+            ->method('basic_publish');
+
+        $connection->publish(body: 'one');
+        $connection->publish(body: 'two');
+    }
+
+    public function testPublishUsesStampAttributesHeadersAndRoutingKey(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(
+                name: 'exchange_name',
+                defaultPublishRoutingKey: 'default-key',
+            ),
+        ));
+
+        $amqpChannel->expects(self::once())
+            ->method('basic_publish')
+            ->with(
+                self::callback(static function (AMQPMessage $message): bool {
+                    self::assertSame('application/json', $message->get('content_type'));
+                    self::assertSame(5, $message->get('priority'));
+                    $headers = $message->get('application_headers');
+                    self::assertInstanceOf(AMQPTable::class, $headers);
+                    self::assertSame([
+                        'from-stamp' => 'a',
+                        'from-publish' => 'b',
+                    ], $headers->getNativeData());
+
+                    return true;
+                }),
+                'exchange_name',
+                'stamp-key',
+            );
+
+        $connection->publish(
+            body: 'test body',
+            headers: ['from-publish' => 'b'],
+            amqpStamp: new AmqpStamp('stamp-key', [
+                'content_type' => 'application/json',
+                'priority' => 5,
+                'headers' => ['from-stamp' => 'a'],
+            ]),
+        );
+    }
+
+    public function testPublishBatchesWithTheStampRoutingKey(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        $amqpChannel->expects(self::once())
+            ->method('batch_basic_publish')
+            ->with(
+                self::isInstanceOf(AMQPMessage::class),
+                'exchange_name',
+                'stamp-key',
+            );
+
+        $connection->publish(
+            body: 'batched',
+            batchSize: 2,
+            amqpStamp: new AmqpStamp('stamp-key'),
+        );
+        $connection->flush();
+    }
+
+    public function testDelayedPublishUsesRoutingKeyForDeadLetterBinding(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        $amqpChannel->expects(self::once())
+            ->method('queue_declare')
+            ->with(
+                queue: 'delay_exchange_name_orders_5000_delay',
+                passive: false,
+                durable: false,
+                exclusive: false,
+                auto_delete: true,
+                nowait: false,
+                arguments: new AMQPTable([
+                    'x-message-ttl' => 5000,
+                    'x-expires' => 15000,
+                    'x-dead-letter-exchange' => 'exchange_name',
+                    'x-dead-letter-routing-key' => 'orders',
+                ]),
+            );
+
+        $connection->publish(
+            body: 'test body',
+            delayInMs: 5000,
+            amqpStamp: new AmqpStamp('orders'),
+        );
+    }
+
+    public function testDelayedPublishSetsUpDelayExchangeOnce(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        ));
+
+        $amqpChannel->expects(self::once())
+            ->method('exchange_declare');
+
+        $connection->publish(body: 'one', delayInMs: 1000);
+        $connection->publish(body: 'two', delayInMs: 2000);
+    }
+
     public function testPublishWithDelayDeclaresTransientDelayQueueByDefault(): void
     {
         [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
@@ -1527,9 +1799,234 @@ class ConnectionTest extends TestCase
                 self::fail('Expected the NACKed publish to fail.');
             } catch (TransportException $exception) {
                 self::assertInstanceOf(PublisherNack::class, $exception->getPrevious());
+                self::assertSame(0, $exception->getCode());
             }
         } finally {
             Retry::$defaultRetries = $previousRetries;
+        }
+    }
+
+    public function testDirectPublishOpensANewChannelAfterANack(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+
+        $amqpChannel1->method('confirm_select');
+        $amqpChannel2->method('confirm_select');
+        $amqpChannel1->method('closeIfDisconnected')->willReturn(true);
+
+        /** @var callable(AMQPMessage): void|null $nackHandler */
+        $nackHandler = null;
+
+        $amqpChannel1->expects(self::once())
+            ->method('set_nack_handler')
+            ->willReturnCallback(
+                static function (callable $handler) use (&$nackHandler): void {
+                    $nackHandler = $handler;
+                },
+            );
+        $amqpChannel1->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel1->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->willReturnCallback(
+                static function () use (&$nackHandler): void {
+                    /** @var callable(AMQPMessage): void $handler */
+                    $handler = $nackHandler;
+                    $handler(new AMQPMessage('nacked message'));
+                },
+            );
+        $amqpChannel1->expects(self::never())
+            ->method('close');
+
+        $amqpChannel2->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel2->method('wait_for_pending_acks');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $previousRetries       = Retry::$defaultRetries;
+        Retry::$defaultRetries = 0;
+
+        try {
+            try {
+                $connection->publish(body: 'nacked message');
+                self::fail('Expected the NACKed publish to fail.');
+            } catch (TransportException) {
+            }
+
+            $connection->publish(body: 'retry message');
+        } finally {
+            Retry::$defaultRetries = $previousRetries;
+        }
+    }
+
+    public function testFlushDiscardsTheChannelWhenPublishBatchThrowsATransportException(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+
+        $amqpChannel1->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+        $amqpChannel1->expects(self::once())
+            ->method('publish_batch')
+            ->willThrowException(new TransportException('publish_batch failed', 0));
+        $amqpChannel1->method('closeIfDisconnected')->willReturn(true);
+
+        $amqpChannel2->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+        $amqpChannel2->expects(self::once())
+            ->method('publish_batch');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $connection->publish(body: 'one', batchSize: 3);
+        $connection->publish(body: 'two', batchSize: 3);
+
+        try {
+            $connection->flush();
+            self::fail('Expected publish_batch to fail.');
+        } catch (TransportException $exception) {
+            self::assertSame('publish_batch failed', $exception->getMessage());
+            self::assertSame(0, $exception->getCode());
+        }
+
+        $connection->flush();
+    }
+
+    public function testFlushDoesNotOpenAChannelWhileTheBrokerIsBlocked(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+        $blocked        = false;
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->method('isBlocked')->willReturnCallback(
+            static function () use (&$blocked): bool {
+                return $blocked;
+            },
+        );
+        $amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel);
+
+        $amqpChannel->expects(self::never())
+            ->method('publish_batch');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $connection->channel();
+        $connection->publish(body: 'batched', batchSize: 3);
+
+        $blocked = true;
+
+        $this->expectException(AMQPConnectionBlockedException::class);
+
+        $connection->flush();
+    }
+
+    public function testChannelDoesNotCloseRetiredChannelsWhileTheBrokerIsBlocked(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $blocked = false;
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->method('isBlocked')->willReturnCallback(
+            static function () use (&$blocked): bool {
+                return $blocked;
+            },
+        );
+        $amqpConnection->expects(self::once())
+            ->method('channel')
+            ->willReturn($amqpChannel);
+
+        $amqpChannel->expects(self::once())
+            ->method('basic_publish')
+            ->willReturnCallback(
+                static function () use (&$blocked): never {
+                    $blocked = true;
+
+                    throw new AMQPConnectionBlockedException('Connection blocked');
+                },
+            );
+        $amqpChannel->method('closeIfDisconnected')->willReturn(false);
+        $amqpChannel->expects(self::never())
+            ->method('close');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        try {
+            $connection->publish(body: 'blocked');
+            self::fail('Expected the blocked publish to fail.');
+        } catch (AMQPConnectionBlockedException) {
+        }
+
+        try {
+            $connection->channel();
+            self::fail('Expected opening a replacement channel to fail while blocked.');
+        } catch (AMQPConnectionBlockedException) {
         }
     }
 
@@ -1574,6 +2071,7 @@ class ConnectionTest extends TestCase
                 self::fail('Expected the NACKed publish to fail without retrying.');
             } catch (TransportException $exception) {
                 self::assertInstanceOf(PublisherNack::class, $exception->getPrevious());
+                self::assertSame(0, $exception->getCode());
             }
         } finally {
             Retry::$defaultRetries  = $previousRetries;
@@ -1629,11 +2127,14 @@ class ConnectionTest extends TestCase
             ->method('reconnect');
 
         $amqpChannel->method('confirm_select');
-        $amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::exactly(2))
             ->method('basic_publish');
-        $amqpChannel->expects(self::once())
+        $amqpChannel->expects(self::exactly(2))
             ->method('wait_for_pending_acks')
-            ->willThrowException(new AMQPTimeoutException('Confirm timeout'));
+            ->willReturnOnConsecutiveCalls(
+                self::throwException(new AMQPTimeoutException('Confirm timeout')),
+                true,
+            );
 
         $previousRetries        = Retry::$defaultRetries;
         $previousWaitTime       = Retry::$defaultWaitTime;
@@ -1647,6 +2148,8 @@ class ConnectionTest extends TestCase
             } catch (TransportException $exception) {
                 self::assertInstanceOf(AMQPTimeoutException::class, $exception->getPrevious());
             }
+
+            $connection->publish(body: 'confirm body 2');
         } finally {
             Retry::$defaultRetries  = $previousRetries;
             Retry::$defaultWaitTime = $previousWaitTime;
@@ -1864,12 +2367,93 @@ class ConnectionTest extends TestCase
                 self::fail('Expected the NACKed batch to fail.');
             } catch (TransportException $exception) {
                 self::assertInstanceOf(PublisherNack::class, $exception->getPrevious());
+                self::assertSame(0, $exception->getCode());
             }
         } finally {
             Retry::$defaultRetries = $previousRetries;
         }
 
         self::assertCount(2, $this->getPendingBatchMessages($connection));
+    }
+
+    public function testBatchFlushOpensANewChannelAfterANack(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: true,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+
+        $amqpChannel1->method('confirm_select');
+        $amqpChannel2->method('confirm_select');
+        $amqpChannel1->method('closeIfDisconnected')->willReturn(true);
+
+        /** @var callable(AMQPMessage): void|null $nackHandler */
+        $nackHandler = null;
+
+        $amqpChannel1->expects(self::once())
+            ->method('set_nack_handler')
+            ->willReturnCallback(
+                static function (callable $handler) use (&$nackHandler): void {
+                    $nackHandler = $handler;
+                },
+            );
+        $amqpChannel1->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+        $amqpChannel1->expects(self::once())
+            ->method('publish_batch');
+        $amqpChannel1->expects(self::once())
+            ->method('wait_for_pending_acks')
+            ->willReturnCallback(
+                static function () use (&$nackHandler): void {
+                    /** @var callable(AMQPMessage): void $handler */
+                    $handler = $nackHandler;
+                    $handler(new AMQPMessage('nacked message'));
+                },
+            );
+        $amqpChannel1->expects(self::never())
+            ->method('close');
+
+        $amqpChannel2->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+        $amqpChannel2->expects(self::once())
+            ->method('publish_batch');
+        $amqpChannel2->method('wait_for_pending_acks');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $connection->publish(body: 'batch body 1', batchSize: 3);
+        $connection->publish(body: 'batch body 2', batchSize: 3);
+
+        $previousRetries       = Retry::$defaultRetries;
+        Retry::$defaultRetries = 0;
+
+        try {
+            try {
+                $connection->flush();
+                self::fail('Expected the NACKed batch to fail.');
+            } catch (TransportException) {
+            }
+
+            $connection->flush();
+        } finally {
+            Retry::$defaultRetries = $previousRetries;
+        }
     }
 
     public function testBatchDoesNotRepublishWhenTheBrokerNacksAMessage(): void
@@ -1918,6 +2502,7 @@ class ConnectionTest extends TestCase
                 self::fail('Expected the NACKed batch to fail without republishing.');
             } catch (TransportException $exception) {
                 self::assertInstanceOf(PublisherNack::class, $exception->getPrevious());
+                self::assertSame(0, $exception->getCode());
             }
         } finally {
             Retry::$defaultRetries  = $previousRetries;
@@ -1929,12 +2514,19 @@ class ConnectionTest extends TestCase
 
     public function testPublishPreservesThePublishExceptionWhenRollbackAlsoFails(): void
     {
-        [$connection, $amqpConnection, $amqpChannel] = $this->createConnectionWithAllMocks(new ConnectionConfig(
+        $connectionConfig = new ConnectionConfig(
             autoSetup: false,
             confirmEnabled: false,
             transactionsEnabled: true,
             exchange: new ExchangeConfig(name: 'exchange_name'),
-        ));
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+        $logger         = $this->createMock(LoggerInterface::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
 
         $publishException  = new AMQPConnectionClosedException('Publish failed');
         $rollbackException = new AMQPConnectionClosedException('Rollback failed');
@@ -1953,6 +2545,23 @@ class ConnectionTest extends TestCase
             ->willThrowException($rollbackException);
         $amqpChannel->expects(self::never())
             ->method('tx_commit');
+
+        $logger->expects(self::once())
+            ->method('warning')
+            ->with(
+                'AMQP transaction rollback failed: {message}',
+                [
+                    'message' => 'Rollback failed',
+                    'exception' => $rollbackException,
+                ],
+            );
+
+        $connection = new Connection(
+            retryFactory: $this->retryFactory,
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+            logger: $logger,
+        );
 
         $previousRetries        = Retry::$defaultRetries;
         $previousWaitTime       = Retry::$defaultWaitTime;
@@ -2625,6 +3234,56 @@ class ConnectionTest extends TestCase
         }
 
         self::assertSame([], $this->getPendingBatchMessages($connection));
+    }
+
+    public function testPublishReWaitsAPendingBatchConfirmBeforeAcceptingAnotherBatchMessage(): void
+    {
+        [$connection, , $amqpChannel1, $amqpChannel2] = $this->createConnectionForBatchFlushRetryTest(
+            usesSingleChannel: true,
+        );
+
+        $amqpChannel1->expects(self::exactly(2))
+            ->method('batch_basic_publish');
+        $amqpChannel1->expects(self::once())
+            ->method('publish_batch');
+        $amqpChannel1->expects(self::exactly(2))
+            ->method('wait_for_pending_acks')
+            ->willReturnOnConsecutiveCalls(
+                self::throwException(new AMQPTimeoutException('Confirm timeout')),
+                true,
+            );
+
+        $amqpChannel2->expects(self::never())
+            ->method('batch_basic_publish');
+        $amqpChannel2->expects(self::never())
+            ->method('publish_batch');
+
+        $connection->publish(body: 'confirm body 1', batchSize: 3);
+        $connection->publish(body: 'confirm body 2', batchSize: 3);
+
+        $previousRetries        = Retry::$defaultRetries;
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultRetries  = 0;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            try {
+                $connection->flush();
+                self::fail('Expected the first confirm wait to time out.');
+            } catch (TransportException $exception) {
+                self::assertInstanceOf(AMQPTimeoutException::class, $exception->getPrevious());
+            }
+
+            self::assertCount(2, $this->getPendingBatchMessages($connection));
+
+            $connection->publish(body: 'confirm body 3', batchSize: 3);
+        } finally {
+            Retry::$defaultRetries  = $previousRetries;
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+
+        self::assertCount(1, $this->getPendingBatchMessages($connection));
+        self::assertSame('confirm body 3', $this->getPendingBatchMessages($connection)[0][0]->getBody());
     }
 
     public function testFlushRepublishesBatchWhenConnectionClosesWhileWaitingForPendingAcks(): void
@@ -3327,6 +3986,17 @@ class ConnectionTest extends TestCase
             ->willReturn(['queue_name', 2]);
 
         self::assertSame(2, $connection->countMessagesInQueues());
+    }
+
+    public function testCountMessagesInQueuesTreatsANullDeclareResultAsZero(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock();
+
+        $amqpChannel->expects(self::once())
+            ->method('queue_declare')
+            ->willReturn(null);
+
+        self::assertSame(0, $connection->countMessagesInQueues());
     }
 
     public function testGetQueueNames(): void
