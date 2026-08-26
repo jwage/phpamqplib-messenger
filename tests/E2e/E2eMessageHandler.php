@@ -75,6 +75,11 @@ class E2eMessageHandler
         // Handling is recorded by E2eConsumeEventSubscriber.
     }
 
+    public function handleNoAck(E2eNoAckMessage $_message): void
+    {
+        // Handling is recorded by E2eConsumeEventSubscriber.
+    }
+
     private function applySideEffects(E2eMessage $message): void
     {
         if ($message->failUntilAttempt > 0) {

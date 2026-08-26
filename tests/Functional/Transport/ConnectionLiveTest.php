@@ -478,6 +478,80 @@ class ConnectionLiveTest extends TestCase
         }
     }
 
+    public function testNoAckAckAndNackDoNotCloseTheChannel(): void
+    {
+        $name       = $this->harness->topologyName('no_ack_ack');
+        $connection = $this->harness->connect($this->harness->topology(
+            $name,
+            ['wait_timeout' => 2],
+            ['no_ack' => true, 'wait_timeout' => 2],
+        ));
+
+        $connection->publish(body: 'auto-acked-one');
+        $first = $this->harness->consumeOne($connection, $name);
+        $first->ack();
+        $first->nack();
+
+        $connection->publish(body: 'auto-acked-two');
+        $second = $this->harness->consumeOne($connection, $name);
+        $second->ack();
+
+        self::assertSame(0, $connection->countMessagesInQueues());
+        $this->assertLoggerHasNoUnknownDeliveryTag();
+        self::assertSame(
+            [
+                'queue' => $name,
+                'no_ack' => true,
+            ],
+            $this->harness->logger()->contextFor('Registering AMQP consumer'),
+        );
+    }
+
+    public function testNoAckDeliveryIsNotRedeliveredAfterCloseWithoutAck(): void
+    {
+        $name       = $this->harness->topologyName('no_ack_close');
+        $connection = $this->harness->connect($this->harness->topology(
+            $name,
+            ['wait_timeout' => 2],
+            ['no_ack' => true, 'wait_timeout' => 2],
+        ));
+
+        $connection->publish(body: 'drop-on-delivery');
+        $this->harness->consumeOne($connection, $name);
+        $connection->close();
+
+        $again = $this->harness->connect($this->harness->topology(
+            $name,
+            ['wait_timeout' => 2],
+            ['no_ack' => true, 'wait_timeout' => 2],
+        ));
+
+        self::assertSame(0, $again->countMessagesInQueues());
+        $this->assertLoggerHasNoUnknownDeliveryTag();
+    }
+
+    public function testUnackedDeliveryIsRedeliveredAfterClose(): void
+    {
+        $name       = $this->harness->topologyName('ack_close');
+        $connection = $this->harness->connect($this->harness->topology(
+            $name,
+            ['wait_timeout' => 2],
+            ['wait_timeout' => 2],
+        ));
+
+        $connection->publish(body: 'hold-until-close');
+        $this->harness->consumeOne($connection, $name);
+        $connection->close();
+
+        $again = $this->harness->connect($this->harness->topology(
+            $name,
+            ['wait_timeout' => 2],
+            ['wait_timeout' => 2],
+        ));
+
+        self::assertSame(1, $again->countMessagesInQueues());
+    }
+
     public function testCloseKeepsWaitCoordinatorRegistrationOnALiveConnection(): void
     {
         $name       = $this->harness->topologyName('close_reg');
@@ -549,5 +623,13 @@ class ConnectionLiveTest extends TestCase
         ]));
 
         return [$name, $connection];
+    }
+
+    private function assertLoggerHasNoUnknownDeliveryTag(): void
+    {
+        foreach ($this->harness->logger()->records as $record) {
+            self::assertStringNotContainsString('PRECONDITION_FAILED', $record['message']);
+            self::assertStringNotContainsString('unknown delivery tag', $record['message']);
+        }
     }
 }

@@ -126,6 +126,19 @@ class TestKernel extends Kernel implements CompilerPassInterface
                                 ],
                             ],
                         ],
+                        'with_no_ack' => [
+                            'dsn' => '%env(MESSENGER_TRANSPORT_PHPAMQPLIB_DSN)%',
+                            'options' => [
+                                'transactions_enabled' => false,
+                                'confirm_enabled' => true,
+                                'no_ack' => true,
+                                'wait_timeout' => 0.10, // lower wait_timeout for tests
+                                'exchange' => ['name' => 'test_no_ack_exchange'],
+                                'queues' => [
+                                    'test_no_ack_queue' => [],
+                                ],
+                            ],
+                        ],
                     ],
                     'routing' => [
                         ConfirmMessage::class => 'with_confirms',

@@ -242,6 +242,11 @@ class AmqpConsumer
     {
         $this->noAck = $queueConfig->noAck;
 
+        $this->debug->log('Registering AMQP consumer', [
+            'queue' => $queueConfig->name,
+            'no_ack' => $this->noAck,
+        ]);
+
         $this->consumerTag = $this->connection->consumerChannel()->basic_consume(
             queue: $queueConfig->name,
             consumer_tag: '',

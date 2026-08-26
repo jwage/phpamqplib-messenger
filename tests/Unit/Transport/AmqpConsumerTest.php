@@ -1039,7 +1039,13 @@ class AmqpConsumerTest extends TestCase
         $connection->method('getQueueNames')
             ->willReturn(['test_queue']);
 
-        $consumer = $this->getTestConsumer(connectionConfig: $connectionConfig, connection: $connection);
+        $logger   = new CollectingLogger();
+        $consumer = $this->getTestConsumer(
+            connectionConfig: $connectionConfig,
+            connection: $connection,
+            logger: $logger,
+            debug: new Debug($logger, true),
+        );
 
         $channel->expects(self::once())
             ->method('basic_qos');
@@ -1068,6 +1074,14 @@ class AmqpConsumerTest extends TestCase
         /** @var Traversable<AmqpEnvelope> $started */
         $started = $consumer->consume('test_queue');
         iterator_to_array($started);
+
+        self::assertSame(
+            [
+                'queue' => 'test_queue',
+                'no_ack' => $noAck,
+            ],
+            $logger->contextFor('Registering AMQP consumer'),
+        );
 
         $message = $this->createMock(AMQPMessage::class);
         $message->expects($noAck ? self::never() : self::once())
