@@ -215,6 +215,31 @@ class AmqpReceiverTest extends TestCase
         self::assertCount(2, $this->envelopesToList($receiver->getFromQueues(['queue_name'])));
     }
 
+    public function testZeroFetchSizeIsRaisedToOne(): void
+    {
+        $message     = new stdClass();
+        $envelope    = new Envelope($message);
+        $amqpMessage = new AMQPMessage(serialize($message), ['message_id' => '1']);
+
+        $connection = $this->getTestConnection();
+        $connection->method('getQueueNames')
+            ->willReturn(['queue_name']);
+
+        $connection->expects(self::once())
+            ->method('consume')
+            ->with('queue_name', 1)
+            ->willReturn([new AmqpEnvelope($amqpMessage)]);
+
+        $serializer = $this->createMock(SerializerInterface::class);
+        $serializer->expects(self::once())
+            ->method('decode')
+            ->willReturn($envelope);
+
+        $receiver = new AmqpReceiver($connection, $serializer);
+
+        self::assertCount(1, $this->envelopesToList($receiver->getFromQueues(['queue_name'], 0)));
+    }
+
     public function testExplicitFetchSizeOverridesConfiguredFetchSize(): void
     {
         $this->connectionConfig = new ConnectionConfig(fetchSize: 2);

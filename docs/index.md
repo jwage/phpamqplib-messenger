@@ -2,6 +2,11 @@
 
 This bundle adds support for `php-amqplib/php-amqplib` to Symfony Messenger, providing an alternative way to connect to RabbitMQ using a pure PHP library instead of the [php-amqp](https://github.com/php-amqp/php-amqp) C extension.
 
+## Requirements
+
+- PHP 8.3, 8.4, or 8.5
+- Symfony Messenger 6.3, 6.4, 7, or 8
+
 ## Installation
 
 ```bash
@@ -407,3 +412,16 @@ docker compose up -d --wait
 ```
 
 See [`tests/Chaos/README.md`](../tests/Chaos/README.md) for the test catalog and how tests inject broker faults. CI runs them in a separate job. Do not run them in parallel with the default PHPUnit suite; they pause and restart the broker.
+
+### Mutation testing
+
+[Infection](https://infection.github.io/) mutates `src/` and checks that the **default** PHPUnit suite kills those mutants. It does not run the `chaos` suite or tests in the `live` group.
+
+Functional tests need a broker. Infection uses a single thread so mutant processes do not share RabbitMQ topology.
+
+```bash
+docker compose up -d --wait
+composer infection
+```
+
+On pull requests, CI mutates only changed lines (`--git-diff-lines`) and generates coverage from `{Class}Test` (`--map-source-class-to-test`). Pushes to `main` run the full set. Both fail unless every covered mutant is killed (`minCoveredMsi` 100 in `infection.json5.dist`).

@@ -12,8 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.3', '8.4']
-        symfony_version: ['5.4.*', '6.4.*', '7.0.*', '8.0.*', '8.1.*']
+        php: ['8.3', '8.4', '8.5']
+        symfony_version: ['6.4.*', '7.0.*', '8.0.*', '8.1.*']
         dependencies: ['highest']
         exclude:
           # Symfony 8 requires PHP 8.4+
@@ -24,7 +24,7 @@ jobs:
             symfony_version: '8.1.*'
         include:
           - php: '8.3'
-            symfony_version: '5.4.*'
+            symfony_version: '6.4.*'
             dependencies: 'lowest'
 
     name: PHP ${{ matrix.php }} Symfony ${{ matrix.symfony_version }} (${{ matrix.dependencies }})
@@ -103,3 +103,55 @@ jobs:
 
       - if: always()
         run: docker compose down
+
+  infection:
+    name: Infection
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      rabbitmq:
+        image: rabbitmq:4.0
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        ports:
+          - 5672
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Composer Cache Directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-8.4-infection-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            composer-8.4-infection-
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: pcov
+          extensions: :xdebug
+
+      - run: composer update --no-progress
+
+      - name: Fetch base branch
+        if: github.event_name == 'pull_request'
+        run: git fetch --depth=1 origin ${{ github.base_ref }}
+
+      - name: Infection (changed lines)
+        if: github.event_name == 'pull_request'
+        run: composer infection -- --git-diff-lines --git-diff-base=origin/${{ github.base_ref }} --map-source-class-to-test --no-progress --logger-github=true
+        env:
+          MESSENGER_TRANSPORT_PHPAMQPLIB_DSN: "phpamqplib://guest:guest@127.0.0.1:${{ job.services.rabbitmq.ports['5672'] }}/%2f/messages"
+
+      - name: Infection (full)
+        if: github.event_name != 'pull_request'
+        run: composer infection -- --no-progress
+        env:
+          MESSENGER_TRANSPORT_PHPAMQPLIB_DSN: "phpamqplib://guest:guest@127.0.0.1:${{ job.services.rabbitmq.ports['5672'] }}/%2f/messages"

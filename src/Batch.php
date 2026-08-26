@@ -11,7 +11,6 @@ use Override;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 
-use function array_values;
 use function spl_object_id;
 
 class Batch implements MessageBusInterface
@@ -39,7 +38,8 @@ class Batch implements MessageBusInterface
     #[Override]
     public function dispatch(object $message, array $stamps = []): Envelope
     {
-        $envelope = Envelope::wrap($message, array_values($stamps))
+        /** @psalm-suppress ArgumentTypeCoercion */
+        $envelope = Envelope::wrap($message, $stamps)
             ->with(new DeferrableStamp($this->batchSize));
 
         $envelope = $this->wrappedBus->dispatch($envelope);

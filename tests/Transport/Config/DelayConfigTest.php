@@ -22,6 +22,13 @@ class DelayConfigTest extends TestCase
         self::assertFalse($delayConfig->durable);
     }
 
+    public function testCustomQueueNamePatternIsNotReplacedByTheDefault(): void
+    {
+        $delayConfig = new DelayConfig(queueNamePattern: 'custom_%delay%');
+
+        self::assertSame('custom_%delay%', $delayConfig->queueNamePattern);
+    }
+
     public function testFromArrayWithEmptyArray(): void
     {
         $delayConfig = DelayConfig::fromArray([]);

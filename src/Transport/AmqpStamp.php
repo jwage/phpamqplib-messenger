@@ -25,7 +25,7 @@ class AmqpStamp implements NonSendableStampInterface
         self|null $previousStamp = null,
         string|null $retryRoutingKey = null,
     ): self {
-        $attr = $previousStamp->attributes ?? [];
+        $attr = $previousStamp === null ? [] : $previousStamp->attributes;
 
         $attr['headers']          ??= $amqpEnvelope->getHeaders();
         $attr['content_type']     ??= $amqpEnvelope->getContentType();
@@ -42,7 +42,13 @@ class AmqpStamp implements NonSendableStampInterface
         $attr['correlation_id']   ??= $amqpEnvelope->getCorrelationId();
 
         if ($retryRoutingKey === null) {
-            $stamp = new self($previousStamp->routingKey ?? $amqpEnvelope->getRoutingKey(), $attr);
+            if ($previousStamp !== null) {
+                $routingKey = $previousStamp->routingKey ?? $amqpEnvelope->getRoutingKey();
+            } else {
+                $routingKey = $amqpEnvelope->getRoutingKey();
+            }
+
+            $stamp = new self($routingKey, $attr);
         } else {
             $stamp = new self($retryRoutingKey, $attr);
 
@@ -57,7 +63,7 @@ class AmqpStamp implements NonSendableStampInterface
     {
         return new self(
             routingKey: $previousStamp?->routingKey,
-            attributes: array_merge($previousStamp?->attributes ?? [], $attributes),
+            attributes: array_merge($previousStamp === null ? [] : $previousStamp->attributes, $attributes),
         );
     }
 
