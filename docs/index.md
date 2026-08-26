@@ -140,12 +140,10 @@ framework:
                     # Prefetch settings (AMQP QoS: max unacked deliveries on the channel)
                     prefetch_count: 1
 
-                    # Auto-acknowledge deliveries on consume (AMQP no-ack). Off by
-                    # default so Messenger can ack or nack after handling. When
-                    # true, the broker treats a delivery as done immediately:
-                    # ack and reject become no-ops, a crash during handling can
-                    # lose the message, and failed handlers cannot requeue via
-                    # nack. Use only when that tradeoff is acceptable.
+                    # Auto-acknowledge deliveries on consume (AMQP no-ack). Off
+                    # by default so the broker holds each delivery until
+                    # Messenger acks or nacks it. When true, the broker treats
+                    # a delivery as done immediately. See Delivery Reliability.
                     no_ack: false
 
                     # Default for get() when the caller omits $fetchSize (Symfony < 8.1
@@ -210,7 +208,7 @@ framework:
                         orders_messages:
                             prefetch_count: 5 # overrides the connection prefetch_count: 1
                             wait_timeout: 2.0 # overrides the connection wait_timeout: 1.0
-                            no_ack: true # overrides the connection no_ack: false
+                            no_ack: false # optional; queues inherit the connection value unless overridden
                             passive: false
                             durable: true
                             exclusive: false
@@ -307,7 +305,9 @@ $bus->dispatch($envelope);
 
 The transport implements **at-least-once**, not exactly-once, publishing semantics. Publisher confirms are enabled by default, messages are persistent, and exchanges and queues are durable by default. After a retryable connection or channel failure, the transport either retries messages it still owns or throws so the caller can retry. If RabbitMQ accepted a publish before the connection failed, recovery may publish that message twice, so handlers must be idempotent.
 
-Consume is also at-least-once unless `no_ack` is enabled. With the default (`no_ack: false`), the broker holds each delivery until Messenger acks or nacks it, so a crash during handling requeues the message. `no_ack: true` tells the broker to consider the message consumed on delivery. That avoids the ack round-trip and the `PRECONDITION_FAILED - unknown delivery tag` error that happens if you auto-ack but still send `basic.ack`. It also means a crash during handling can lose the message, failed handlers cannot requeue via nack, and AMQP prefetch has no effect because there are no unacked deliveries. Use a failure transport if you still need to record handler failures.
+Consume is also at-least-once unless `no_ack` is enabled. With the default (`no_ack: false`), the broker holds each delivery until Messenger acks or nacks it, so a crash during handling requeues the message. `no_ack: true` tells the broker to consider the message consumed on delivery. That avoids the ack round-trip and the `PRECONDITION_FAILED - unknown delivery tag` error that happens if you auto-ack but still send `basic.ack`.
+
+Messenger `retry_strategy` still works: it republishes a new envelope, then acks the original (a no-op). A failure transport still works: it copies the message, then rejects (also a no-op). Requeue via `basic.nack` does not, so a dead-letter exchange that depends on nack will not see handler or decode failures. A crash during handling can lose the message. AMQP `prefetch_count` has no effect because there are no unacked deliveries; the broker may push freely. `fetch_size` only limits how many envelopes the Worker yields, not how many the client has already been given.
 
 Retries are enabled by default (`retries_enabled: true`) with 3 retries and a jittered wait of up to 1000ms between attempts. Disable them only if you cannot make handlers idempotent and accept that a connection failure during publish may lose the message. Raise `retries` or `retry_wait_time` when a longer recovery window is required.
 
