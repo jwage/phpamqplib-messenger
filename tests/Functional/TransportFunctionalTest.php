@@ -875,7 +875,10 @@ class TransportFunctionalTest extends KernelTestCase
         $this->noAckTransport->getConnection()->close();
 
         self::assertSame(0, $this->noAckTransport->getMessageCount());
-        self::assertCount(0, iterator_to_array($this->noAckTransport->get(), false));
+
+        /** @var Traversable<Envelope> $afterReject */
+        $afterReject = $this->noAckTransport->get();
+        self::assertCount(0, iterator_to_array($afterReject, false));
     }
 
     public function testNoAckDeliveryIsNotRedeliveredAfterCloseWithoutAck(): void
@@ -893,7 +896,10 @@ class TransportFunctionalTest extends KernelTestCase
         $this->noAckTransport->getConnection()->close();
 
         self::assertSame(0, $this->noAckTransport->getMessageCount());
-        self::assertCount(0, iterator_to_array($this->noAckTransport->get(), false));
+
+        /** @var Traversable<Envelope> $afterClose */
+        $afterClose = $this->noAckTransport->get();
+        self::assertCount(0, iterator_to_array($afterClose, false));
     }
 
     protected function setUp(): void
