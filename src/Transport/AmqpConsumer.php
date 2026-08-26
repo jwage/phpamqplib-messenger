@@ -67,10 +67,26 @@ class AmqpConsumer
             }
 
             yield from $this->releaseBuffer($fetchSize);
-        } elseif ($this->buffer !== []) {
+
+            return;
+        }
+
+        // One transport yields per coalesced pass so a busy first queue is
+        // drained before later transports filled by the shared wait.
+        if (
+            $this->connection->isRegisteredWithWaitCoordinator()
+            && $this->connection->hasDeliveredThisPass()
+        ) {
+            return;
+        }
+
+        if ($this->buffer !== []) {
+            $this->markDeliveredIfBuffered();
+
             yield from $this->releaseBuffer($fetchSize);
         } elseif ($this->connection->isRegisteredWithWaitCoordinator()) {
             $this->connection->waitForDeliveries($this->connection->getWaitTimeout());
+            $this->markDeliveredIfBuffered();
 
             yield from $this->releaseBuffer($fetchSize);
         } else {
@@ -159,6 +175,13 @@ class AmqpConsumer
     public function hasBufferedEnvelopes(): bool
     {
         return $this->buffer !== [];
+    }
+
+    private function markDeliveredIfBuffered(): void
+    {
+        if ($this->buffer !== []) {
+            $this->connection->markDelivered();
+        }
     }
 
     /** @throws TransportException */
