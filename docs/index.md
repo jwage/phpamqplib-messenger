@@ -2,6 +2,8 @@
 
 This bundle adds support for `php-amqplib/php-amqplib` to Symfony Messenger, providing an alternative way to connect to RabbitMQ using a pure PHP library instead of the [php-amqp](https://github.com/php-amqp/php-amqp) C extension.
 
+It is also compatible with [LavinMQ](https://lavinmq.com/), which speaks the same AMQP 0-9-1 protocol. CI and the local test broker run against RabbitMQ.
+
 ## Requirements
 
 - PHP 8.3, 8.4, or 8.5
