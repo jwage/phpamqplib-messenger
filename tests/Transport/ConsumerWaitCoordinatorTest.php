@@ -12,6 +12,7 @@ use ReflectionMethod;
 use Symfony\Component\Messenger\Exception\TransportException;
 
 use function fclose;
+use function fwrite;
 use function hrtime;
 use function stream_set_blocking;
 use function stream_socket_pair;
@@ -143,6 +144,47 @@ class ConsumerWaitCoordinatorTest extends TestCase
         } finally {
             fclose($left);
             fclose($right);
+        }
+    }
+
+    public function testWaitDrainsOnlySocketsThatAreReadable(): void
+    {
+        $readyPair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        $idlePair  = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+
+        if ($readyPair === false || $idlePair === false) {
+            self::fail('stream_socket_pair failed');
+        }
+
+        [$readyLeft, $readyRight] = $readyPair;
+        [$idleLeft, $idleRight]   = $idlePair;
+        stream_set_blocking($readyLeft, false);
+        stream_set_blocking($readyRight, false);
+        stream_set_blocking($idleLeft, false);
+        stream_set_blocking($idleRight, false);
+
+        try {
+            fwrite($readyRight, 'x');
+
+            $ready = $this->createMock(Connection::class);
+            $ready->method('getConsumerSocket')->willReturn($readyLeft);
+            $ready->expects(self::once())
+                ->method('drainConsumerChannel');
+
+            $idle = $this->createMock(Connection::class);
+            $idle->method('getConsumerSocket')->willReturn($idleLeft);
+            $idle->expects(self::never())
+                ->method('drainConsumerChannel');
+
+            $coordinator = new ConsumerWaitCoordinator();
+            $coordinator->register($idle);
+            $coordinator->register($ready);
+            $coordinator->wait(0.05);
+        } finally {
+            fclose($readyLeft);
+            fclose($readyRight);
+            fclose($idleLeft);
+            fclose($idleRight);
         }
     }
 

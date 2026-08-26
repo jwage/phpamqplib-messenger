@@ -383,19 +383,24 @@ class Connection
             return;
         }
 
-        try {
-            $channel->wait(
-                allowed_methods: null,
-                non_blocking: true,
-            );
-        } catch (AMQPTimeoutException) {
-        } catch (AMQPExceptionInterface $e) {
-            $this->logger?->warning('AMQP exception occurred while draining consumer channel: {message}', [
-                'message' => $e->getMessage(),
-                'exception' => $e,
-            ]);
+        while ($channel->is_open() && $channel->is_consuming()) {
+            try {
+                $channel->wait(
+                    allowed_methods: null,
+                    non_blocking: true,
+                );
+            } catch (AMQPTimeoutException) {
+                return;
+            } catch (AMQPExceptionInterface $e) {
+                $this->logger?->warning('AMQP exception occurred while draining consumer channel: {message}', [
+                    'message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
 
-            $this->close();
+                $this->close();
+
+                return;
+            }
         }
     }
 

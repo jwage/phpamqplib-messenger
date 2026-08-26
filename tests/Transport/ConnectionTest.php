@@ -1888,6 +1888,46 @@ class ConnectionTest extends TestCase
         self::assertTrue($connection->isRegisteredWithWaitCoordinator());
     }
 
+    public function testDrainConsumerChannelReadsUntilTheChannelIsIdle(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $channel        = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($channel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $channel->method('is_open')->willReturn(true);
+        $channel->method('is_consuming')->willReturn(true);
+        $channel->expects(self::exactly(3))
+            ->method('wait')
+            ->with(
+                allowed_methods: null,
+                non_blocking: true,
+            )
+            ->willReturnOnConsecutiveCalls(
+                null,
+                null,
+                self::throwException(new AMQPTimeoutException('no more frames')),
+            );
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+        $connection->consumerChannel();
+        $connection->drainConsumerChannel();
+    }
+
     /** @return array{Connection, ConsumerWaitCoordinator&MockObject} */
     private function createConnectionRegisteredWithCoordinator(): array
     {
