@@ -156,6 +156,11 @@ class AmqpConsumer
         $this->buffer[] = new AmqpEnvelope($amqpMessage);
     }
 
+    public function hasBufferedEnvelopes(): bool
+    {
+        return $this->buffer !== [];
+    }
+
     /** @throws TransportException */
     public function stop(): void
     {

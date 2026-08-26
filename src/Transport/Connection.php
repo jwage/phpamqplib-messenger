@@ -450,6 +450,17 @@ class Connection
         return $drained;
     }
 
+    public function hasBufferedDeliveries(): bool
+    {
+        foreach ($this->consumers as $consumer) {
+            if ($consumer->hasBufferedEnvelopes()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Underlying AMQP socket, or null when the connection is not open.
      *

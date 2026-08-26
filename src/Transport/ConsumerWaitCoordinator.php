@@ -79,11 +79,13 @@ class ConsumerWaitCoordinator
             }
         }
 
-        $hadWork = false;
+        $hasDelivery = false;
 
         foreach ($this->connections as $connection) {
-            if ($connection->drainConsumerChannel()) {
-                $hadWork = true;
+            $connection->drainConsumerChannel();
+
+            if ($connection->hasBufferedDeliveries()) {
+                $hasDelivery = true;
             }
         }
 
@@ -92,7 +94,10 @@ class ConsumerWaitCoordinator
             pcntl_signal_dispatch();
         }
 
-        if ($hadWork) {
+        // Heartbeats and pending methods are drainable work, not deliveries.
+        // Skipping select for those returns empty from get(), and Worker
+        // leftover-sleeps --sleep between prefetch-1 messages.
+        if ($hasDelivery) {
             return;
         }
 

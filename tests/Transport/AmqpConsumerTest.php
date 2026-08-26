@@ -332,6 +332,21 @@ class AmqpConsumerTest extends TestCase
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
     }
 
+    public function testHasBufferedEnvelopesTracksCallbackAndInvalidate(): void
+    {
+        $consumer = $this->getTestConsumer();
+
+        self::assertFalse($consumer->hasBufferedEnvelopes());
+
+        $consumer->callback($this->createStub(AMQPMessage::class));
+
+        self::assertTrue($consumer->hasBufferedEnvelopes());
+
+        $consumer->invalidate();
+
+        self::assertFalse($consumer->hasBufferedEnvelopes());
+    }
+
     public function testConsumeWithWaitTimeoutSetToNull(): void
     {
         $connectionConfig = ConnectionConfig::fromArray([

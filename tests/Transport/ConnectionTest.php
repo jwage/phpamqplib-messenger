@@ -545,6 +545,41 @@ class ConnectionTest extends TestCase
         $connection->__destruct();
     }
 
+    public function testHasBufferedDeliveriesIsFalseWhenNoConsumersExist(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+        ));
+
+        self::assertFalse($connection->hasBufferedDeliveries());
+    }
+
+    public function testHasBufferedDeliveriesChecksEveryConsumer(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+        ));
+
+        $empty = $this->createStub(AmqpConsumer::class);
+        $empty->method('hasBufferedEnvelopes')->willReturn(false);
+
+        $full = $this->createStub(AmqpConsumer::class);
+        $full->method('hasBufferedEnvelopes')->willReturn(true);
+
+        $consumers = new ReflectionProperty(Connection::class, 'consumers');
+
+        $consumers->setValue($connection, ['a' => $empty, 'b' => $full]);
+        self::assertTrue($connection->hasBufferedDeliveries());
+
+        $consumers->setValue($connection, ['a' => $full, 'b' => $empty]);
+        self::assertTrue($connection->hasBufferedDeliveries());
+
+        $consumers->setValue($connection, ['a' => $empty, 'b' => $empty]);
+        self::assertFalse($connection->hasBufferedDeliveries());
+    }
+
     public function testCloseClearsConnectionSoNextChannelOpensFresh(): void
     {
         $factory         = $this->createMock(AmqpConnectionFactory::class);
