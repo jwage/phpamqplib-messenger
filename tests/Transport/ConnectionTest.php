@@ -1846,7 +1846,11 @@ class ConnectionTest extends TestCase
         $firstChannel  = $this->createMock(AMQPChannel::class);
         $secondChannel = $this->createMock(AMQPChannel::class);
         $logger        = new CollectingLogger();
-        $holder        = new stdClass();
+        $holder        = new class {
+            public Connection|null $connection = null;
+
+            public int $waits = 0;
+        };
 
         $factory->expects(self::exactly(2))
             ->method('create')
@@ -1876,10 +1880,9 @@ class ConnectionTest extends TestCase
         $coordinator->expects(self::exactly(2))
             ->method('wait')
             ->willReturnCallback(static function () use ($holder): void {
-                static $n = 0;
-
-                if (++$n === 1) {
-                    $holder->connection->close();
+                $holder->waits++;
+                if ($holder->waits === 1) {
+                    $holder->connection?->close();
                 }
             });
 
@@ -2038,14 +2041,18 @@ class ConnectionTest extends TestCase
         $amqp    = $this->createMock(AMQPStreamConnection::class);
         $channel = $this->createStub(AMQPChannel::class);
         $logger  = new CollectingLogger();
-        $holder  = new stdClass();
+        $holder  = new class {
+            public Connection|null $connection = null;
+        };
+        $creates = new class {
+            public int $n = 0;
+        };
 
         $factory->expects(self::exactly(2))
             ->method('create')
-            ->willReturnCallback(static function () use ($amqp): AMQPStreamConnection {
-                static $n = 0;
-
-                if (++$n === 1) {
+            ->willReturnCallback(static function () use ($amqp, $creates): AMQPStreamConnection {
+                $creates->n++;
+                if ($creates->n === 1) {
                     return $amqp;
                 }
 
@@ -2066,7 +2073,7 @@ class ConnectionTest extends TestCase
         $coordinator->expects(self::once())
             ->method('wait')
             ->willReturnCallback(static function () use ($holder): void {
-                $holder->connection->close();
+                $holder->connection?->close();
             });
 
         $connection         = new Connection(

@@ -221,6 +221,7 @@ final class TestLog
     {
         $redacted = [];
 
+        /** @psalm-suppress MixedAssignment */
         foreach ($value as $key => $item) {
             $redacted[$key] = self::redactValue($item);
         }

@@ -17,11 +17,13 @@ class TestCase extends BaseTestCase
     {
         parent::setUp();
 
+        /** @psalm-suppress InternalMethod */
         TestLog::beginTest(static::class . '::' . $this->name());
     }
 
     protected function tearDown(): void
     {
+        /** @psalm-suppress InternalMethod */
         TestLog::endTest(static::class . '::' . $this->name());
 
         parent::tearDown();

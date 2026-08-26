@@ -52,9 +52,9 @@ abstract class E2eTestCase extends TestCase
 {
     protected KernelInterface $kernel;
 
-    protected string $logFile;
+    protected string $logFile = '';
 
-    protected string $debugLogFile;
+    protected string $debugLogFile = '';
 
     protected string $highDsn;
 
@@ -469,10 +469,11 @@ abstract class E2eTestCase extends TestCase
 
     private function archiveTestLogs(): void
     {
-        if (! isset($this->logFile)) {
+        if ($this->logFile === '') {
             return;
         }
 
+        /** @psalm-suppress InternalMethod */
         $name = TestLog::safeBasename(static::class . '_' . $this->name());
 
         TestLog::copyFile($this->logFile, $name . '.e2e.jsonl');

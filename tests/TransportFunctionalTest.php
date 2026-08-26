@@ -848,6 +848,7 @@ class TransportFunctionalTest extends KernelTestCase
     {
         parent::setUp();
 
+        /** @psalm-suppress InternalMethod */
         TestLog::beginTest(static::class . '::' . $this->name());
 
         self::bootKernel();
@@ -893,6 +894,7 @@ class TransportFunctionalTest extends KernelTestCase
         $this->fetchSizeTransport->getConnection()->close();
         $this->multipleQueuesTransport->getConnection()->close();
 
+        /** @psalm-suppress InternalMethod */
         TestLog::endTest(static::class . '::' . $this->name());
     }
 
