@@ -4160,6 +4160,33 @@ class ConnectionTest extends TestCase
         self::assertSame(1, $count);
     }
 
+    public function testRetryHonorsExplicitWaitTimeOverConfig(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(retryWaitTime: 5000));
+
+        $retry = $connection->retry(
+            static function (): void {
+            },
+            waitTime: 0,
+        );
+
+        $waitTime = (new ReflectionProperty(Retry::class, 'waitTime'))->getValue($retry);
+
+        self::assertSame(0, $waitTime);
+    }
+
+    public function testRetryUsesConfiguredWaitTimeWhenCallerOmitsIt(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(retryWaitTime: 250));
+
+        $retry = $connection->retry(static function (): void {
+        });
+
+        $waitTime = (new ReflectionProperty(Retry::class, 'waitTime'))->getValue($retry);
+
+        self::assertSame(250, $waitTime);
+    }
+
     public function testChannelInvalidatesCachedChannelWhenConnectionClosed(): void
     {
         [$connection, $amqpConnection, $amqpChannel1] = $this->createConnectionWithAllMocks();
