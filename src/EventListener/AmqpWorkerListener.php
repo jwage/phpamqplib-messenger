@@ -11,6 +11,7 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Component\Messenger\Event\WorkerStartedEvent;
 use Symfony\Component\Messenger\Event\WorkerStoppedEvent;
+use Symfony\Component\Messenger\Exception\TransportException;
 
 use function count;
 use function is_callable;
@@ -84,10 +85,14 @@ class AmqpWorkerListener implements EventSubscriberInterface
             : null;
 
         foreach ($matched as $connection) {
-            if ($this->sleepCap !== null) {
-                $connection->listen($queueNames);
-            } else {
-                $connection->startConsumers($queueNames);
+            try {
+                if ($this->sleepCap !== null) {
+                    $connection->listen($queueNames);
+                } else {
+                    $connection->startConsumers($queueNames);
+                }
+            } catch (TransportException) {
+                // The next get() retries ensureStarted(); keep the worker running.
             }
 
             $this->coordinator->register($connection);

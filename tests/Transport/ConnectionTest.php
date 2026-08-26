@@ -1817,6 +1817,77 @@ class ConnectionTest extends TestCase
         $connection->close();
     }
 
+    public function testStartConsumersRegistersWhenTheBrokerIsDown(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            retries: 0,
+            retryWaitTime: 0,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory     = $this->createStub(AmqpConnectionFactory::class);
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $logger      = $this->createMock(LoggerInterface::class);
+        $factory->method('create')
+            ->willThrowException(new AMQPIOException('connection refused'));
+        $coordinator->expects(self::once())
+            ->method('register');
+        $logger->expects(self::once())
+            ->method('warning')
+            ->with(
+                'AMQP exception occurred while starting consumers: {message}',
+                self::callback(static function (array $context): bool {
+                    return $context['message'] === 'connection refused'
+                        && $context['exception'] instanceof TransportException;
+                }),
+            );
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+            logger: $logger,
+        );
+        $connection->setWaitCoordinator($coordinator);
+        $connection->startConsumers();
+
+        self::assertTrue($connection->isRegisteredWithWaitCoordinator());
+    }
+
+    public function testStartConsumersRegistersWhenTheBrokerIsDownWithoutALogger(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            retries: 0,
+            retryWaitTime: 0,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory     = $this->createStub(AmqpConnectionFactory::class);
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $factory->method('create')
+            ->willThrowException(new AMQPIOException('connection refused'));
+        $coordinator->expects(self::once())
+            ->method('register');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+        $connection->setWaitCoordinator($coordinator);
+        $connection->startConsumers();
+
+        self::assertTrue($connection->isRegisteredWithWaitCoordinator());
+    }
+
     /** @return array{Connection, ConsumerWaitCoordinator&MockObject} */
     private function createConnectionRegisteredWithCoordinator(): array
     {

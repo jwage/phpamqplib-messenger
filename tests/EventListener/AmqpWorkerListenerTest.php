@@ -14,6 +14,7 @@ use stdClass;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Component\Messenger\Event\WorkerStartedEvent;
 use Symfony\Component\Messenger\Event\WorkerStoppedEvent;
+use Symfony\Component\Messenger\Exception\TransportException;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Worker;
@@ -248,6 +249,23 @@ class AmqpWorkerListenerTest extends TestCase
         $listener->addConnection('async', $connection);
 
         $listener->onWorkerStarted($this->createWorkerStartedEvent($this->createWorker(['redis', 'async'])));
+    }
+
+    public function testOnWorkerStartedSurvivesATransportThatCannotConnect(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->expects(self::once())
+            ->method('startConsumers')
+            ->willThrowException(new TransportException('connection refused'));
+
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('register')
+            ->with($connection);
+
+        $listener = new AmqpWorkerListener($coordinator);
+        $listener->addConnection('async', $connection);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($this->createWorker(['async'])));
     }
 
     public function testIdleWaitUsesTheFirstMatchedPhpAmqpLibTransport(): void

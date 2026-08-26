@@ -318,7 +318,14 @@ class Connection
     public function startConsumers(array|null $queueNames = null): void
     {
         if ($this->autoSetup) {
-            $this->setupExchangeAndQueues();
+            try {
+                $this->setupExchangeAndQueues();
+            } catch (TransportException $e) {
+                $this->logger?->warning('AMQP exception occurred while starting consumers: {message}', [
+                    'message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
+            }
         }
 
         foreach ($queueNames ?? $this->getQueueNames() as $queueName) {
@@ -331,7 +338,15 @@ class Connection
                 $this->connectionConfig,
                 $this->logger,
             );
-            $consumer->ensureStarted($queueName);
+
+            try {
+                $consumer->ensureStarted($queueName);
+            } catch (TransportException $e) {
+                $this->logger?->warning('AMQP exception occurred while starting consumers: {message}', [
+                    'message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
+            }
         }
 
         if ($this->waitCoordinator !== null) {
