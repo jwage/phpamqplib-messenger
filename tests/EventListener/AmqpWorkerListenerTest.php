@@ -255,13 +255,15 @@ class AmqpWorkerListenerTest extends TestCase
         $first = $this->createMock(Connection::class);
         $first->method('listen');
         $first->method('getWaitTimeout')
-            ->willReturn(1.5);
+            ->willReturn(0.4);
         $first->expects(self::once())
             ->method('waitForDeliveries')
-            ->with(1.5, false);
+            ->with(0.4, false);
 
         $second = $this->createMock(Connection::class);
         $second->method('listen');
+        $second->method('getWaitTimeout')
+            ->willReturn(9.0);
         $second->expects(self::never())
             ->method('waitForDeliveries');
 
