@@ -70,6 +70,37 @@ class AmqpTransportFactoryTest extends TestCase
         );
     }
 
+    public function testCreateTransportDoesNotRequireAWorkerListener(): void
+    {
+        $this->connectionFactory->method('fromDsn')
+            ->willReturn($this->createStub(Connection::class));
+
+        $factory = new AmqpTransportFactory($this->connectionFactory);
+
+        $transport = $factory->createTransport(
+            'phpamqplib://localhost',
+            ['transport_name' => 'orders'],
+            $this->createStub(SerializerInterface::class),
+        );
+
+        self::assertInstanceOf(AmqpTransport::class, $transport);
+    }
+
+    public function testCreateTransportSkipsRegistrationForAnEmptyTransportName(): void
+    {
+        $listener = $this->createMock(AmqpWorkerListener::class);
+        $listener->expects(self::never())
+            ->method('addConnection');
+
+        $factory = new AmqpTransportFactory($this->connectionFactory, $listener);
+
+        $factory->createTransport(
+            'phpamqplib://localhost',
+            ['transport_name' => ''],
+            $this->createStub(SerializerInterface::class),
+        );
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

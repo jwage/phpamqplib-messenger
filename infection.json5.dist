@@ -25,5 +25,20 @@
     "testFrameworkExtraArgs": "--testsuite=default --exclude-group=live",
     "ignoreMsiWithNoMutations": true,
     "minMsi": 100,
-    "minCoveredMsi": 100
+    "minCoveredMsi": 100,
+    "mutators": {
+        "@default": true,
+        // SIGINT during stream_select is delivered here; tests cannot observe it
+        // without sending a real signal into the PHPUnit process.
+        "FunctionCallRemoval": {
+            "ignoreSourceCodeByRegex": [
+                "pcntl_signal_dispatch\\(\\);"
+            ]
+        },
+        "IfNegation": {
+            "ignoreSourceCodeByRegex": [
+                "function_exists\\('pcntl_signal_dispatch'\\)"
+            ]
+        }
+    }
 }

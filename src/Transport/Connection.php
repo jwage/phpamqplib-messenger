@@ -142,13 +142,7 @@ class Connection
 
     public function getWaitTimeout(): float
     {
-        $timeout = $this->connectionConfig->waitTimeout;
-
-        if ($timeout === null || $timeout === 0 || $timeout === 0.0) {
-            return (float) ConnectionConfig::DEFAULT_WAIT_TIMEOUT;
-        }
-
-        return (float) $timeout;
+        return (float) $this->connectionConfig->waitTimeout;
     }
 
     public function isConnected(): bool

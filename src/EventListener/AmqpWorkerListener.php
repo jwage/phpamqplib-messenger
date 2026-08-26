@@ -104,27 +104,7 @@ class AmqpWorkerListener implements EventSubscriberInterface
             return;
         }
 
-        if (! $event->isWorkerIdle() || $this->activeConnection === null) {
-            return;
-        }
-
-        $timeout = $this->activeConnection->getWaitTimeout();
-
-        if ($this->deadline !== null) {
-            $timeout = min($timeout, $this->deadline - microtime(true));
-
-            if ($timeout <= 0) {
-                return;
-            }
-        }
-
-        $timeout = min($timeout, $this->sleepCap);
-
-        if ($timeout <= 0) {
-            return;
-        }
-
-        $this->activeConnection->waitForDeliveries($timeout, coalesce: false);
+        $this->waitWhileIdle($event, $this->sleepCap);
     }
 
     public function onWorkerStopped(WorkerStoppedEvent $_event): void
@@ -151,7 +131,8 @@ class AmqpWorkerListener implements EventSubscriberInterface
         ];
     }
 
-    private function getWorkerDeadline(WorkerStartedEvent $event): float|null
+    /** @param object $event WorkerStartedEvent, or a stand-in without Symfony 8.1 methods. */
+    private function getWorkerDeadline(object $event): float|null
     {
         $getter = [$event, 'getDeadline'];
 
@@ -169,8 +150,10 @@ class AmqpWorkerListener implements EventSubscriberInterface
      * Worker sleep duration in seconds. Symfony 8.1+ exposes this as
      * WorkerStartedEvent::getIdleTimeout() (microseconds). Earlier versions
      * use the Worker default of 1 second.
+     *
+     * @param object $event WorkerStartedEvent, or a stand-in without Symfony 8.1 methods.
      */
-    private function getWorkerIdleTimeoutSeconds(WorkerStartedEvent $event): float
+    private function getWorkerIdleTimeoutSeconds(object $event): float
     {
         $getter = [$event, 'getIdleTimeout'];
 
@@ -185,6 +168,28 @@ class AmqpWorkerListener implements EventSubscriberInterface
             return 1.0;
         }
 
-        return (float) $idleTimeout / 1_000_000.0;
+        /** @psalm-suppress InvalidOperand */
+        return $idleTimeout / 1_000_000.0;
+    }
+
+    private function waitWhileIdle(WorkerRunningEvent $event, float $sleepCap): void
+    {
+        if (! $event->isWorkerIdle() || $this->activeConnection === null) {
+            return;
+        }
+
+        $timeout = $this->activeConnection->getWaitTimeout();
+
+        if ($this->deadline !== null) {
+            $timeout = min($timeout, $this->deadline - microtime(true));
+        }
+
+        $timeout = min($timeout, $sleepCap);
+
+        if ($timeout <= 0) {
+            return;
+        }
+
+        $this->activeConnection->waitForDeliveries($timeout, coalesce: false);
     }
 }

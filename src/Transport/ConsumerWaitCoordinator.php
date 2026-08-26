@@ -7,8 +7,8 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Throwable;
 
-use function array_values;
 use function function_exists;
+use function intdiv;
 use function pcntl_signal_dispatch;
 use function round;
 use function spl_object_id;
@@ -47,7 +47,7 @@ class ConsumerWaitCoordinator
     public function wait(float $timeout, bool $coalesce = true): void
     {
         if ($coalesce && $this->waitedThisPass) {
-            foreach (array_values($this->connections) as $connection) {
+            foreach ($this->connections as $connection) {
                 $connection->drainConsumerChannel();
             }
 
@@ -63,7 +63,7 @@ class ConsumerWaitCoordinator
 
     private function selectAndDrain(float $timeout): void
     {
-        foreach (array_values($this->connections) as $connection) {
+        foreach ($this->connections as $connection) {
             try {
                 $connection->keepalive();
             } catch (TransportException) {
@@ -74,7 +74,7 @@ class ConsumerWaitCoordinator
         $read    = [];
         $indexed = [];
 
-        foreach (array_values($this->connections) as $connection) {
+        foreach ($this->connections as $connection) {
             $socket = $connection->getConsumerSocket();
 
             if ($socket === null) {
@@ -86,64 +86,46 @@ class ConsumerWaitCoordinator
             $indexed[$index] = $connection;
         }
 
-        if ($read === []) {
-            return;
-        }
+        if ($read !== []) {
+            $write        = null;
+            $except       = null;
+            $ready        = $read;
+            [$sec, $usec] = $this->splitTimeout($timeout);
 
-        $write        = null;
-        $except       = null;
-        $ready        = $read;
-        [$sec, $usec] = $this->splitTimeout($timeout);
-
-        try {
-            /** @psalm-suppress InvalidArgument */
-            $selected = stream_select($ready, $write, $except, $sec, $usec);
-        } catch (Throwable) {
-            $selected = false;
-        }
-
-        if (function_exists('pcntl_signal_dispatch')) {
-            pcntl_signal_dispatch();
-        }
-
-        if ($selected === false) {
-            $selected = 0;
-        }
-
-        if ($selected > 0) {
-            foreach ($indexed as $index => $connection) {
-                if (isset($ready[$index])) {
-                    $connection->drainConsumerChannel();
-                }
+            try {
+                /** @psalm-suppress InvalidArgument */
+                $selected = stream_select($ready, $write, $except, $sec, $usec);
+            } catch (Throwable) {
+                $selected = 0;
             }
 
-            return;
-        }
+            /** @infection-ignore-all */
+            if (function_exists('pcntl_signal_dispatch')) {
+                pcntl_signal_dispatch();
+            }
 
-        foreach ($indexed as $connection) {
-            $connection->drainConsumerChannel();
+            if ($selected > 0) {
+                foreach ($indexed as $index => $connection) {
+                    if (isset($ready[$index])) {
+                        $connection->drainConsumerChannel();
+                    }
+                }
+
+                return;
+            }
+
+            foreach ($indexed as $connection) {
+                $connection->drainConsumerChannel();
+            }
         }
     }
 
     /** @return array{0: int, 1: int} */
     private function splitTimeout(float $timeout): array
     {
-        $seconds      = (int) $timeout;
-        $fraction     = $timeout - (float) $seconds;
-        $microseconds = (int) round($fraction * 1_000_000.0);
-
-        if ($microseconds >= 1_000_000) {
-            $seconds++;
-            $microseconds -= 1_000_000;
-        }
-
-        if ($seconds < 0) {
-            $seconds = 0;
-        }
-
-        if ($microseconds < 0) {
-            $microseconds = 0;
-        }
+        $totalMicroseconds = (int) round($timeout * 1_000_000.0);
+        $seconds           = intdiv($totalMicroseconds, 1_000_000);
+        $microseconds      = $totalMicroseconds % 1_000_000;
 
         return [$seconds, $microseconds];
     }

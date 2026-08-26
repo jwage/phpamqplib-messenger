@@ -17,6 +17,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\DelayConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ExchangeConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\PublisherNack;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
@@ -1665,6 +1666,194 @@ class ConnectionTest extends TestCase
         $connection->startConsumers(['queue_name', 'other_transport_queue']);
 
         $connection->close();
+    }
+
+    public function testEnableExternalWaitIsCallableFromOutsideTheConnection(): void
+    {
+        $connection = $this->createConnectionWithStubs(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: ['queue_name' => new QueueConfig(name: 'queue_name')],
+        ));
+
+        self::assertFalse($connection->isExternalWaitEnabled());
+
+        $connection->enableExternalWait();
+
+        self::assertTrue($connection->isExternalWaitEnabled());
+    }
+
+    public function testUnregisterFromWaitCoordinatorNotifiesTheCoordinatorAndClearsTheFlag(): void
+    {
+        [$connection, $coordinator] = $this->createConnectionRegisteredWithCoordinator();
+
+        $coordinator->expects(self::once())
+            ->method('unregister')
+            ->with($connection);
+
+        $connection->unregisterFromWaitCoordinator();
+
+        self::assertFalse($connection->isRegisteredWithWaitCoordinator());
+    }
+
+    public function testCloseUnregistersFromTheWaitCoordinator(): void
+    {
+        [$connection, $coordinator] = $this->createConnectionRegisteredWithCoordinator();
+
+        $coordinator->expects(self::once())
+            ->method('unregister')
+            ->with($connection);
+
+        $connection->close();
+
+        self::assertFalse($connection->isRegisteredWithWaitCoordinator());
+    }
+
+    public function testStartConsumersHonorsAnExplicitQueueList(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+                'queue_name2' => new QueueConfig(name: 'queue_name2'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpChannel->method('is_open')->willReturn(true);
+        $amqpChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturnCallback(static function (string $queue): string {
+                self::assertSame('queue_name', $queue);
+
+                return 'consumer-tag-1';
+            });
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $connection->startConsumers(['queue_name']);
+
+        $connection->close();
+    }
+
+    public function testStartConsumersContinuesAfterAnUnconfiguredQueue(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpChannel->method('is_open')->willReturn(true);
+        $amqpChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturnCallback(static function (string $queue): string {
+                self::assertSame('queue_name', $queue);
+
+                return 'consumer-tag-1';
+            });
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $connection->startConsumers(['missing', 'queue_name']);
+
+        $connection->close();
+    }
+
+    public function testStartConsumersReusesAnExistingConsumer(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpChannel->method('is_open')->willReturn(true);
+        $amqpChannel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer-tag-1');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+
+        $connection->startConsumers();
+        $connection->startConsumers();
+
+        $connection->close();
+    }
+
+    /** @return array{Connection, ConsumerWaitCoordinator&MockObject} */
+    private function createConnectionRegisteredWithCoordinator(): array
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createStub(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createStub(AMQPChannel::class);
+        $coordinator    = $this->createMock(ConsumerWaitCoordinator::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpChannel->method('is_open')->willReturn(true);
+        $amqpChannel->method('basic_consume')->willReturn('consumer-tag-1');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+        $connection->setWaitCoordinator($coordinator);
+        $coordinator->expects(self::once())
+            ->method('register')
+            ->with($connection);
+        $connection->startConsumers();
+
+        self::assertTrue($connection->isRegisteredWithWaitCoordinator());
+
+        return [$connection, $coordinator];
     }
 
     public function testPublish(): void

@@ -9,6 +9,8 @@ use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
 use ReflectionClass;
+use ReflectionMethod;
+use stdClass;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Component\Messenger\Event\WorkerStartedEvent;
 use Symfony\Component\Messenger\Event\WorkerStoppedEvent;
@@ -90,6 +92,8 @@ class AmqpWorkerListenerTest extends TestCase
     {
         $connection = $this->createMock(Connection::class);
         $connection->method('listen');
+        $connection->method('getWaitTimeout')
+            ->willReturn(5.0);
         $connection->expects(self::never())
             ->method('waitForDeliveries');
 
@@ -232,6 +236,86 @@ class AmqpWorkerListenerTest extends TestCase
         $worker = $this->createWorker(['async']);
         $listener->onWorkerStarted($this->createWorkerStartedEvent($worker));
         $listener->onWorkerStopped(new WorkerStoppedEvent($worker));
+    }
+
+    public function testOnWorkerStartedMatchesPhpAmqpLibTransportsAfterUnmatchedOnes(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->expects(self::once())
+            ->method('listen');
+
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $listener->addConnection('async', $connection);
+
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($this->createWorker(['redis', 'async'])));
+    }
+
+    public function testIdleWaitUsesTheFirstMatchedPhpAmqpLibTransport(): void
+    {
+        $first = $this->createMock(Connection::class);
+        $first->method('listen');
+        $first->method('getWaitTimeout')
+            ->willReturn(1.5);
+        $first->expects(self::once())
+            ->method('waitForDeliveries')
+            ->with(1.5, false);
+
+        $second = $this->createMock(Connection::class);
+        $second->method('listen');
+        $second->expects(self::never())
+            ->method('waitForDeliveries');
+
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $listener->addConnection('high', $first);
+        $listener->addConnection('low', $second);
+
+        $worker = $this->createWorker(['high', 'low', 'redis']);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, idleTimeout: 2_000_000));
+        $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
+    }
+
+    public function testIdleWaitIsSkippedWhenSleepCapIsZero(): void
+    {
+        if (! method_exists(WorkerStartedEvent::class, 'getIdleTimeout')) {
+            self::markTestSkipped('WorkerStartedEvent::getIdleTimeout() requires Symfony 8.1+');
+        }
+
+        $connection = $this->createMock(Connection::class);
+        $connection->method('listen');
+        $connection->method('getWaitTimeout')
+            ->willReturn(5.0);
+        $connection->expects(self::never())
+            ->method('waitForDeliveries');
+
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $listener->addConnection('async', $connection);
+
+        $worker = $this->createWorker(['async', 'redis']);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, idleTimeout: 0));
+        $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
+    }
+
+    public function testIdleTimeoutFallsBackWhenTheEventDoesNotExposeIt(): void
+    {
+        $method   = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+
+        self::assertSame(1.0, $method->invoke($listener, new stdClass()));
+    }
+
+    public function testIdleTimeoutFallsBackWhenTheValueIsNotNumeric(): void
+    {
+        $event = new class {
+            public function getIdleTimeout(): string
+            {
+                return 'nope';
+            }
+        };
+
+        $method   = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+
+        self::assertSame(1.0, $method->invoke($listener, $event));
     }
 
     /** @param list<string> $transportNames */

@@ -43,7 +43,16 @@ class AmqpConsumer
     {
         $queueConfig = $this->connectionConfig->getQueueConfig($queueName);
 
-        $this->ensureStarted($queueName, $fetchSize);
+        try {
+            $this->ensureStarted($queueName, $fetchSize);
+        } catch (TransportException $e) {
+            $this->logger?->warning('AMQP exception occurred while starting consumer: {message}', [
+                'message' => $e->getMessage(),
+                'exception' => $e,
+            ]);
+
+            return;
+        }
 
         if ($this->connection->isExternalWaitEnabled()) {
             if ($this->buffer === []) {
@@ -51,24 +60,25 @@ class AmqpConsumer
             }
 
             yield from $this->releaseBuffer($fetchSize);
-
-            return;
-        }
-
-        if ($this->buffer !== []) {
+        } elseif ($this->buffer !== []) {
             yield from $this->releaseBuffer($fetchSize);
-
-            return;
-        }
-
-        if ($this->connection->isRegisteredWithWaitCoordinator()) {
+        } elseif ($this->connection->isRegisteredWithWaitCoordinator()) {
             $this->connection->waitForDeliveries($this->connection->getWaitTimeout());
 
             yield from $this->releaseBuffer($fetchSize);
-
-            return;
+        } else {
+            yield from $this->waitForChannelDeliveries($queueConfig, $fetchSize);
         }
+    }
 
+    /**
+     * @return iterable<AmqpEnvelope>
+     *
+     * @throws AMQPExceptionInterface
+     * @throws TransportException
+     */
+    private function waitForChannelDeliveries(QueueConfig $queueConfig, int|null $fetchSize): iterable
+    {
         $stop = false;
 
         while ($this->connection->consumerChannel()->is_consuming()) {
@@ -204,17 +214,15 @@ class AmqpConsumer
             $this->buffer = [];
 
             yield from $buffer;
-
-            return;
-        }
-
-        // Drain by shifting items off $this->buffer one-by-one rather than snapshotting it
-        // into a local and clearing the instance buffer up-front. If the caller breaks
-        // mid-iteration (e.g. AmqpReceiver honoring fetchSize), only the items already
-        // yielded are removed; the rest remain on $this->buffer and are picked up by the
-        // next consume() call instead of being silently dropped from PHP memory.
-        while (($amqpEnvelope = array_shift($this->buffer)) !== null) {
-            yield $amqpEnvelope;
+        } else {
+            // Drain by shifting items off $this->buffer one-by-one rather than snapshotting it
+            // into a local and clearing the instance buffer up-front. If the caller breaks
+            // mid-iteration (e.g. AmqpReceiver honoring fetchSize), only the items already
+            // yielded are removed; the rest remain on $this->buffer and are picked up by the
+            // next consume() call instead of being silently dropped from PHP memory.
+            while (($amqpEnvelope = array_shift($this->buffer)) !== null) {
+                yield $amqpEnvelope;
+            }
         }
     }
 }

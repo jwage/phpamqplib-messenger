@@ -20,6 +20,7 @@ use PhpAmqpLib\Message\AMQPMessage;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Messenger\Exception\TransportException;
 use Traversable;
 
 use function array_shift;
@@ -700,10 +701,48 @@ class AmqpConsumerTest extends TestCase
         $channel->expects(self::once())
             ->method('basic_consume')
             ->willReturn('consumer_tag');
+        $channel->expects(self::never())
+            ->method('wait');
+        $channel->expects(self::never())
+            ->method('is_consuming');
         /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
+    }
+
+    public function testConsumeWithExternalWaitYieldsBufferedMessagesWithoutDraining(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnection(onlyMethods: [
+            'consumerChannel',
+            'getQueueNames',
+            'close',
+            'isExternalWaitEnabled',
+            'drainConsumerChannel',
+        ]);
+        $connection->method('consumerChannel')
+            ->willReturn($channel);
+        $connection->method('isExternalWaitEnabled')
+            ->willReturn(true);
+        $connection->expects(self::never())
+            ->method('drainConsumerChannel');
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::once())
+            ->method('basic_qos');
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $consumer->callback($this->createStub(AMQPMessage::class));
+
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+
+        self::assertCount(1, iterator_to_array($amqpEnvelopes));
     }
 
     public function testConsumeWithWaitCoordinatorWaitsWithoutBlockingTheChannel(): void
@@ -742,6 +781,82 @@ class AmqpConsumerTest extends TestCase
             ->method('wait');
         $channel->expects(self::never())
             ->method('is_consuming');
+
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+
+        self::assertCount(0, iterator_to_array($amqpEnvelopes));
+    }
+
+    public function testConsumeWithWaitCoordinatorYieldsBufferWithoutWaiting(): void
+    {
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $connection = $this->getTestConnection(onlyMethods: [
+            'consumerChannel',
+            'getQueueNames',
+            'close',
+            'isExternalWaitEnabled',
+            'isRegisteredWithWaitCoordinator',
+            'waitForDeliveries',
+            'getWaitTimeout',
+        ]);
+        $connection->method('consumerChannel')
+            ->willReturn($channel);
+        $connection->method('isExternalWaitEnabled')
+            ->willReturn(false);
+        $connection->method('isRegisteredWithWaitCoordinator')
+            ->willReturn(true);
+        $connection->expects(self::never())
+            ->method('waitForDeliveries');
+
+        $consumer = $this->getTestConsumer(connection: $connection);
+
+        $channel->expects(self::once())
+            ->method('basic_qos');
+        $channel->expects(self::once())
+            ->method('basic_consume')
+            ->willReturn('consumer_tag');
+
+        $consumer->callback($this->createStub(AMQPMessage::class));
+
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+
+        self::assertCount(1, iterator_to_array($amqpEnvelopes));
+    }
+
+    public function testConsumeReturnsEmptyWhenStartingTheConsumerFails(): void
+    {
+        $exception = new TransportException('Broken pipe or closed connection');
+
+        $connection = $this->getTestConnectionStub();
+        $connection->method('consumerChannel')
+            ->willThrowException($exception);
+
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::once())
+            ->method('warning')
+            ->with(
+                'AMQP exception occurred while starting consumer: {message}',
+                ['message' => 'Broken pipe or closed connection', 'exception' => $exception],
+            );
+
+        $consumer = $this->getTestConsumer(connection: $connection, logger: $logger);
+
+        /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
+        $amqpEnvelopes = $consumer->consume('test_queue');
+
+        self::assertCount(0, iterator_to_array($amqpEnvelopes));
+    }
+
+    public function testConsumeReturnsEmptyWhenStartingTheConsumerFailsWithoutALogger(): void
+    {
+        $connection = $this->getTestConnectionStub();
+        $connection->method('consumerChannel')
+            ->willThrowException(new TransportException('Broken pipe or closed connection'));
+
+        $consumer = new AmqpConsumer($connection, $this->connectionConfig, null);
 
         /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
         $amqpEnvelopes = $consumer->consume('test_queue');
