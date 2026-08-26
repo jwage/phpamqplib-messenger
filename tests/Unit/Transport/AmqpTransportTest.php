@@ -11,8 +11,10 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpSender;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
+use ReflectionMethod;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class AmqpTransportTest extends TestCase
@@ -233,5 +235,27 @@ class AmqpTransportTest extends TestCase
         $transport = $this->createTransport(connection: $connection);
 
         $transport->keepalive(new Envelope(new stdClass()));
+    }
+
+    public function testGetSerializerUsesTheInjectedSerializer(): void
+    {
+        $serializer = $this->createStub(SerializerInterface::class);
+        $transport  = $this->createTransport(serializer: $serializer);
+        $method     = new ReflectionMethod(AmqpTransport::class, 'getSerializer');
+
+        self::assertSame($serializer, $method->invoke($transport));
+        self::assertSame($serializer, $method->invoke($transport));
+    }
+
+    public function testGetSerializerDefaultsToAReusedPhpSerializer(): void
+    {
+        $transport = new AmqpTransport($this->createStub(Connection::class));
+        $method    = new ReflectionMethod(AmqpTransport::class, 'getSerializer');
+
+        $first  = $method->invoke($transport);
+        $second = $method->invoke($transport);
+
+        self::assertInstanceOf(PhpSerializer::class, $first);
+        self::assertSame($first, $second);
     }
 }

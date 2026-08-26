@@ -14,6 +14,7 @@ use ReflectionClass;
 use ReflectionMethod;
 use stdClass;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\Console\Event\ConsoleCommandEvent;
 use Symfony\Component\Console\Exception\InvalidArgumentException;
 use Symfony\Component\Console\Input\InputInterface;
@@ -31,6 +32,19 @@ use function microtime;
 
 class AmqpWorkerListenerTest extends TestCase
 {
+    public function testGetSubscribedEventsRegistersWorkerAndConsoleListeners(): void
+    {
+        self::assertSame(
+            [
+                WorkerStartedEvent::class => 'onWorkerStarted',
+                WorkerRunningEvent::class => 'onWorkerRunning',
+                WorkerStoppedEvent::class => 'onWorkerStopped',
+                ConsoleEvents::COMMAND    => 'onConsoleCommand',
+            ],
+            AmqpWorkerListener::getSubscribedEvents(),
+        );
+    }
+
     public function testOnWorkerStartedStartsConsumersForMatchingPhpAmqpLibTransports(): void
     {
         $connection = $this->createMock(Connection::class);
