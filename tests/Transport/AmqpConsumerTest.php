@@ -893,7 +893,9 @@ class AmqpConsumerTest extends TestCase
         $this->expectException(TransportException::class);
         $this->expectExceptionMessage('Broken pipe or closed connection');
 
-        iterator_to_array($consumer->consume('test_queue'));
+        /** @var Traversable<mixed, AmqpEnvelope> $envelopes */
+        $envelopes = $consumer->consume('test_queue');
+        iterator_to_array($envelopes);
     }
 
     protected function setUp(): void

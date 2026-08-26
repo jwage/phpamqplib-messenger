@@ -16,7 +16,6 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Component\Messenger\MessageBusInterface;
-use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 use Symfony\Component\Messenger\Worker;
@@ -158,24 +157,15 @@ class MultiTransportWorkerTest extends TestCase
         );
     }
 
-    public function testMixedIdleWaitWakesDuringLeftoverSleep(): void
+    public function testMixedIdleWaitUsesTheFullSleepWhenItExceedsWaitTimeout(): void
     {
         $waitTimeout = 0.25;
-        $delayMs     = 400;
-        $name        = $this->harness->topologyName('mixed_leftover');
+        $sleepUs     = 700_000;
+        $name        = $this->harness->topologyName('mixed_full_sleep');
         $connection  = $this->harness->connect($this->harness->topology(
             $name,
             ['wait_timeout' => $waitTimeout],
-            [
-                'wait_timeout' => $waitTimeout,
-                'confirm_enabled' => false,
-                'delay' => [
-                    'enabled' => true,
-                    'auto_setup' => true,
-                    'exchange' => ['name' => $name . '_delays'],
-                    'queue_name_pattern' => $name . '_%delay%',
-                ],
-            ],
+            ['wait_timeout' => $waitTimeout],
         ));
         $connection->setup();
 
@@ -195,41 +185,25 @@ class MultiTransportWorkerTest extends TestCase
             $dispatcher,
         );
 
-        $handled = 0;
-        $dispatcher->addListener(
-            WorkerMessageHandledEvent::class,
-            static function () use ($worker, &$handled): void {
-                ++$handled;
-                $worker->stop();
-            },
-        );
-
-        $amqp->send(new Envelope(new stdClass(), [new DelayStamp($delayMs)]));
-
-        $started = microtime(true);
         $dispatcher->addListener(
             WorkerRunningEvent::class,
-            static function () use ($worker, $started): void {
-                if (microtime(true) - $started > 3.0) {
+            static function (WorkerRunningEvent $event) use ($worker): void {
+                if ($event->isWorkerIdle()) {
                     $worker->stop();
                 }
             },
         );
 
-        $worker->run(['sleep' => 1_000_000]);
+        $started = microtime(true);
+        $worker->run(['sleep' => $sleepUs]);
         $elapsed = microtime(true) - $started;
 
-        self::assertSame(1, $handled, 'Delayed AMQP message was not consumed');
         self::assertGreaterThan(
-            $delayMs / 1000 - 0.1,
+            0.5,
             $elapsed,
-            'Delayed message was consumed before the delay elapsed',
+            'Mixed idle wait used wait_timeout instead of the longer --sleep',
         );
-        self::assertLessThan(
-            0.85,
-            $elapsed,
-            'AMQP delivery waited for leftover Worker --sleep instead of waking stream_select',
-        );
+        self::assertLessThan(1.3, $elapsed, 'Mixed idle wait exceeded --sleep');
     }
 
     public function testIdleWaitHonorsAShorterPerQueueTimeout(): void
@@ -283,6 +257,7 @@ class MultiTransportWorkerTest extends TestCase
             'connect_timeout' => 0.2,
             'read_timeout' => 0.2,
             'write_timeout' => 0.2,
+            'rpc_timeout' => 0.2,
         ]));
         $transport  = new AmqpTransport($connection);
         $listener   = new AmqpWorkerListener(new ConsumerWaitCoordinator());

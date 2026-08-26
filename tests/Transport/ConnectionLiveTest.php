@@ -469,7 +469,9 @@ class ConnectionLiveTest extends TestCase
         $this->harness->waitForMessageCount($connection, 3);
 
         $connection->listen();
-        $envelopes = iterator_to_array($transport->get(10), false);
+        /** @var Traversable<mixed, Envelope> $received */
+        $received  = $transport->get(10);
+        $envelopes = iterator_to_array($received, false);
 
         self::assertCount(3, $envelopes, 'Only one ready AMQP frame was drained per get()');
 
@@ -507,12 +509,15 @@ class ConnectionLiveTest extends TestCase
             'connect_timeout' => 0.2,
             'read_timeout' => 0.2,
             'write_timeout' => 0.2,
+            'rpc_timeout' => 0.2,
         ]));
         $transport  = new AmqpTransport($connection);
 
         $this->expectException(TransportException::class);
 
-        iterator_to_array($transport->get(), false);
+        /** @var Traversable<mixed, Envelope> $received */
+        $received = $transport->get();
+        iterator_to_array($received, false);
     }
 
     protected function setUp(): void

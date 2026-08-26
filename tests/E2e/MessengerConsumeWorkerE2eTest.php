@@ -57,7 +57,7 @@ class MessengerConsumeWorkerE2eTest extends E2eTestCase
         $this->setConsumeEnv(
             'E2E_HIGH_DSN',
             'phpamqplib://guest:guest@127.0.0.1:1/%2f/e2e_down'
-            . '?retries=0&retry_wait_time=0&connect_timeout=0.2&read_timeout=0.2&write_timeout=0.2',
+            . '?retries=0&retry_wait_time=0&connect_timeout=0.2&read_timeout=0.2&write_timeout=0.2&rpc_timeout=0.2',
         );
 
         $started = microtime(true);
