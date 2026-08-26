@@ -20,6 +20,7 @@ use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use Psr\Log\LoggerInterface;
 use ReflectionProperty;
+use SplQueue;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Throwable;
 
@@ -30,10 +31,12 @@ use function array_sum;
 use function array_unshift;
 use function assert;
 use function count;
+use function is_int;
 use function is_object;
 use function is_resource;
 use function min;
 use function property_exists;
+use function stream_select;
 
 class Connection
 {
@@ -381,23 +384,35 @@ class Connection
         $this->drainConsumerChannel();
     }
 
-    /** Reads any frames already available on the consumer channel without blocking. */
-    public function drainConsumerChannel(): void
+    /**
+     * Reads frames already available on the consumer channel without blocking.
+     *
+     * php-amqplib's wait(non_blocking: true) returns null when idle — it
+     * swallows AMQPNoDataException rather than throwing AMQPTimeoutException.
+     * Looping until timeout would busy-spin on a live consuming channel.
+     */
+    public function drainConsumerChannel(): bool
     {
         $channel = $this->consumerChannel;
 
         if ($channel === null) {
-            return;
+            return false;
         }
 
+        $drained = false;
+
         while ($channel->is_open() && $channel->is_consuming()) {
+            $hasWork = $channel->hasPendingMethods()
+                || $this->channelHasQueuedFrames($channel)
+                || $this->consumerSocketIsReadable();
+
             try {
                 $channel->wait(
                     allowed_methods: null,
                     non_blocking: true,
                 );
             } catch (AMQPTimeoutException) {
-                return;
+                return $drained;
             } catch (AMQPExceptionInterface $e) {
                 $this->logger?->warning('AMQP exception occurred while draining consumer channel: {message}', [
                     'message' => $e->getMessage(),
@@ -406,9 +421,17 @@ class Connection
 
                 $this->close();
 
-                return;
+                return $drained;
             }
+
+            if (! $hasWork) {
+                return $drained;
+            }
+
+            $drained = true;
         }
+
+        return $drained;
     }
 
     /**
@@ -442,6 +465,38 @@ class Connection
         }
 
         return null;
+    }
+
+    private function channelHasQueuedFrames(AMQPChannel $channel): bool
+    {
+        $property = new ReflectionProperty(AMQPChannel::class, 'frame_queue');
+
+        if (! $property->isInitialized($channel)) {
+            return false;
+        }
+
+        /** @var mixed $queue */
+        $queue = $property->getValue($channel);
+
+        return $queue instanceof SplQueue && ! $queue->isEmpty();
+    }
+
+    private function consumerSocketIsReadable(): bool
+    {
+        $socket = $this->getConsumerSocket();
+
+        if ($socket === null) {
+            return false;
+        }
+
+        $read   = [$socket];
+        $write  = null;
+        $except = null;
+
+        /** @psalm-suppress InvalidArgument */
+        $selected = stream_select($read, $write, $except, 0);
+
+        return is_int($selected) && $selected > 0;
     }
 
     /**
