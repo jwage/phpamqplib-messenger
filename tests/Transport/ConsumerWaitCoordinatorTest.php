@@ -28,8 +28,9 @@ class ConsumerWaitCoordinatorTest extends TestCase
         $connection->method('getConsumerSocket')->willReturn(null);
         $connection->expects(self::once())
             ->method('keepalive');
-        $connection->expects(self::never())
-            ->method('drainConsumerChannel');
+        $connection->expects(self::once())
+            ->method('drainConsumerChannel')
+            ->willReturn(false);
 
         $coordinator = new ConsumerWaitCoordinator();
         $coordinator->register($connection);
@@ -42,8 +43,9 @@ class ConsumerWaitCoordinatorTest extends TestCase
         $connection->method('getConsumerSocket')->willReturn(null);
         $connection->expects(self::once())
             ->method('keepalive');
-        $connection->expects(self::once())
-            ->method('drainConsumerChannel');
+        $connection->expects(self::exactly(2))
+            ->method('drainConsumerChannel')
+            ->willReturn(false);
 
         $coordinator = new ConsumerWaitCoordinator();
         $coordinator->register($connection);
@@ -71,8 +73,9 @@ class ConsumerWaitCoordinatorTest extends TestCase
         $connection->method('getConsumerSocket')->willReturn(null);
         $connection->expects(self::exactly(2))
             ->method('keepalive');
-        $connection->expects(self::never())
-            ->method('drainConsumerChannel');
+        $connection->expects(self::exactly(2))
+            ->method('drainConsumerChannel')
+            ->willReturn(false);
 
         $coordinator = new ConsumerWaitCoordinator();
         $coordinator->register($connection);
@@ -102,8 +105,9 @@ class ConsumerWaitCoordinatorTest extends TestCase
         $connection->method('getConsumerSocket')->willReturn(null);
         $connection->method('keepalive')
             ->willThrowException(new TransportException('heartbeat failed'));
-        $connection->expects(self::never())
-            ->method('drainConsumerChannel');
+        $connection->expects(self::once())
+            ->method('drainConsumerChannel')
+            ->willReturn(false);
 
         $coordinator = new ConsumerWaitCoordinator();
         $coordinator->register($connection);
@@ -127,15 +131,17 @@ class ConsumerWaitCoordinatorTest extends TestCase
             $withoutSocket->method('getConsumerSocket')->willReturn(null);
             $withoutSocket->expects(self::once())
                 ->method('keepalive');
-            $withoutSocket->expects(self::never())
-                ->method('drainConsumerChannel');
+            $withoutSocket->expects(self::once())
+                ->method('drainConsumerChannel')
+                ->willReturn(false);
 
             $withSocket = $this->createMock(Connection::class);
             $withSocket->method('getConsumerSocket')->willReturn($left);
             $withSocket->expects(self::once())
                 ->method('keepalive');
-            $withSocket->expects(self::once())
-                ->method('drainConsumerChannel');
+            $withSocket->expects(self::exactly(2))
+                ->method('drainConsumerChannel')
+                ->willReturn(false);
 
             $coordinator = new ConsumerWaitCoordinator();
             $coordinator->register($withoutSocket);
@@ -168,13 +174,15 @@ class ConsumerWaitCoordinatorTest extends TestCase
 
             $ready = $this->createMock(Connection::class);
             $ready->method('getConsumerSocket')->willReturn($readyLeft);
-            $ready->expects(self::once())
-                ->method('drainConsumerChannel');
+            $ready->expects(self::exactly(2))
+                ->method('drainConsumerChannel')
+                ->willReturn(false);
 
             $idle = $this->createMock(Connection::class);
             $idle->method('getConsumerSocket')->willReturn($idleLeft);
-            $idle->expects(self::never())
-                ->method('drainConsumerChannel');
+            $idle->expects(self::once())
+                ->method('drainConsumerChannel')
+                ->willReturn(false);
 
             $coordinator = new ConsumerWaitCoordinator();
             $coordinator->register($idle);
@@ -203,8 +211,9 @@ class ConsumerWaitCoordinatorTest extends TestCase
         try {
             $connection = $this->createMock(Connection::class);
             $connection->method('getConsumerSocket')->willReturn($left);
-            $connection->expects(self::once())
-                ->method('drainConsumerChannel');
+            $connection->expects(self::exactly(2))
+                ->method('drainConsumerChannel')
+                ->willReturn(false);
 
             $coordinator = new ConsumerWaitCoordinator();
             $coordinator->setWaitFloor(0.2);
@@ -236,8 +245,9 @@ class ConsumerWaitCoordinatorTest extends TestCase
         try {
             $connection = $this->createMock(Connection::class);
             $connection->method('getConsumerSocket')->willReturn($left);
-            $connection->expects(self::once())
-                ->method('drainConsumerChannel');
+            $connection->expects(self::exactly(2))
+                ->method('drainConsumerChannel')
+                ->willReturn(false);
 
             $coordinator = new ConsumerWaitCoordinator();
             $coordinator->setWaitFloor(0.0);
@@ -254,12 +264,46 @@ class ConsumerWaitCoordinatorTest extends TestCase
         }
     }
 
+    public function testWaitSkipsSelectWhenAPreDrainFindsWork(): void
+    {
+        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+
+        if ($pair === false) {
+            self::fail('stream_socket_pair failed');
+        }
+
+        [$left, $right] = $pair;
+        stream_set_blocking($left, false);
+        stream_set_blocking($right, false);
+
+        try {
+            $connection = $this->createMock(Connection::class);
+            $connection->method('getConsumerSocket')->willReturn($left);
+            $connection->expects(self::once())
+                ->method('drainConsumerChannel')
+                ->willReturn(true);
+
+            $coordinator = new ConsumerWaitCoordinator();
+            $coordinator->register($connection);
+
+            $start = hrtime(true);
+            $coordinator->wait(5.0);
+            $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+
+            self::assertLessThan(200, $elapsedMs);
+        } finally {
+            fclose($left);
+            fclose($right);
+        }
+    }
+
     public function testWaitReturnsImmediatelyWhenNoSocketsAreAvailable(): void
     {
         $connection = $this->createMock(Connection::class);
         $connection->method('getConsumerSocket')->willReturn(null);
-        $connection->expects(self::never())
-            ->method('drainConsumerChannel');
+        $connection->expects(self::once())
+            ->method('drainConsumerChannel')
+            ->willReturn(false);
 
         $coordinator = new ConsumerWaitCoordinator();
         $coordinator->register($connection);

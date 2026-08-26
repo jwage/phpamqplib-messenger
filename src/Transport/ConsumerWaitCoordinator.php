@@ -79,6 +79,23 @@ class ConsumerWaitCoordinator
             }
         }
 
+        $hadWork = false;
+
+        foreach ($this->connections as $connection) {
+            if ($connection->drainConsumerChannel()) {
+                $hadWork = true;
+            }
+        }
+
+        /** @infection-ignore-all */
+        if (function_exists('pcntl_signal_dispatch')) {
+            pcntl_signal_dispatch();
+        }
+
+        if ($hadWork) {
+            return;
+        }
+
         /** @var array<int, resource|object> $read */
         $read    = [];
         $indexed = [];
