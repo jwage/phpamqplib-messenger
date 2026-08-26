@@ -6,6 +6,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos;
 
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\TestLog;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
@@ -145,6 +146,8 @@ final class Harness
 
     public function info(string $message): void
     {
+        TestLog::event('harness.info', ['message' => $message]);
+
         if (! $this->verbose) {
             return;
         }
@@ -389,11 +392,12 @@ final class Harness
             }
         }
 
-        $this->fail(sprintf('Broker was not reachable via %s', $this->dsn()));
+        $this->fail(sprintf('Broker was not reachable via %s', TestLog::redactDsn($this->dsn())));
     }
 
     public function cleanup(): void
     {
+        TestLog::dumpLogger($this->logger, TestLog::currentTest() !== '' ? TestLog::currentTest() : 'harness');
         foreach ($this->backgroundProcesses as $process) {
             $status = proc_get_status($process);
             $pid    = $status['pid'] ?? 0;
@@ -471,6 +475,7 @@ final class Harness
     {
         $this->info('$ ' . $command);
 
+        $started = hrtime(true);
         $process = proc_open(
             ['bash', '-c', $command],
             [
@@ -490,9 +495,20 @@ final class Harness
         fclose($pipes[1]);
         fclose($pipes[2]);
 
-        $status = proc_close($process);
+        $status   = proc_close($process);
+        $duration = (hrtime(true) - $started) / 1_000_000_000;
+        $stdout   = $stdout === false ? '' : $stdout;
+        $stderr   = $stderr === false ? '' : $stderr;
 
-        if ($this->verbose && $stdout !== false && $stdout !== '') {
+        TestLog::event('broker.command', [
+            'command' => $command,
+            'exit' => $status,
+            'duration_s' => $duration,
+            'stdout' => TestLog::excerpt($stdout, 2000),
+            'stderr' => TestLog::excerpt($stderr, 2000),
+        ]);
+
+        if ($this->verbose && $stdout !== '') {
             fwrite(STDOUT, $stdout);
         }
 
@@ -501,7 +517,7 @@ final class Harness
                 "Command failed (%d): %s\n%s",
                 $status,
                 $command,
-                $stderr === false ? '' : $stderr,
+                $stderr,
             ));
         }
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
+use Jwage\PhpAmqpLibMessengerBundle\Tests\TestLog;
 use PHPUnit\Framework\Constraint\Callback;
 use PHPUnit\Framework\Constraint\Constraint;
 use PHPUnit\Framework\TestCase as BaseTestCase;
@@ -13,6 +14,20 @@ use function count;
 
 class TestCase extends BaseTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        TestLog::beginTest(static::class . '::' . $this->name());
+    }
+
+    protected function tearDown(): void
+    {
+        TestLog::endTest(static::class . '::' . $this->name());
+
+        parent::tearDown();
+    }
+
     /**
      * @param array<mixed> $firstCallArguments
      * @param array<mixed> ...$consecutiveCallsArguments

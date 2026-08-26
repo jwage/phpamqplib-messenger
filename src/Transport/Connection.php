@@ -6,6 +6,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use Closure;
 use InvalidArgumentException;
+use Jwage\PhpAmqpLibMessengerBundle\Debug;
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\BindingConfig;
@@ -72,6 +73,7 @@ class Connection
         private AmqpConnectionFactory $amqpConnectionFactory,
         private ConnectionConfig $connectionConfig,
         private LoggerInterface|null $logger = null,
+        private Debug $debug = new Debug(),
     ) {
         $this->autoSetup      = $connectionConfig->autoSetup;
         $this->autoSetupDelay = $connectionConfig->delay->enabled && $connectionConfig->delay->autoSetup;
@@ -326,7 +328,7 @@ class Connection
             }
         }
 
-        return ($this->consumers[$queueName] ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger))->consume($queueName, $fetchSize);
+        return ($this->consumers[$queueName] ??= new AmqpConsumer($this, $this->connectionConfig, $this->logger, $this->debug))->consume($queueName, $fetchSize);
     }
 
     /**
@@ -363,6 +365,7 @@ class Connection
                 $this,
                 $this->connectionConfig,
                 $this->logger,
+                $this->debug,
             );
 
             try {
@@ -392,11 +395,16 @@ class Connection
     public function waitForDeliveries(float $timeout, bool $coalesce = true): void
     {
         if ($this->waitCoordinator !== null) {
+            $this->debug->log('Waiting for deliveries through the wait coordinator', [
+                'timeout' => $timeout,
+                'coalesce' => $coalesce,
+            ]);
             $this->waitCoordinator->wait($timeout, $coalesce);
 
             return;
         }
 
+        $this->debug->log('Waiting without a coordinator; draining only', ['timeout' => $timeout]);
         $this->drainConsumerChannel();
     }
 

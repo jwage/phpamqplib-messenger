@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\E2e;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\TestLog;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Container\ContainerInterface;
@@ -53,6 +54,8 @@ abstract class E2eTestCase extends TestCase
 
     protected string $logFile;
 
+    protected string $debugLogFile;
+
     protected string $highDsn;
 
     protected string $lowDsn;
@@ -80,19 +83,25 @@ abstract class E2eTestCase extends TestCase
         $pid    = getmypid();
         $prefix = sprintf('e2e_%s_%s', $pid === false ? '0' : (string) $pid, uniqid());
 
-        $this->logFile    = sys_get_temp_dir() . '/' . $prefix . '.log';
-        $this->highDsn    = $this->dsnForExchange($prefix . '_high');
-        $this->lowDsn     = $this->dsnForExchange($prefix . '_low');
-        $this->orderQueue = $prefix . '_order';
-        $this->quoteQueue = $prefix . '_quote';
+        $this->logFile      = sys_get_temp_dir() . '/' . $prefix . '.log';
+        $this->debugLogFile = sys_get_temp_dir() . '/' . $prefix . '.debug.ndjson';
+        $this->highDsn      = $this->dsnForExchange($prefix . '_high');
+        $this->lowDsn       = $this->dsnForExchange($prefix . '_low');
+        $this->orderQueue   = $prefix . '_order';
+        $this->quoteQueue   = $prefix . '_quote';
 
         file_put_contents($this->logFile, '');
+        file_put_contents($this->debugLogFile, '');
+
+        $testLogDir = TestLog::directory();
 
         $this->env = [
             'APP_ENV' => 'test',
             'APP_DEBUG' => '0',
             'E2E_CACHE' => 'e2e-v5',
             'E2E_LOG' => $this->logFile,
+            'E2E_DEBUG_LOG' => $this->debugLogFile,
+            'TEST_LOG_DIR' => $testLogDir,
             'E2E_HIGH_DSN' => $this->highDsn,
             'E2E_LOW_DSN' => $this->lowDsn,
             'E2E_FAILED_DSN' => $this->dsnForExchange($prefix . '_failed'),
@@ -106,7 +115,7 @@ abstract class E2eTestCase extends TestCase
             'E2E_KEEPALIVE_DSN' => $this->dsnForExchange($prefix . '_keepalive'),
             'E2E_SSL_DSN' => $this->sslDsnForPrefix($prefix),
             'E2E_AUTO_DSN' => $this->dsnForExchange($prefix . '_auto'),
-            'SHELL_VERBOSITY' => '1',
+            'SHELL_VERBOSITY' => '3',
         ];
 
         $this->applyEnv($this->env);
@@ -134,6 +143,8 @@ abstract class E2eTestCase extends TestCase
 
     protected function tearDown(): void
     {
+        $this->archiveTestLogs();
+
         foreach ($this->processes as $process) {
             $process->stop();
             $process->cleanupFiles();
@@ -174,6 +185,10 @@ abstract class E2eTestCase extends TestCase
             if (is_file($this->logFile)) {
                 unlink($this->logFile);
             }
+
+            if (is_file($this->debugLogFile)) {
+                unlink($this->debugLogFile);
+            }
         }
 
         $this->booted = false;
@@ -192,7 +207,7 @@ abstract class E2eTestCase extends TestCase
         array $extra = [],
         int $timeLimit = 20,
     ): E2eConsumeProcess {
-        $arguments = ['messenger:consume', ...$receivers, '--no-interaction', '-vv', '--time-limit=' . $timeLimit];
+        $arguments = ['messenger:consume', ...$receivers, '--no-interaction', '-vvv', '--time-limit=' . $timeLimit];
 
         if ($limit !== null) {
             $arguments[] = '--limit=' . $limit;
@@ -405,7 +420,7 @@ abstract class E2eTestCase extends TestCase
         }
 
         if (preg_match('#^(phpamqplibs?://.*/)[^/?]+(\?.*)?$#', $base, $matches) !== 1) {
-            self::fail('Could not derive an E2E DSN from ' . $base);
+            self::fail('Could not derive an E2E DSN from ' . TestLog::redactDsn($base));
         }
 
         return $matches[1] . $exchange . ($matches[2] ?? '');
@@ -449,6 +464,23 @@ abstract class E2eTestCase extends TestCase
         }
 
         return $this->processes[count($this->processes) - 1];
+    }
+
+    private function archiveTestLogs(): void
+    {
+        if (! isset($this->logFile)) {
+            return;
+        }
+
+        $name = TestLog::safeBasename(static::class . '_' . $this->name());
+
+        TestLog::copyFile($this->logFile, $name . '.e2e.jsonl');
+        TestLog::copyFile($this->debugLogFile, $name . '.debug.ndjson');
+
+        foreach ($this->processes as $index => $process) {
+            TestLog::write($name . '.consume-' . $index . '.stdout.txt', TestLog::redact($process->stdout()));
+            TestLog::write($name . '.consume-' . $index . '.stderr.txt', TestLog::redact($process->stderr()));
+        }
     }
 
     private function clearMessengerRestartSignal(): void

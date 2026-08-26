@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\EventListener;
 
+use Jwage\PhpAmqpLibMessengerBundle\Debug;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
 use Override;
@@ -54,6 +55,7 @@ class AmqpWorkerListener implements EventSubscriberInterface
 
     public function __construct(
         private ConsumerWaitCoordinator $coordinator,
+        private Debug $debug = new Debug(),
     ) {
     }
 
@@ -125,10 +127,22 @@ class AmqpWorkerListener implements EventSubscriberInterface
             $waitFloor   = $knownIdle;
         }
 
-        $this->sleepCap = count($matched) < count($allTransportNames)
+        $this->sleepCap          = count($matched) < count($allTransportNames)
             ? $idleTimeout
             : null;
-        $this->coordinator->setWaitFloor($this->sleepCap === null ? $waitFloor : 0.0);
+        $waitFloorForCoordinator = $this->sleepCap === null ? $waitFloor : 0.0;
+        $this->coordinator->setWaitFloor($waitFloorForCoordinator);
+
+        $mode = $this->sleepCap === null ? 'all-phpamqplib' : 'mixed';
+        $this->debug->log('Worker wait mode is {mode}', [
+            'mode' => $mode,
+            'sleep_cap' => $this->sleepCap,
+            'wait_floor' => $waitFloorForCoordinator,
+            'matched' => count($matched),
+            'transports' => count($allTransportNames),
+            'subscribe' => $this->sleepCap === null ? 'startConsumers' : 'listen',
+            'sleep' => $this->consoleIdleTimeoutSeconds,
+        ]);
 
         foreach ($matched as $connection) {
             try {
@@ -150,6 +164,7 @@ class AmqpWorkerListener implements EventSubscriberInterface
     public function onWorkerRunning(WorkerRunningEvent $event): void
     {
         if ($this->sleepCap === null) {
+            $this->debug->log('Resetting wait coordinator after all-phpamqplib worker pass');
             $this->coordinator->reset();
 
             return;
@@ -243,8 +258,15 @@ class AmqpWorkerListener implements EventSubscriberInterface
         }
 
         if ($timeout <= 0) {
+            $this->debug->log('Mixed worker idle wait skipped; no time remaining');
+
             return;
         }
+
+        $this->debug->log('Mixed worker idle wait', [
+            'timeout' => $timeout,
+            'sleep_cap' => $sleepCap,
+        ]);
 
         $this->activeConnection->waitForDeliveries($timeout, coalesce: false);
     }

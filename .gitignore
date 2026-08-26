@@ -3,5 +3,6 @@ composer.lock
 config/reference.php
 infection.log
 infection.html
+tests/_output
 var
 vendor

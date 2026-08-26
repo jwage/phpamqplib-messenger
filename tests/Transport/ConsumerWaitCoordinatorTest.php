@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
+use Jwage\PhpAmqpLibMessengerBundle\Debug;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos\CollectingLogger;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Psr\Log\LoggerInterface;
 use ReflectionMethod;
 use Symfony\Component\Messenger\Exception\TransportException;
 
@@ -49,10 +52,13 @@ class ConsumerWaitCoordinatorTest extends TestCase
             ->method('drainConsumerChannel')
             ->willReturn(false);
 
-        $coordinator = new ConsumerWaitCoordinator();
+        $logger      = new CollectingLogger();
+        $coordinator = new ConsumerWaitCoordinator(new Debug($logger, true));
         $coordinator->register($connection);
         $coordinator->wait(0.01);
         $coordinator->wait(0.01);
+
+        self::assertTrue($logger->hasTemplate('Coalesced wait; draining without selecting'));
     }
 
     public function testResetAllowsTheNextPassToWaitAgain(): void
@@ -226,7 +232,8 @@ class ConsumerWaitCoordinatorTest extends TestCase
                 ->method('drainConsumerChannel')
                 ->willReturn(false);
 
-            $coordinator = new ConsumerWaitCoordinator();
+            $logger      = new CollectingLogger();
+            $coordinator = new ConsumerWaitCoordinator(new Debug($logger, true));
             $coordinator->setWaitFloor(0.2);
             $coordinator->register($connection);
 
@@ -235,6 +242,7 @@ class ConsumerWaitCoordinatorTest extends TestCase
             $elapsedMs = (hrtime(true) - $start) / 1_000_000;
 
             self::assertGreaterThan(150, $elapsedMs);
+            self::assertTrue($logger->hasTemplate('Wait floor set'));
         } finally {
             fclose($left);
             fclose($right);
@@ -296,7 +304,8 @@ class ConsumerWaitCoordinatorTest extends TestCase
                 ->method('drainConsumerChannel')
                 ->willReturn(true);
 
-            $coordinator = new ConsumerWaitCoordinator();
+            $logger      = new CollectingLogger();
+            $coordinator = new ConsumerWaitCoordinator(new Debug($logger, true));
             $coordinator->register($connection);
 
             $start = hrtime(true);
@@ -304,6 +313,7 @@ class ConsumerWaitCoordinatorTest extends TestCase
             $elapsedMs = (hrtime(true) - $start) / 1_000_000;
 
             self::assertLessThan(200, $elapsedMs);
+            self::assertTrue($logger->hasTemplate('Skipping stream_select; a delivery is already buffered'));
         } finally {
             fclose($left);
             fclose($right);
@@ -370,7 +380,8 @@ class ConsumerWaitCoordinatorTest extends TestCase
                 ->method('drainConsumerChannel')
                 ->willReturn(true);
 
-            $coordinator = new ConsumerWaitCoordinator();
+            $logger      = new CollectingLogger();
+            $coordinator = new ConsumerWaitCoordinator(new Debug($logger, true));
             $coordinator->register($connection);
 
             $start = hrtime(true);
@@ -378,6 +389,8 @@ class ConsumerWaitCoordinatorTest extends TestCase
             $elapsedMs = (hrtime(true) - $start) / 1_000_000;
 
             self::assertGreaterThan(100, $elapsedMs);
+            self::assertTrue($logger->hasTemplate('Waiting on AMQP sockets'));
+            self::assertTrue($logger->hasTemplate('stream_select finished'));
         } finally {
             fclose($left);
             fclose($right);
@@ -393,7 +406,8 @@ class ConsumerWaitCoordinatorTest extends TestCase
             ->method('drainConsumerChannel')
             ->willReturn(false);
 
-        $coordinator = new ConsumerWaitCoordinator();
+        $logger      = new CollectingLogger();
+        $coordinator = new ConsumerWaitCoordinator(new Debug($logger, true));
         $coordinator->register($connection);
 
         $start = hrtime(true);
@@ -401,6 +415,23 @@ class ConsumerWaitCoordinatorTest extends TestCase
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
 
         self::assertLessThan(150, $elapsedMs);
+        self::assertTrue($logger->hasTemplate('No AMQP sockets to wait on'));
+    }
+
+    public function testWaitDoesNotLogWhenDebugIsDisabled(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getConsumerSocket')->willReturn(null);
+        $connection->method('hasBufferedDeliveries')->willReturn(false);
+        $connection->method('drainConsumerChannel')->willReturn(false);
+
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::never())
+            ->method('debug');
+
+        $coordinator = new ConsumerWaitCoordinator(new Debug($logger, false));
+        $coordinator->register($connection);
+        $coordinator->wait(0.01);
     }
 
     /** @param list{int, int} $expected */

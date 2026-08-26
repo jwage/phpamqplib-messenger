@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use InvalidArgumentException;
+use Jwage\PhpAmqpLibMessengerBundle\Debug;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\ConnectionConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
@@ -29,6 +30,7 @@ class AmqpConsumer
         private Connection $connection,
         private ConnectionConfig $connectionConfig,
         private LoggerInterface|null $logger,
+        private Debug $debug = new Debug(),
     ) {
     }
 
@@ -62,18 +64,44 @@ class AmqpConsumer
         }
 
         if ($this->connection->isExternalWaitEnabled()) {
+            $this->debug->log('Consuming with drain-only external wait', [
+                'queue' => $queueName,
+                'fetch_size' => $fetchSize,
+                'buffered' => $this->buffer !== [],
+            ]);
+
             if ($this->buffer === []) {
                 $this->connection->drainConsumerChannel();
             }
 
             yield from $this->releaseBuffer($fetchSize);
         } elseif ($this->buffer !== []) {
+            $this->debug->log('Consuming buffered envelopes without waiting', [
+                'queue' => $queueName,
+                'fetch_size' => $fetchSize,
+                'buffered' => true,
+            ]);
+
             yield from $this->releaseBuffer($fetchSize);
         } elseif ($this->connection->isRegisteredWithWaitCoordinator()) {
-            $this->connection->waitForDeliveries($this->connection->getWaitTimeout());
+            $waitTimeout = $this->connection->getWaitTimeout();
+            $this->debug->log('Consuming with coalesced wait coordinator', [
+                'queue' => $queueName,
+                'fetch_size' => $fetchSize,
+                'wait_timeout' => $waitTimeout,
+                'has_buffered_deliveries' => $this->hasBufferedEnvelopes(),
+            ]);
+
+            $this->connection->waitForDeliveries($waitTimeout);
 
             yield from $this->releaseBuffer($fetchSize);
         } else {
+            $this->debug->log('Consuming with blocking per-queue wait', [
+                'queue' => $queueName,
+                'fetch_size' => $fetchSize,
+                'wait_timeout' => $queueConfig->waitTimeout,
+            ]);
+
             yield from $this->waitForChannelDeliveries($queueConfig, $fetchSize);
         }
     }

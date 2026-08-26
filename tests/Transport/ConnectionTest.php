@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
+use Jwage\PhpAmqpLibMessengerBundle\Debug;
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos\CollectingLogger;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConsumer;
@@ -1776,6 +1778,44 @@ class ConnectionTest extends TestCase
         $connection->unregisterFromWaitCoordinator();
 
         self::assertFalse($connection->isRegisteredWithWaitCoordinator());
+    }
+
+    public function testWaitForDeliveriesLogsWhenACoordinatorIsRegistered(): void
+    {
+        $logger      = new CollectingLogger();
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('wait')
+            ->with(1.5, true);
+
+        $connection = new Connection(
+            retryFactory: $this->retryFactory,
+            amqpConnectionFactory: $this->createStub(AmqpConnectionFactory::class),
+            connectionConfig: $this->getDefaultConfig(),
+            logger: $logger,
+            debug: new Debug($logger, true),
+        );
+        $connection->setWaitCoordinator($coordinator);
+
+        $connection->waitForDeliveries(1.5);
+
+        self::assertTrue($logger->hasTemplate('Waiting for deliveries through the wait coordinator'));
+    }
+
+    public function testWaitForDeliveriesLogsWhenNoCoordinatorIsRegistered(): void
+    {
+        $logger     = new CollectingLogger();
+        $connection = new Connection(
+            retryFactory: $this->retryFactory,
+            amqpConnectionFactory: $this->createStub(AmqpConnectionFactory::class),
+            connectionConfig: $this->getDefaultConfig(),
+            logger: $logger,
+            debug: new Debug($logger, true),
+        );
+
+        $connection->waitForDeliveries(0.5);
+
+        self::assertTrue($logger->hasTemplate('Waiting without a coordinator; draining only'));
     }
 
     public function testCloseKeepsWaitCoordinatorRegistration(): void

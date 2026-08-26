@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Transport;
 
 use Closure;
+use Jwage\PhpAmqpLibMessengerBundle\Debug;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos\CollectingLogger;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConnectionFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpConsumer;
@@ -46,7 +48,8 @@ class AmqpConsumerTest extends TestCase
         $connection->method('getQueueNames')
             ->willReturn(['test_queue']);
 
-        $consumer = $this->getTestConsumer(connection: $connection);
+        $logger   = new CollectingLogger();
+        $consumer = $this->getTestConsumer(connection: $connection, logger: $logger, debug: new Debug($logger, true));
 
         $channel->expects(self::once())
             ->method('basic_qos')
@@ -86,6 +89,7 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
+        self::assertTrue($logger->hasTemplate('Consuming with blocking per-queue wait'));
 
         $message = $this->createStub(AMQPMessage::class);
 
@@ -95,6 +99,7 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
+        self::assertTrue($logger->hasTemplate('Consuming buffered envelopes without waiting'));
     }
 
     public function testConsumeKeepsPollingUntilTheWaitTimesOut(): void
@@ -709,7 +714,8 @@ class AmqpConsumerTest extends TestCase
         $connection->expects(self::once())
             ->method('drainConsumerChannel');
 
-        $consumer = $this->getTestConsumer(connection: $connection);
+        $logger   = new CollectingLogger();
+        $consumer = $this->getTestConsumer(connection: $connection, logger: $logger, debug: new Debug($logger, true));
 
         $channel->expects(self::once())
             ->method('basic_qos');
@@ -724,6 +730,7 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
+        self::assertTrue($logger->hasTemplate('Consuming with drain-only external wait'));
     }
 
     public function testConsumeWithExternalWaitYieldsBufferedMessagesWithoutDraining(): void
@@ -744,7 +751,8 @@ class AmqpConsumerTest extends TestCase
         $connection->expects(self::never())
             ->method('drainConsumerChannel');
 
-        $consumer = $this->getTestConsumer(connection: $connection);
+        $logger   = new CollectingLogger();
+        $consumer = $this->getTestConsumer(connection: $connection, logger: $logger, debug: new Debug($logger, true));
 
         $channel->expects(self::once())
             ->method('basic_qos');
@@ -758,6 +766,7 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
+        self::assertTrue($logger->hasTemplate('Consuming with drain-only external wait'));
     }
 
     public function testConsumeWithWaitCoordinatorWaitsWithoutBlockingTheChannel(): void
@@ -785,7 +794,8 @@ class AmqpConsumerTest extends TestCase
             ->method('waitForDeliveries')
             ->with(1.5);
 
-        $consumer = $this->getTestConsumer(connection: $connection);
+        $logger   = new CollectingLogger();
+        $consumer = $this->getTestConsumer(connection: $connection, logger: $logger, debug: new Debug($logger, true));
 
         $channel->expects(self::once())
             ->method('basic_qos');
@@ -801,6 +811,7 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
+        self::assertTrue($logger->hasTemplate('Consuming with coalesced wait coordinator'));
     }
 
     public function testConsumeWithWaitCoordinatorYieldsBufferWithoutWaiting(): void
@@ -825,7 +836,8 @@ class AmqpConsumerTest extends TestCase
         $connection->expects(self::never())
             ->method('waitForDeliveries');
 
-        $consumer = $this->getTestConsumer(connection: $connection);
+        $logger   = new CollectingLogger();
+        $consumer = $this->getTestConsumer(connection: $connection, logger: $logger, debug: new Debug($logger, true));
 
         $channel->expects(self::once())
             ->method('basic_qos');
@@ -839,6 +851,7 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
+        self::assertTrue($logger->hasTemplate('Consuming buffered envelopes without waiting'));
     }
 
     public function testConsumeReturnsEmptyWhenStartingTheConsumerFails(): void
@@ -938,11 +951,13 @@ class AmqpConsumerTest extends TestCase
         ConnectionConfig|null $connectionConfig = null,
         Connection|null $connection = null,
         LoggerInterface|null $logger = null,
+        Debug|null $debug = null,
     ): AmqpConsumer {
         return new AmqpConsumer(
             $connection ?? $this->getTestConnectionStub(connectionConfig: $connectionConfig),
             $connectionConfig ?? $this->connectionConfig,
             $logger ?? $this->logger,
+            $debug ?? new Debug(),
         );
     }
 

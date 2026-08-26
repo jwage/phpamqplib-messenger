@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
+use Jwage\PhpAmqpLibMessengerBundle\Debug;
 use Symfony\Component\Messenger\Exception\TransportException;
 use Throwable;
 
+use function count;
 use function function_exists;
 use function intdiv;
+use function is_int;
 use function max;
 use function pcntl_signal_dispatch;
 use function round;
@@ -32,6 +35,11 @@ class ConsumerWaitCoordinator
 
     private float $waitFloor = 0.0;
 
+    public function __construct(
+        private Debug $debug = new Debug(),
+    ) {
+    }
+
     public function register(Connection $connection): void
     {
         $this->connections[spl_object_id($connection)] = $connection;
@@ -50,12 +58,18 @@ class ConsumerWaitCoordinator
     public function setWaitFloor(float $waitFloor): void
     {
         $this->waitFloor = max(0.0, $waitFloor);
+        $this->debug->log('Wait floor set', ['wait_floor' => $this->waitFloor]);
     }
 
     public function wait(float $timeout, bool $coalesce = true): void
     {
         $timeout = max($timeout, $this->waitFloor);
         if ($coalesce && $this->waitedThisPass) {
+            $this->debug->log('Coalesced wait; draining without selecting', [
+                'timeout' => $timeout,
+                'connections' => count($this->connections),
+            ]);
+
             foreach ($this->connections as $connection) {
                 $connection->drainConsumerChannel();
             }
@@ -98,6 +112,10 @@ class ConsumerWaitCoordinator
         // Skipping select for those returns empty from get(), and Worker
         // leftover-sleeps --sleep between prefetch-1 messages.
         if ($hasDelivery) {
+            $this->debug->log('Skipping stream_select; a delivery is already buffered', [
+                'connections' => count($this->connections),
+            ]);
+
             return;
         }
 
@@ -117,37 +135,58 @@ class ConsumerWaitCoordinator
             $indexed[$index] = $connection;
         }
 
-        if ($read !== []) {
-            $write        = null;
-            $except       = null;
-            $ready        = $read;
-            [$sec, $usec] = $this->splitTimeout($timeout);
+        if ($read === []) {
+            $this->debug->log('No AMQP sockets to wait on', [
+                'timeout' => $timeout,
+                'connections' => count($this->connections),
+            ]);
 
-            try {
-                /** @psalm-suppress InvalidArgument */
-                $selected = stream_select($ready, $write, $except, $sec, $usec);
-            } catch (Throwable) {
-                $selected = 0;
-            }
+            return;
+        }
 
-            /** @infection-ignore-all */
-            if (function_exists('pcntl_signal_dispatch')) {
-                pcntl_signal_dispatch();
-            }
+        $write        = null;
+        $except       = null;
+        $ready        = $read;
+        [$sec, $usec] = $this->splitTimeout($timeout);
 
-            if ($selected > 0) {
-                foreach ($indexed as $index => $connection) {
-                    if (isset($ready[$index])) {
-                        $connection->drainConsumerChannel();
-                    }
+        $this->debug->log('Waiting on AMQP sockets', [
+            'timeout' => $timeout,
+            'seconds' => $sec,
+            'microseconds' => $usec,
+            'sockets' => count($read),
+        ]);
+
+        try {
+            /** @psalm-suppress InvalidArgument */
+            $selected = stream_select($ready, $write, $except, $sec, $usec);
+        } catch (Throwable) {
+            $selected = 0;
+        }
+
+        $selectedCount = is_int($selected) ? $selected : 0;
+
+        $this->debug->log('stream_select finished', [
+            'selected' => $selectedCount,
+            'sockets' => count($read),
+        ]);
+
+        /** @infection-ignore-all */
+        if (function_exists('pcntl_signal_dispatch')) {
+            pcntl_signal_dispatch();
+        }
+
+        if ($selectedCount > 0) {
+            foreach ($indexed as $index => $connection) {
+                if (isset($ready[$index])) {
+                    $connection->drainConsumerChannel();
                 }
-
-                return;
             }
 
-            foreach ($indexed as $connection) {
-                $connection->drainConsumerChannel();
-            }
+            return;
+        }
+
+        foreach ($indexed as $connection) {
+            $connection->drainConsumerChannel();
         }
     }
 

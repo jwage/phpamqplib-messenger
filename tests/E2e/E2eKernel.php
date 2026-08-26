@@ -6,6 +6,8 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\E2e;
 
 use Jwage\PhpAmqpLibMessengerBundle\Middleware\DeduplicationPluginMiddleware;
 use Jwage\PhpAmqpLibMessengerBundle\PhpAmqpLibMessengerBundle;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\FileLogger;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Component\Config\Loader\LoaderInterface;
@@ -66,6 +68,7 @@ class E2eKernel extends Kernel
             $container->setParameter('env(E2E_ORDER_QUEUE)', 'e2e_order');
             $container->setParameter('env(E2E_QUOTE_QUEUE)', 'e2e_quote');
             $container->setParameter('env(E2E_LOG)', sys_get_temp_dir() . '/phpamqplib-e2e.log');
+            $container->setParameter('env(E2E_DEBUG_LOG)', sys_get_temp_dir() . '/phpamqplib-e2e.debug.ndjson');
 
             $retry = [
                 'max_retries' => 3,
@@ -200,6 +203,12 @@ class E2eKernel extends Kernel
             $handler->addTag('messenger.message_handler', ['method' => 'handleMemory', 'handles' => E2eMemoryMessage::class]);
             $handler->addTag('messenger.message_handler', ['method' => 'handleSsl', 'handles' => E2eSslMessage::class]);
             $handler->addTag('messenger.message_handler', ['method' => 'handleAuto', 'handles' => E2eAutoMessage::class]);
+
+            $container->register('logger', FileLogger::class)
+                ->setArgument('$file', '%env(E2E_DEBUG_LOG)%')
+                ->setPublic(true);
+            $container->setAlias(LoggerInterface::class, 'logger')
+                ->setPublic(true);
         });
     }
 

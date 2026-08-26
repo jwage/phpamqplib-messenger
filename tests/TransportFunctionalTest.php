@@ -9,6 +9,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\Stamp\DeferrableStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\ConfirmMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\TransactionMessage;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\TestLog;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpStamp;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
@@ -848,6 +849,8 @@ class TransportFunctionalTest extends KernelTestCase
     {
         parent::setUp();
 
+        TestLog::beginTest(static::class . '::' . $this->name());
+
         self::bootKernel();
 
         $container = static::getContainer();
@@ -890,6 +893,8 @@ class TransportFunctionalTest extends KernelTestCase
         $this->transactionsTransport->getConnection()->close();
         $this->fetchSizeTransport->getConnection()->close();
         $this->multipleQueuesTransport->getConnection()->close();
+
+        TestLog::endTest(static::class . '::' . $this->name());
     }
 
     /** @param array<object> $messages */

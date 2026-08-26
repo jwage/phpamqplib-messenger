@@ -6,8 +6,10 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests;
 
 use Jwage\PhpAmqpLibMessengerBundle\Middleware\DeduplicationPluginMiddleware;
 use Jwage\PhpAmqpLibMessengerBundle\PhpAmqpLibMessengerBundle;
+use Jwage\PhpAmqpLibMessengerBundle\Tests\FileLogger;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\ConfirmMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Message\TransactionMessage;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Component\Config\Loader\LoaderInterface;
@@ -131,6 +133,14 @@ class TestKernel extends Kernel implements CompilerPassInterface
                     ],
                 ],
             ]);
+
+            $container->setParameter('env(TEST_FUNCTIONAL_LOG)', sys_get_temp_dir() . '/phpamqplib-functional.ndjson');
+
+            $container->register('logger', FileLogger::class)
+                ->setArgument('$file', '%env(TEST_FUNCTIONAL_LOG)%')
+                ->setPublic(true);
+            $container->setAlias(LoggerInterface::class, 'logger')
+                ->setPublic(true);
         });
     }
 

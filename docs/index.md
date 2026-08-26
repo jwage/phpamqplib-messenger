@@ -410,6 +410,10 @@ MESSENGER_TRANSPORT_PHPAMQPLIB_DSN='phpamqplib://guest:guest@127.0.0.1:5673/%2f/
 
 If the broker is down or unreachable, functional tests **fail** (they do not skip).
 
+### Wait and consume debug traces
+
+Detailed wait/consume traces follow Symfony's **kernel debug** flag (`APP_DEBUG`). They are off in production even though the application logger still exists. In the `dev` environment they are written at `debug`. Retry and AMQP-exception **warning/info** logs are separate and always follow your logger.
+
 ### Live broker failure tests
 
 Broker mutations (restart, pause, overflow NACK, memory alarm, TLS listener) are PHPUnit tests in a **separate `chaos` testsuite**. They are excluded from `./vendor/bin/phpunit` so they do not pause the functional-test broker.
