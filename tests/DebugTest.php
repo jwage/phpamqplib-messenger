@@ -9,6 +9,15 @@ use Psr\Log\LoggerInterface;
 
 class DebugTest extends TestCase
 {
+    public function testLogIsDisabledByDefault(): void
+    {
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::never())
+            ->method('debug');
+
+        (new Debug($logger))->log('Waiting on AMQP sockets', ['sockets' => 1]);
+    }
+
     public function testLogIsANoOpWhenDebugIsDisabled(): void
     {
         $logger = $this->createMock(LoggerInterface::class);

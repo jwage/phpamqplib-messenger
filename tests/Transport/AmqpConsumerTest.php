@@ -89,7 +89,14 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
-        self::assertTrue($logger->hasTemplate('Consuming with blocking per-queue wait'));
+        self::assertSame(
+            [
+                'queue' => 'test_queue',
+                'fetch_size' => null,
+                'wait_timeout' => 2,
+            ],
+            $logger->contextFor('Consuming with blocking per-queue wait'),
+        );
 
         $message = $this->createStub(AMQPMessage::class);
 
@@ -99,7 +106,14 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
-        self::assertTrue($logger->hasTemplate('Consuming buffered envelopes without waiting'));
+        self::assertSame(
+            [
+                'queue' => 'test_queue',
+                'fetch_size' => null,
+                'buffered' => true,
+            ],
+            $logger->contextFor('Consuming buffered envelopes without waiting'),
+        );
     }
 
     public function testConsumeKeepsPollingUntilTheWaitTimesOut(): void
@@ -730,7 +744,14 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
-        self::assertTrue($logger->hasTemplate('Consuming with drain-only external wait'));
+        self::assertSame(
+            [
+                'queue' => 'test_queue',
+                'fetch_size' => null,
+                'buffered' => false,
+            ],
+            $logger->contextFor('Consuming with drain-only external wait'),
+        );
     }
 
     public function testConsumeWithExternalWaitYieldsBufferedMessagesWithoutDraining(): void
@@ -766,7 +787,14 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
-        self::assertTrue($logger->hasTemplate('Consuming with drain-only external wait'));
+        self::assertSame(
+            [
+                'queue' => 'test_queue',
+                'fetch_size' => null,
+                'buffered' => true,
+            ],
+            $logger->contextFor('Consuming with drain-only external wait'),
+        );
     }
 
     public function testConsumeWithWaitCoordinatorWaitsWithoutBlockingTheChannel(): void
@@ -811,7 +839,15 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(0, iterator_to_array($amqpEnvelopes));
-        self::assertTrue($logger->hasTemplate('Consuming with coalesced wait coordinator'));
+        self::assertSame(
+            [
+                'queue' => 'test_queue',
+                'fetch_size' => null,
+                'wait_timeout' => 1.5,
+                'has_buffered_deliveries' => false,
+            ],
+            $logger->contextFor('Consuming with coalesced wait coordinator'),
+        );
     }
 
     public function testConsumeWithWaitCoordinatorYieldsBufferWithoutWaiting(): void
@@ -851,7 +887,14 @@ class AmqpConsumerTest extends TestCase
         $amqpEnvelopes = $consumer->consume('test_queue');
 
         self::assertCount(1, iterator_to_array($amqpEnvelopes));
-        self::assertTrue($logger->hasTemplate('Consuming buffered envelopes without waiting'));
+        self::assertSame(
+            [
+                'queue' => 'test_queue',
+                'fetch_size' => null,
+                'buffered' => true,
+            ],
+            $logger->contextFor('Consuming buffered envelopes without waiting'),
+        );
     }
 
     public function testConsumeReturnsEmptyWhenStartingTheConsumerFails(): void

@@ -58,7 +58,13 @@ class ConsumerWaitCoordinatorTest extends TestCase
         $coordinator->wait(0.01);
         $coordinator->wait(0.01);
 
-        self::assertTrue($logger->hasTemplate('Coalesced wait; draining without selecting'));
+        self::assertSame(
+            [
+                'timeout' => 0.01,
+                'connections' => 1,
+            ],
+            $logger->contextFor('Coalesced wait; draining without selecting'),
+        );
     }
 
     public function testResetAllowsTheNextPassToWaitAgain(): void
@@ -247,7 +253,7 @@ class ConsumerWaitCoordinatorTest extends TestCase
             $elapsedMs = (hrtime(true) - $start) / 1_000_000;
 
             self::assertGreaterThan(150, $elapsedMs);
-            self::assertTrue($logger->hasTemplate('Wait floor set'));
+            self::assertSame(['wait_floor' => 0.2], $logger->contextFor('Wait floor set'));
         } finally {
             fclose($left);
             fclose($right);
@@ -318,7 +324,10 @@ class ConsumerWaitCoordinatorTest extends TestCase
             $elapsedMs = (hrtime(true) - $start) / 1_000_000;
 
             self::assertLessThan(200, $elapsedMs);
-            self::assertTrue($logger->hasTemplate('Skipping stream_select; a delivery is already buffered'));
+            self::assertSame(
+                ['connections' => 1],
+                $logger->contextFor('Skipping stream_select; a delivery is already buffered'),
+            );
         } finally {
             fclose($left);
             fclose($right);
@@ -394,8 +403,22 @@ class ConsumerWaitCoordinatorTest extends TestCase
             $elapsedMs = (hrtime(true) - $start) / 1_000_000;
 
             self::assertGreaterThan(100, $elapsedMs);
-            self::assertTrue($logger->hasTemplate('Waiting on AMQP sockets'));
-            self::assertTrue($logger->hasTemplate('stream_select finished'));
+            self::assertSame(
+                [
+                    'timeout' => 0.15,
+                    'seconds' => 0,
+                    'microseconds' => 150000,
+                    'sockets' => 1,
+                ],
+                $logger->contextFor('Waiting on AMQP sockets'),
+            );
+            self::assertSame(
+                [
+                    'selected' => 0,
+                    'sockets' => 1,
+                ],
+                $logger->contextFor('stream_select finished'),
+            );
         } finally {
             fclose($left);
             fclose($right);
@@ -420,7 +443,36 @@ class ConsumerWaitCoordinatorTest extends TestCase
         $elapsedMs = (hrtime(true) - $start) / 1_000_000;
 
         self::assertGreaterThan(100, $elapsedMs);
-        self::assertTrue($logger->hasTemplate('No AMQP sockets to wait on'));
+        self::assertSame(
+            [
+                'timeout' => 0.15,
+                'connections' => 1,
+            ],
+            $logger->contextFor('No AMQP sockets to wait on'),
+        );
+        self::assertFalse($logger->hasTemplate('Waiting on AMQP sockets'));
+        self::assertFalse($logger->hasTemplate('stream_select finished'));
+    }
+
+    public function testWaitDoesNotSleepWhenNoConnectionsAreRegistered(): void
+    {
+        $logger      = new CollectingLogger();
+        $coordinator = new ConsumerWaitCoordinator(new Debug($logger, true));
+
+        $start = hrtime(true);
+        $coordinator->wait(0.15);
+        $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+
+        self::assertLessThan(50, $elapsedMs);
+        self::assertSame(
+            [
+                'timeout' => 0.15,
+                'connections' => 0,
+            ],
+            $logger->contextFor('No AMQP sockets to wait on'),
+        );
+        self::assertFalse($logger->hasTemplate('Waiting on AMQP sockets'));
+        self::assertFalse($logger->hasTemplate('stream_select finished'));
     }
 
     public function testWaitReturnsImmediatelyWhenNoSocketsAndTimeoutIsZero(): void
@@ -467,9 +519,18 @@ class ConsumerWaitCoordinatorTest extends TestCase
         self::assertSame($expected, $method->invoke(new ConsumerWaitCoordinator(), $timeout));
     }
 
+    #[DataProvider('provideTimeoutMicroseconds')]
+    public function testTimeoutToMicrosecondsConvertsWholeAndFractionalSeconds(float $timeout, int $expected): void
+    {
+        $method = new ReflectionMethod(ConsumerWaitCoordinator::class, 'timeoutToMicroseconds');
+
+        self::assertSame($expected, $method->invoke(new ConsumerWaitCoordinator(), $timeout));
+    }
+
     /** @return iterable<string, array{float, list{int, int}}> */
     public static function provideSplitTimeouts(): iterable
     {
+        yield 'zero' => [0.0, [0, 0]];
         yield 'one and a half seconds' => [1.5, [1, 500000]];
         yield 'exactly one second' => [1.0, [1, 0]];
         yield 'just under one million microseconds' => [0.999999, [0, 999999]];
@@ -477,5 +538,20 @@ class ConsumerWaitCoordinatorTest extends TestCase
         yield 'half-up rounding of a sub-microsecond fraction' => [1.0000006, [1, 1]];
         yield 'half-down rounding of a sub-microsecond fraction' => [1.0000004, [1, 0]];
         yield 'two point three seconds' => [2.3, [2, 300000]];
+        yield 'one hundred fifty milliseconds' => [0.15, [0, 150000]];
+    }
+
+    /** @return iterable<string, array{float, int}> */
+    public static function provideTimeoutMicroseconds(): iterable
+    {
+        yield 'zero' => [0.0, 0];
+        yield 'one and a half seconds' => [1.5, 1_500_000];
+        yield 'exactly one second' => [1.0, 1_000_000];
+        yield 'just under one million microseconds' => [0.999999, 999_999];
+        yield 'fraction that rounds up to a whole second' => [0.9999996, 1_000_000];
+        yield 'half-up rounding of a sub-microsecond fraction' => [1.0000006, 1_000_001];
+        yield 'half-down rounding of a sub-microsecond fraction' => [1.0000004, 1_000_000];
+        yield 'two point three seconds' => [2.3, 2_300_000];
+        yield 'one hundred fifty milliseconds' => [0.15, 150_000];
     }
 }

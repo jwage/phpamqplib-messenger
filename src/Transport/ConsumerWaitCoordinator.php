@@ -171,10 +171,8 @@ class ConsumerWaitCoordinator
             $selected = 0;
         }
 
-        $selectedCount = is_int($selected) ? $selected : 0;
-
         $this->debug->log('stream_select finished', [
-            'selected' => $selectedCount,
+            'selected' => $selected,
             'sockets' => count($read),
         ]);
 
@@ -183,7 +181,7 @@ class ConsumerWaitCoordinator
             pcntl_signal_dispatch();
         }
 
-        if ($selectedCount > 0) {
+        if (is_int($selected) && $selected > 0) {
             foreach ($indexed as $index => $connection) {
                 if (isset($ready[$index])) {
                     $connection->drainConsumerChannel();
@@ -200,20 +198,18 @@ class ConsumerWaitCoordinator
 
     private function sleepWithoutSockets(float $timeout): void
     {
-        [$sec, $usec] = $this->splitTimeout($timeout);
-        $microseconds = $sec * 1_000_000 + $usec;
+        usleep($this->timeoutToMicroseconds($timeout));
+    }
 
-        if ($microseconds <= 0) {
-            return;
-        }
-
-        usleep($microseconds);
+    private function timeoutToMicroseconds(float $timeout): int
+    {
+        return (int) round($timeout * 1_000_000.0);
     }
 
     /** @return array{0: int, 1: int} */
     private function splitTimeout(float $timeout): array
     {
-        $totalMicroseconds = (int) round($timeout * 1_000_000.0);
+        $totalMicroseconds = $this->timeoutToMicroseconds($timeout);
         $seconds           = intdiv($totalMicroseconds, 1_000_000);
         $microseconds      = $totalMicroseconds % 1_000_000;
 

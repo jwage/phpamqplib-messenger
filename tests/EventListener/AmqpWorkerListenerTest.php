@@ -62,8 +62,18 @@ class AmqpWorkerListenerTest extends TestCase
 
         $listener->onWorkerStarted($this->createWorkerStartedEvent($this->createWorker(['async'])));
 
-        self::assertTrue($logger->hasTemplate('Worker wait mode is {mode}'));
-        self::assertSame('all-phpamqplib', $logger->records[0]['context']['mode'] ?? null);
+        self::assertSame(
+            [
+                'mode' => 'all-phpamqplib',
+                'sleep_cap' => null,
+                'wait_floor' => method_exists(WorkerStartedEvent::class, 'getIdleTimeout') ? 1.0 : 0.0,
+                'matched' => 1,
+                'transports' => 1,
+                'subscribe' => 'startConsumers',
+                'sleep' => null,
+            ],
+            $logger->contextFor('Worker wait mode is {mode}'),
+        );
     }
 
     public function testOnWorkerStartedListensWhenNonPhpAmqpLibTransportsArePresent(): void
@@ -81,8 +91,18 @@ class AmqpWorkerListenerTest extends TestCase
 
         $listener->onWorkerStarted($this->createWorkerStartedEvent($this->createWorker(['async', 'redis'])));
 
-        self::assertTrue($logger->hasTemplate('Worker wait mode is {mode}'));
-        self::assertSame('mixed', $logger->records[0]['context']['mode'] ?? null);
+        self::assertSame(
+            [
+                'mode' => 'mixed',
+                'sleep_cap' => 1.0,
+                'wait_floor' => 0.0,
+                'matched' => 1,
+                'transports' => 2,
+                'subscribe' => 'listen',
+                'sleep' => null,
+            ],
+            $logger->contextFor('Worker wait mode is {mode}'),
+        );
     }
 
     public function testOnWorkerRunningResetsTheCoordinatorWhenEveryTransportIsPhpAmqpLib(): void
@@ -141,7 +161,13 @@ class AmqpWorkerListenerTest extends TestCase
         $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, idleTimeout: 2_000_000));
         $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
 
-        self::assertTrue($logger->hasTemplate('Mixed worker idle wait'));
+        self::assertSame(
+            [
+                'timeout' => 2.0,
+                'sleep_cap' => 2.0,
+            ],
+            $logger->contextFor('Mixed worker idle wait'),
+        );
     }
 
     public function testIdleWaitIsNotUsedWhenEveryTransportIsPhpAmqpLib(): void
@@ -338,7 +364,35 @@ class AmqpWorkerListenerTest extends TestCase
         $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, idleTimeout: 0));
         $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
 
-        self::assertTrue($logger->hasTemplate('Mixed worker idle wait'));
+        self::assertSame(
+            [
+                'timeout' => 1.5,
+                'sleep_cap' => 0.0,
+            ],
+            $logger->contextFor('Mixed worker idle wait'),
+        );
+    }
+
+    public function testIdleWaitIsSkippedWhenWaitTimeoutIsZero(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('listen');
+        $connection->expects(self::once())
+            ->method('getWaitTimeout')
+            ->willReturn(0.0);
+        $connection->expects(self::never())
+            ->method('waitForDeliveries');
+
+        $logger   = new CollectingLogger();
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class), new Debug($logger, true));
+        $listener->addConnection('async', $connection);
+        $this->dispatchConsumeSleep($listener, 0);
+
+        $worker = $this->createWorker(['async', 'redis']);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker, idleTimeout: 0));
+        $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
+
+        self::assertTrue($logger->hasTemplate('Mixed worker idle wait skipped; no time remaining'));
     }
 
     public function testIdleWaitWithZeroSleepIsStillSkippedWhenTheDeadlineHasPassed(): void

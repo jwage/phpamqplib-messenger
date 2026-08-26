@@ -1783,10 +1783,58 @@ class ConnectionTest extends TestCase
     public function testWaitForDeliveriesLogsWhenACoordinatorIsRegistered(): void
     {
         $logger      = new CollectingLogger();
+        $factory     = $this->createStub(AmqpConnectionFactory::class);
+        $amqp        = $this->createStub(AMQPStreamConnection::class);
+        $channel     = $this->createMock(AMQPChannel::class);
         $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+
+        $factory->method('create')->willReturn($amqp);
+        $amqp->method('channel')->willReturn($channel);
+        $amqp->method('isConnected')->willReturn(true);
+        $channel->method('is_open')->willReturn(true);
+        $channel->method('is_consuming')->willReturn(true);
+        $channel->method('basic_consume')->willReturn('tag');
+        $channel->expects(self::never())
+            ->method('wait');
+        $coordinator->expects(self::once())
+            ->method('register');
         $coordinator->expects(self::once())
             ->method('wait')
             ->with(1.5, true);
+
+        $connection = new Connection(
+            retryFactory: $this->retryFactory,
+            amqpConnectionFactory: $factory,
+            connectionConfig: new ConnectionConfig(
+                autoSetup: false,
+                confirmEnabled: false,
+                queues: [
+                    'queue_name' => new QueueConfig(name: 'queue_name'),
+                ],
+            ),
+            logger: $logger,
+            debug: new Debug($logger, true),
+        );
+        $connection->setWaitCoordinator($coordinator);
+        $connection->startConsumers();
+        $connection->waitForDeliveries(1.5);
+
+        self::assertSame(
+            [
+                'timeout' => 1.5,
+                'coalesce' => true,
+            ],
+            $logger->contextFor('Waiting for deliveries through the wait coordinator'),
+        );
+    }
+
+    public function testWaitForDeliveriesLogsANonCoalescedCoordinatorWait(): void
+    {
+        $logger      = new CollectingLogger();
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('wait')
+            ->with(0.5, false);
 
         $connection = new Connection(
             retryFactory: $this->retryFactory,
@@ -1797,25 +1845,58 @@ class ConnectionTest extends TestCase
         );
         $connection->setWaitCoordinator($coordinator);
 
-        $connection->waitForDeliveries(1.5);
+        $connection->waitForDeliveries(0.5, false);
 
-        self::assertTrue($logger->hasTemplate('Waiting for deliveries through the wait coordinator'));
+        self::assertSame(
+            [
+                'timeout' => 0.5,
+                'coalesce' => false,
+            ],
+            $logger->contextFor('Waiting for deliveries through the wait coordinator'),
+        );
     }
 
     public function testWaitForDeliveriesLogsWhenNoCoordinatorIsRegistered(): void
     {
-        $logger     = new CollectingLogger();
+        $logger  = new CollectingLogger();
+        $factory = $this->createStub(AmqpConnectionFactory::class);
+        $amqp    = $this->createStub(AMQPStreamConnection::class);
+        $channel = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqp);
+        $amqp->method('channel')->willReturn($channel);
+        $amqp->method('isConnected')->willReturn(true);
+        $channel->method('is_open')->willReturn(true);
+        $channel->method('is_consuming')->willReturn(true);
+        $channel->method('hasPendingMethods')->willReturn(false);
+        $channel->method('basic_consume')->willReturn('tag');
+        $channel->expects(self::once())
+            ->method('wait')
+            ->with(
+                allowed_methods: null,
+                non_blocking: true,
+            );
+
         $connection = new Connection(
             retryFactory: $this->retryFactory,
-            amqpConnectionFactory: $this->createStub(AmqpConnectionFactory::class),
-            connectionConfig: $this->getDefaultConfig(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: new ConnectionConfig(
+                autoSetup: false,
+                confirmEnabled: false,
+                queues: [
+                    'queue_name' => new QueueConfig(name: 'queue_name'),
+                ],
+            ),
             logger: $logger,
             debug: new Debug($logger, true),
         );
-
+        $connection->startConsumers();
         $connection->waitForDeliveries(0.5);
 
-        self::assertTrue($logger->hasTemplate('Waiting without a coordinator; draining only'));
+        self::assertSame(
+            ['timeout' => 0.5],
+            $logger->contextFor('Waiting without a coordinator; draining only'),
+        );
     }
 
     public function testCloseKeepsWaitCoordinatorRegistration(): void
@@ -2093,7 +2174,80 @@ class ConnectionTest extends TestCase
         self::assertCount(0, iterator_to_array($envelopes));
         self::assertFalse($connection->isConnected());
         self::assertTrue($logger->hasTemplate('Reconnecting inside get() after the wait closed the connection'));
-        self::assertTrue($logger->hasTemplate('AMQP exception occurred while restarting consumer after wait: {message}'));
+        self::assertSame(
+            'connection refused',
+            $logger->contextFor('AMQP exception occurred while restarting consumer after wait: {message}')['message'] ?? null,
+        );
+        self::assertArrayHasKey(
+            'exception',
+            $logger->contextFor('AMQP exception occurred while restarting consumer after wait: {message}'),
+        );
+    }
+
+    public function testConsumeReturnsEmptyWhenReconnectAfterWaitFailsWithoutALogger(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            retries: 0,
+            retryWaitTime: 0,
+            queues: [
+                'queue_name' => new QueueConfig(name: 'queue_name'),
+            ],
+        );
+
+        $factory = $this->createMock(AmqpConnectionFactory::class);
+        $amqp    = $this->createMock(AMQPStreamConnection::class);
+        $channel = $this->createStub(AMQPChannel::class);
+        $holder  = new class {
+            public Connection|null $connection = null;
+        };
+        $creates = new class {
+            public int $n = 0;
+        };
+
+        $factory->expects(self::exactly(2))
+            ->method('create')
+            ->willReturnCallback(static function () use ($amqp, $creates): AMQPStreamConnection {
+                $creates->n++;
+                if ($creates->n === 1) {
+                    return $amqp;
+                }
+
+                throw new AMQPIOException('connection refused');
+            });
+
+        $amqp->method('channel')->willReturn($channel);
+        $amqp->method('isConnected')->willReturn(true);
+        $amqp->expects(self::once())
+            ->method('close');
+        $channel->method('is_open')->willReturn(true);
+        $channel->method('is_consuming')->willReturn(true);
+        $channel->method('basic_consume')->willReturn('tag-1');
+
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('register');
+        $coordinator->expects(self::once())
+            ->method('wait')
+            ->willReturnCallback(static function () use ($holder): void {
+                $holder->connection?->close();
+            });
+
+        $connection         = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: $connectionConfig,
+        );
+        $holder->connection = $connection;
+        $connection->setWaitCoordinator($coordinator);
+        $connection->startConsumers();
+
+        /** @var Traversable<mixed, AmqpEnvelope> $envelopes */
+        $envelopes = $connection->consume('queue_name');
+
+        self::assertCount(0, iterator_to_array($envelopes));
+        self::assertFalse($connection->isConnected());
     }
 
     public function testStartConsumersHonorsAnExplicitQueueList(): void

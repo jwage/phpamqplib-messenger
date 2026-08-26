@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestLog;
+use LogicException;
 use Psr\Log\AbstractLogger;
 use Stringable;
 use Throwable;
@@ -73,6 +74,18 @@ final class CollectingLogger extends AbstractLogger
         }
 
         return false;
+    }
+
+    /** @return array<array-key, mixed> */
+    public function contextFor(string $template): array
+    {
+        foreach ($this->records as $record) {
+            if ($record['template'] === $template) {
+                return $record['context'];
+            }
+        }
+
+        throw new LogicException('No log record with template: ' . $template);
     }
 
     /** @return list<string> */
