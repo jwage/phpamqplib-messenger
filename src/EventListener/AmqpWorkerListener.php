@@ -7,16 +7,21 @@ namespace Jwage\PhpAmqpLibMessengerBundle\EventListener;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
 use Override;
+use Symfony\Component\Console\ConsoleEvents;
+use Symfony\Component\Console\Event\ConsoleCommandEvent;
+use Symfony\Component\Console\Exception\InvalidArgumentException;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Component\Messenger\Event\WorkerStartedEvent;
 use Symfony\Component\Messenger\Event\WorkerStoppedEvent;
 use Symfony\Component\Messenger\Exception\TransportException;
 
+use function class_exists;
 use function count;
 use function is_callable;
 use function is_float;
 use function is_int;
+use function is_numeric;
 use function microtime;
 use function min;
 
@@ -44,6 +49,8 @@ class AmqpWorkerListener implements EventSubscriberInterface
 
     private float|null $sleepCap = null;
 
+    private float|null $consoleIdleTimeoutSeconds = null;
+
     public function __construct(
         private ConsumerWaitCoordinator $coordinator,
     ) {
@@ -53,6 +60,33 @@ class AmqpWorkerListener implements EventSubscriberInterface
     {
         $this->connections[$transportName] = $connection;
         $connection->setWaitCoordinator($this->coordinator);
+    }
+
+    public function onConsoleCommand(ConsoleCommandEvent $event): void
+    {
+        $command = $event->getCommand();
+
+        if ($command === null || $command->getName() !== 'messenger:consume') {
+            return;
+        }
+
+        $input = $event->getInput();
+
+        if (! $input->hasOption('sleep')) {
+            return;
+        }
+
+        try {
+            $sleep = $input->getOption('sleep');
+        } catch (InvalidArgumentException) {
+            return;
+        }
+
+        if (! is_numeric($sleep)) {
+            return;
+        }
+
+        $this->consoleIdleTimeoutSeconds = (float) $sleep;
     }
 
     public function onWorkerStarted(WorkerStartedEvent $event): void
@@ -80,9 +114,11 @@ class AmqpWorkerListener implements EventSubscriberInterface
 
         // When non-phpamqplib transports are also consumed, cap the idle wait to
         // the worker's sleep duration so those transports are still polled regularly.
+        $idleTimeout    = $this->getWorkerIdleTimeoutSeconds($event);
         $this->sleepCap = count($matched) < count($allTransportNames)
-            ? $this->getWorkerIdleTimeoutSeconds($event)
+            ? $idleTimeout
             : null;
+        $this->coordinator->setWaitFloor($this->sleepCap === null ? $idleTimeout : 0.0);
 
         foreach ($matched as $connection) {
             try {
@@ -123,17 +159,24 @@ class AmqpWorkerListener implements EventSubscriberInterface
         $this->activeConnection   = null;
         $this->deadline           = null;
         $this->sleepCap           = null;
+        $this->coordinator->setWaitFloor(0.0);
     }
 
-    /** @return array<class-string, string> */
+    /** @return array<string, string> */
     #[Override]
     public static function getSubscribedEvents(): array
     {
-        return [
+        $events = [
             WorkerStartedEvent::class => 'onWorkerStarted',
             WorkerRunningEvent::class => 'onWorkerRunning',
             WorkerStoppedEvent::class => 'onWorkerStopped',
         ];
+
+        if (class_exists(ConsoleEvents::class)) {
+            $events[ConsoleEvents::COMMAND] = 'onConsoleCommand';
+        }
+
+        return $events;
     }
 
     /** @param object $event WorkerStartedEvent, or a stand-in without Symfony 8.1 methods. */
@@ -154,7 +197,8 @@ class AmqpWorkerListener implements EventSubscriberInterface
     /**
      * Worker sleep duration in seconds. Symfony 8.1+ exposes this as
      * WorkerStartedEvent::getIdleTimeout() (microseconds). Earlier versions
-     * use the Worker default of 1 second.
+     * read messenger:consume --sleep from the console command, then fall back
+     * to the Worker default of 1 second.
      *
      * @param object $event WorkerStartedEvent, or a stand-in without Symfony 8.1 methods.
      */
@@ -162,19 +206,21 @@ class AmqpWorkerListener implements EventSubscriberInterface
     {
         $getter = [$event, 'getIdleTimeout'];
 
-        if (! is_callable($getter)) {
-            return 1.0;
+        if (is_callable($getter)) {
+            /** @psalm-suppress MixedAssignment */
+            $idleTimeout = $getter();
+
+            if (is_int($idleTimeout) || is_float($idleTimeout)) {
+                /** @psalm-suppress InvalidOperand */
+                return $idleTimeout / 1_000_000.0;
+            }
         }
 
-        /** @psalm-suppress MixedAssignment */
-        $idleTimeout = $getter();
-
-        if (! is_int($idleTimeout) && ! is_float($idleTimeout)) {
-            return 1.0;
+        if ($this->consoleIdleTimeoutSeconds !== null) {
+            return $this->consoleIdleTimeoutSeconds;
         }
 
-        /** @psalm-suppress InvalidOperand */
-        return $idleTimeout / 1_000_000.0;
+        return 1.0;
     }
 
     private function waitWhileIdle(WorkerRunningEvent $event, float $sleepCap): void

@@ -146,6 +146,39 @@ class ConsumerWaitCoordinatorTest extends TestCase
         }
     }
 
+    public function testWaitHonorsTheIdleWaitFloor(): void
+    {
+        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+
+        if ($pair === false) {
+            self::fail('stream_socket_pair failed');
+        }
+
+        [$left, $right] = $pair;
+        stream_set_blocking($left, false);
+        stream_set_blocking($right, false);
+
+        try {
+            $connection = $this->createMock(Connection::class);
+            $connection->method('getConsumerSocket')->willReturn($left);
+            $connection->expects(self::once())
+                ->method('drainConsumerChannel');
+
+            $coordinator = new ConsumerWaitCoordinator();
+            $coordinator->setWaitFloor(0.2);
+            $coordinator->register($connection);
+
+            $start = hrtime(true);
+            $coordinator->wait(0.05);
+            $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+
+            self::assertGreaterThan(150, $elapsedMs);
+        } finally {
+            fclose($left);
+            fclose($right);
+        }
+    }
+
     public function testWaitReturnsImmediatelyWhenNoSocketsAreAvailable(): void
     {
         $connection = $this->createMock(Connection::class);

@@ -9,6 +9,7 @@ use Throwable;
 
 use function function_exists;
 use function intdiv;
+use function max;
 use function pcntl_signal_dispatch;
 use function round;
 use function spl_object_id;
@@ -29,6 +30,8 @@ class ConsumerWaitCoordinator
 
     private bool $waitedThisPass = false;
 
+    private float $waitFloor = 0.0;
+
     public function register(Connection $connection): void
     {
         $this->connections[spl_object_id($connection)] = $connection;
@@ -44,8 +47,14 @@ class ConsumerWaitCoordinator
         $this->waitedThisPass = false;
     }
 
+    public function setWaitFloor(float $waitFloor): void
+    {
+        $this->waitFloor = max(0.0, $waitFloor);
+    }
+
     public function wait(float $timeout, bool $coalesce = true): void
     {
+        $timeout = max($timeout, $this->waitFloor);
         if ($coalesce && $this->waitedThisPass) {
             foreach ($this->connections as $connection) {
                 $connection->drainConsumerChannel();

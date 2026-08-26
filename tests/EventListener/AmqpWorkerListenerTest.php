@@ -11,6 +11,11 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
 use ReflectionClass;
 use ReflectionMethod;
 use stdClass;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Event\ConsoleCommandEvent;
+use Symfony\Component\Console\Exception\InvalidArgumentException;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Component\Messenger\Event\WorkerStartedEvent;
 use Symfony\Component\Messenger\Event\WorkerStoppedEvent;
@@ -338,6 +343,143 @@ class AmqpWorkerListenerTest extends TestCase
         self::assertSame(1.0, $method->invoke($listener, $event));
     }
 
+    public function testIdleTimeoutUsesConsoleSleepWhenTheEventValueIsNotNumeric(): void
+    {
+        $event = new class {
+            public function getIdleTimeout(): string
+            {
+                return 'nope';
+            }
+        };
+
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $this->dispatchConsumeSleep($listener, 0.4);
+
+        $method = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
+
+        self::assertSame(0.4, $method->invoke($listener, $event));
+    }
+
+    public function testIdleTimeoutUsesConsoleSleepWhenTheEventDoesNotExposeIt(): void
+    {
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $this->dispatchConsumeSleep($listener, 2.5);
+
+        $method = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
+
+        self::assertSame(2.5, $method->invoke($listener, new stdClass()));
+    }
+
+    public function testConsoleSleepIsIgnoredWhenTheSleepOptionCannotBeRead(): void
+    {
+        $command = $this->createStub(Command::class);
+        $command->method('getName')
+            ->willReturn('messenger:consume');
+
+        $input = $this->createMock(InputInterface::class);
+        $input->expects(self::once())
+            ->method('hasOption')
+            ->with('sleep')
+            ->willReturn(true);
+        $input->expects(self::once())
+            ->method('getOption')
+            ->with('sleep')
+            ->willThrowException(new InvalidArgumentException('The "sleep" option does not exist.'));
+
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $listener->onConsoleCommand(new ConsoleCommandEvent(
+            $command,
+            $input,
+            $this->createStub(OutputInterface::class),
+        ));
+
+        $method = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
+
+        self::assertSame(1.0, $method->invoke($listener, new stdClass()));
+    }
+
+    public function testConsoleSleepIsIgnoredForOtherCommands(): void
+    {
+        $command = $this->createStub(Command::class);
+        $command->method('getName')
+            ->willReturn('cache:clear');
+
+        $input = $this->createMock(InputInterface::class);
+        $input->expects(self::never())
+            ->method('getOption');
+
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $listener->onConsoleCommand(new ConsoleCommandEvent(
+            $command,
+            $input,
+            $this->createStub(OutputInterface::class),
+        ));
+
+        $method = new ReflectionMethod(AmqpWorkerListener::class, 'getWorkerIdleTimeoutSeconds');
+
+        self::assertSame(1.0, $method->invoke($listener, new stdClass()));
+    }
+
+    public function testOnWorkerStartedSetsAWaitFloorForAllPhpAmqpLibWorkers(): void
+    {
+        $expectedFloor = method_exists(WorkerStartedEvent::class, 'getIdleTimeout') ? 2.0 : 1.0;
+
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('setWaitFloor')
+            ->with($expectedFloor);
+
+        $connection = $this->createMock(Connection::class);
+        $connection->expects(self::once())
+            ->method('startConsumers');
+
+        $listener = new AmqpWorkerListener($coordinator);
+        $listener->addConnection('async', $connection);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent(
+            $this->createWorker(['async']),
+            idleTimeout: 2_000_000,
+        ));
+    }
+
+    public function testOnWorkerStartedClearsTheWaitFloorWhenTransportsAreMixed(): void
+    {
+        $coordinator = $this->createMock(ConsumerWaitCoordinator::class);
+        $coordinator->expects(self::once())
+            ->method('setWaitFloor')
+            ->with(0.0);
+
+        $connection = $this->createMock(Connection::class);
+        $connection->expects(self::once())
+            ->method('listen');
+
+        $listener = new AmqpWorkerListener($coordinator);
+        $listener->addConnection('async', $connection);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($this->createWorker(['async', 'redis'])));
+    }
+
+    public function testMixedIdleWaitUsesConsoleSleepWhenTheStartedEventOmitsIt(): void
+    {
+        if (method_exists(WorkerStartedEvent::class, 'getIdleTimeout')) {
+            self::markTestSkipped('WorkerStartedEvent::getIdleTimeout() is used on Symfony 8.1+');
+        }
+
+        $connection = $this->createMock(Connection::class);
+        $connection->method('listen');
+        $connection->method('getWaitTimeout')
+            ->willReturn(5.0);
+        $connection->expects(self::once())
+            ->method('waitForDeliveries')
+            ->with(0.2, false);
+
+        $listener = new AmqpWorkerListener($this->createStub(ConsumerWaitCoordinator::class));
+        $listener->addConnection('async', $connection);
+        $this->dispatchConsumeSleep($listener, 0.2);
+
+        $worker = $this->createWorker(['async', 'redis']);
+        $listener->onWorkerStarted($this->createWorkerStartedEvent($worker));
+        $listener->onWorkerRunning(new WorkerRunningEvent($worker, true));
+    }
+
     /** @param list<string> $transportNames */
     private function createWorker(array $transportNames): Worker
     {
@@ -366,5 +508,24 @@ class AmqpWorkerListenerTest extends TestCase
         }
 
         return new WorkerStartedEvent($worker);
+    }
+
+    private function dispatchConsumeSleep(AmqpWorkerListener $listener, float $seconds): void
+    {
+        $command = $this->createStub(Command::class);
+        $command->method('getName')
+            ->willReturn('messenger:consume');
+
+        $input = $this->createStub(InputInterface::class);
+        $input->method('hasOption')
+            ->willReturn(true);
+        $input->method('getOption')
+            ->willReturn((string) $seconds);
+
+        $listener->onConsoleCommand(new ConsoleCommandEvent(
+            $command,
+            $input,
+            $this->createStub(OutputInterface::class),
+        ));
     }
 }
