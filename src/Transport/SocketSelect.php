@@ -6,6 +6,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use ErrorException;
 use PhpAmqpLib\Exception\AMQPIOWaitException;
+use PhpAmqpLib\Helper\SocketConstants;
 
 use function assert;
 use function function_exists;
@@ -14,13 +15,7 @@ use function pcntl_signal_dispatch;
 use function preg_match;
 use function restore_error_handler;
 use function set_error_handler;
-use function str_starts_with;
 use function stream_select;
-
-use const E_WARNING;
-use const SOCKET_EAGAIN;
-use const SOCKET_EINTR;
-use const SOCKET_EWOULDBLOCK;
 
 /** @internal */
 final class SocketSelect
@@ -32,7 +27,7 @@ final class SocketSelect
      *
      * @param-out array<array-key, resource> $read
      */
-    public static function select(array &$read, int $seconds, int $microseconds = 0): int
+    public static function select(array &$read, int $seconds, int|null $microseconds): int
     {
         $streams = [];
         foreach ($read as $key => $socket) {
@@ -40,23 +35,33 @@ final class SocketSelect
             $streams[$key] = $socket;
         }
 
-        $error = null;
+        $error     = null;
+        $constants = SocketConstants::getInstance();
         /** @var callable(int, string, string, int): mixed|null $previousHandler */
         $previousHandler = null;
-        $previousHandler = set_error_handler(static function (int $severity, string $message, string $file, int $line) use (&$error, &$previousHandler): bool {
-            // Async signal callbacks can emit unrelated errors during this wait.
-            if ($severity !== E_WARNING || $file !== __FILE__ || ! str_starts_with($message, 'stream_select():')) {
+        $previousHandler = set_error_handler(static function (int $severity, string $message, string $file, int $line) use (&$error, &$previousHandler, $constants): bool {
+            // The only warning-producing operation in this file is stream_select().
+            // Async signal callbacks and stream wrappers can emit errors elsewhere.
+            if ($file !== __FILE__) {
                 return $previousHandler !== null ? $previousHandler($severity, $message, $file, $line) !== false : false;
             }
 
-            $code = preg_match('/\s+\[(\d+)\]:\s+/', $message, $matches) === 1 ? (int) $matches[1] : 0;
+            $code = preg_match('/\s+\[([1-9]\d*)\]:\s+/', $message, $matches) === 1 ? (int) $matches[1] : $severity;
 
             // Match php-amqplib's StreamIO handling of retryable socket conditions.
-            if ($code === SOCKET_EINTR || $code === SOCKET_EAGAIN || $code === SOCKET_EWOULDBLOCK) {
+            if ($code === $constants->__get('SOCKET_EINTR')) {
                 return true;
             }
 
-            $error = new ErrorException($message, $code > 0 ? $code : $severity, $severity, $file, $line, $error);
+            if ($code === $constants->__get('SOCKET_EAGAIN')) {
+                return true;
+            }
+
+            if ($code === $constants->__get('SOCKET_EWOULDBLOCK')) {
+                return true;
+            }
+
+            $error = new ErrorException($message, $code, $severity, $file, $line, $error);
 
             return true;
         });

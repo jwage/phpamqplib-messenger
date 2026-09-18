@@ -551,7 +551,7 @@ class Connection
         }
 
         $read     = [$socket];
-        $selected = SocketSelect::select($read, 0);
+        $selected = SocketSelect::select($read, 0, null);
 
         return $selected > 0;
     }

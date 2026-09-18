@@ -10,7 +10,6 @@ use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Psr\Log\LoggerInterface;
 use ReflectionMethod;
 use Symfony\Component\Messenger\Exception\TransportException;
@@ -38,7 +37,6 @@ use const STREAM_SOCK_STREAM;
 
 class ConsumerWaitCoordinatorTest extends TestCase
 {
-    #[RunInSeparateProcess]
     #[DataProvider('provideAlarmHandlingModes')]
     public function testWaitHandlesAnAlarmWithoutReportingAWarningAndCanWaitAgain(bool $asyncSignals): void
     {

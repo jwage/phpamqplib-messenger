@@ -42,6 +42,8 @@ use Symfony\Component\Messenger\Exception\TransportException;
 use Traversable;
 
 use function assert;
+use function error_clear_last;
+use function error_get_last;
 use function fclose;
 use function fopen;
 use function fwrite;
@@ -2873,15 +2875,16 @@ class ConnectionTest extends TestCase
         $connection->drainConsumerChannel();
     }
 
-    /** @return iterable<string, array{bool}> */
+    /** @return iterable<string, array{bool, bool}> */
     public static function provideSocketFailurePaths(): iterable
     {
-        yield 'individual readiness probe' => [false];
-        yield 'aggregate wait followed by individual recovery' => [true];
+        yield 'individual readiness probe' => [false, true];
+        yield 'aggregate wait followed by individual recovery' => [true, true];
+        yield 'aggregate wait without a coordinator logger' => [true, false];
     }
 
     #[DataProvider('provideSocketFailurePaths')]
-    public function testDrainConsumerChannelClosesWhenItsSocketCannotBeSelected(bool $coordinated): void
+    public function testDrainConsumerChannelClosesWhenItsSocketCannotBeSelected(bool $coordinated, bool $withCoordinatorLogger): void
     {
         $descriptors = [];
         $pair        = false;
@@ -2946,7 +2949,7 @@ class ConnectionTest extends TestCase
             }
 
             $loggedWarnings = [];
-            $logger->expects(self::exactly($coordinated ? 2 : 1))->method('warning')
+            $logger->expects(self::exactly($coordinated && $withCoordinatorLogger ? 2 : 1))->method('warning')
                 ->willReturnCallback(static function (string $message, array $context) use (&$loggedWarnings, $warning): void {
                     self::assertSame($warning, $context['message']);
                     self::assertInstanceOf(AMQPIOWaitException::class, $context['exception']);
@@ -2961,25 +2964,39 @@ class ConnectionTest extends TestCase
             $connection->consumerChannel();
             $this->bindAmqpSocket($connection, $amqpConnection, $left);
 
-            if ($coordinated) {
-                $healthy = $this->createMock(Connection::class);
-                $healthy->method('getConsumerSocket')->willReturn($healthyPair[0]);
-                $healthy->expects(self::exactly(2))->method('drainConsumerChannel')->willReturn(false);
-                $healthy->expects(self::never())->method('close');
-                $coordinator = new ConsumerWaitCoordinator(logger: $logger);
-                $coordinator->register($connection);
-                $coordinator->register($healthy);
-                $coordinator->wait(0.01);
-                self::assertSame([
-                    'AMQP exception occurred while waiting for consumer sockets: {message}',
-                    'AMQP exception occurred while draining consumer channel: {message}',
-                ], $loggedWarnings);
-            } else {
-                self::assertFalse($connection->drainConsumerChannel());
-                self::assertSame(['AMQP exception occurred while draining consumer channel: {message}'], $loggedWarnings);
-            }
+            $errorHandler = static fn (): bool => true;
+            set_error_handler($errorHandler);
+            error_clear_last();
+            try {
+                if ($coordinated) {
+                    $healthy = $this->createMock(Connection::class);
+                    $healthy->method('getConsumerSocket')->willReturn($healthyPair[0]);
+                    $healthy->expects(self::exactly(2))->method('drainConsumerChannel')->willReturn(false);
+                    $healthy->expects(self::never())->method('close');
+                    $coordinator = new ConsumerWaitCoordinator(logger: $withCoordinatorLogger ? $logger : null);
+                    $coordinator->register($connection);
+                    $coordinator->register($healthy);
+                    $coordinator->wait(0.01);
+                    $expectedWarnings = [];
+                    if ($withCoordinatorLogger) {
+                        $expectedWarnings[] = 'AMQP exception occurred while waiting for consumer sockets: {message}';
+                    }
 
-            self::assertNull($connection->getConsumerSocket());
+                    $expectedWarnings[] = 'AMQP exception occurred while draining consumer channel: {message}';
+                    self::assertSame($expectedWarnings, $loggedWarnings);
+                } else {
+                    self::assertFalse($connection->drainConsumerChannel());
+                    self::assertSame(['AMQP exception occurred while draining consumer channel: {message}'], $loggedWarnings);
+                }
+
+                self::assertNull($connection->getConsumerSocket());
+                self::assertNull(error_get_last());
+                $restoredHandler = set_error_handler($errorHandler);
+                restore_error_handler();
+                self::assertSame($errorHandler, $restoredHandler);
+            } finally {
+                restore_error_handler();
+            }
         } finally {
             foreach ($healthyPair as $socket) {
                 fclose($socket);
