@@ -10,6 +10,7 @@ use Jwage\PhpAmqpLibMessengerBundle\EventListener\AmqpWorkerListener;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransportFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 class PhpAmqpLibMessengerExtensionTest extends TestCase
@@ -25,7 +26,8 @@ class PhpAmqpLibMessengerExtensionTest extends TestCase
         self::assertTrue($container->getDefinition(AmqpTransportFactory::class)->hasTag('messenger.transport_factory'));
         self::assertTrue($container->hasDefinition(Debug::class));
         self::assertCount(2, $container->getDefinition(Debug::class)->getArguments());
-        self::assertCount(1, $container->getDefinition(ConsumerWaitCoordinator::class)->getArguments());
+        self::assertCount(2, $container->getDefinition(ConsumerWaitCoordinator::class)->getArguments());
+        self::assertSame(LoggerInterface::class, (string) $container->getDefinition(ConsumerWaitCoordinator::class)->getArgument(1));
         self::assertCount(2, $container->getDefinition(AmqpWorkerListener::class)->getArguments());
     }
 }

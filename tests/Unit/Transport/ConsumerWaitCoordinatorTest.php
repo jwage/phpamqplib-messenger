@@ -10,21 +10,128 @@ use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Psr\Log\LoggerInterface;
 use ReflectionMethod;
 use Symfony\Component\Messenger\Exception\TransportException;
 
+use function assert;
 use function fclose;
+use function fread;
+use function function_exists;
 use function fwrite;
 use function hrtime;
+use function is_callable;
+use function is_int;
+use function pcntl_alarm;
+use function pcntl_async_signals;
+use function pcntl_signal;
+use function pcntl_signal_get_handler;
+use function restore_error_handler;
+use function set_error_handler;
 use function stream_set_blocking;
 use function stream_socket_pair;
 
+use const SIGALRM;
 use const STREAM_PF_UNIX;
 use const STREAM_SOCK_STREAM;
 
 class ConsumerWaitCoordinatorTest extends TestCase
 {
+    #[RunInSeparateProcess]
+    #[DataProvider('provideAlarmHandlingModes')]
+    public function testWaitHandlesAnAlarmWithoutReportingAWarningAndCanWaitAgain(bool $asyncSignals): void
+    {
+        if (! function_exists('pcntl_alarm')) {
+            self::markTestSkipped('The pcntl extension is required to interrupt a socket wait.');
+        }
+
+        $pair     = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        $idlePair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+
+        if ($pair === false || $idlePair === false) {
+            self::fail('stream_socket_pair failed');
+        }
+
+        [$left, $right]         = $pair;
+        [$idleLeft, $idleRight] = $idlePair;
+        stream_set_blocking($left, false);
+        stream_set_blocking($right, false);
+        stream_set_blocking($idleLeft, false);
+        stream_set_blocking($idleRight, false);
+
+        $warnings       = [];
+        $handledSignals = [];
+        $errorHandler   = static function (int $severity, string $message) use (&$warnings): bool {
+            $warnings[] = [$severity, $message];
+
+            return true;
+        };
+
+        $previousSignalHandler = pcntl_signal_get_handler(SIGALRM);
+        assert(is_int($previousSignalHandler) || is_callable($previousSignalHandler));
+        $previousAsyncSignals = pcntl_async_signals($asyncSignals);
+        pcntl_signal(SIGALRM, static function (int $signal) use (&$handledSignals): void {
+            $handledSignals[] = $signal;
+        }, false);
+        set_error_handler($errorHandler);
+
+        try {
+            $idle = $this->createMock(Connection::class);
+            $idle->method('getConsumerSocket')->willReturn($idleLeft);
+            $idle->method('hasBufferedDeliveries')->willReturn(false);
+            $idle->expects(self::exactly(3))
+                ->method('drainConsumerChannel')
+                ->willReturn(false);
+
+            $connection = $this->createMock(Connection::class);
+            $connection->method('getConsumerSocket')->willReturn($left);
+            $connection->method('hasBufferedDeliveries')->willReturn(false);
+            $connection->expects(self::exactly(4))
+                ->method('drainConsumerChannel')
+                ->willReturn(false);
+
+            $logger      = new CollectingLogger();
+            $coordinator = new ConsumerWaitCoordinator(new Debug($logger, true));
+            $coordinator->register($idle);
+            $coordinator->register($connection);
+
+            pcntl_alarm(1);
+            $coordinator->wait(5.0);
+
+            self::assertSame([SIGALRM], $handledSignals);
+            $restoredHandler = set_error_handler($errorHandler);
+            restore_error_handler();
+            self::assertSame($errorHandler, $restoredHandler);
+
+            fwrite($right, 'message');
+            $logger->records = [];
+            $coordinator->reset();
+            $coordinator->wait(0.05);
+
+            self::assertSame(['selected' => 1, 'sockets' => 2], $logger->contextFor('stream_select finished'));
+            self::assertSame('message', fread($left, 7));
+            self::assertSame('', fread($idleLeft, 7));
+            self::assertSame([], $warnings);
+        } finally {
+            pcntl_alarm(0);
+            restore_error_handler();
+            pcntl_signal(SIGALRM, $previousSignalHandler);
+            pcntl_async_signals($previousAsyncSignals);
+            fclose($left);
+            fclose($right);
+            fclose($idleLeft);
+            fclose($idleRight);
+        }
+    }
+
+    /** @return iterable<string, array{bool}> */
+    public static function provideAlarmHandlingModes(): iterable
+    {
+        yield 'synchronous signals' => [false];
+        yield 'asynchronous signals' => [true];
+    }
+
     public function testWaitKeepalivesRegisteredConnections(): void
     {
         $connection = $this->createMock(Connection::class);

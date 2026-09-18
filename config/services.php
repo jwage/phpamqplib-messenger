@@ -29,6 +29,7 @@ return static function (ContainerConfigurator $container): void {
     $services->set(ConsumerWaitCoordinator::class)
         ->args([
             service(Debug::class),
+            service(LoggerInterface::class),
         ]);
 
     $services->set(AmqpWorkerListener::class)

@@ -16,6 +16,7 @@ use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
+use PhpAmqpLib\Exception\AMQPIOWaitException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
@@ -32,12 +33,10 @@ use function array_sum;
 use function array_unshift;
 use function assert;
 use function count;
-use function is_int;
 use function is_object;
 use function is_resource;
 use function min;
 use function property_exists;
-use function stream_select;
 
 class Connection
 {
@@ -452,11 +451,11 @@ class Connection
         $drained = false;
 
         while ($channel->is_open() && $channel->is_consuming()) {
-            $hasWork = $channel->hasPendingMethods()
-                || $this->channelHasQueuedFrames($channel)
-                || $this->consumerSocketIsReadable();
-
             try {
+                $hasWork = $channel->hasPendingMethods()
+                    || $this->channelHasQueuedFrames($channel)
+                    || $this->consumerSocketIsReadable();
+
                 $channel->wait(
                     allowed_methods: null,
                     non_blocking: true,
@@ -542,6 +541,7 @@ class Connection
         return $queue instanceof SplQueue && ! $queue->isEmpty();
     }
 
+    /** @throws AMQPIOWaitException */
     private function consumerSocketIsReadable(): bool
     {
         $socket = $this->getConsumerSocket();
@@ -550,14 +550,10 @@ class Connection
             return false;
         }
 
-        $read   = [$socket];
-        $write  = null;
-        $except = null;
+        $read     = [$socket];
+        $selected = SocketSelect::select($read, 0);
 
-        /** @psalm-suppress InvalidArgument */
-        $selected = stream_select($read, $write, $except, 0);
-
-        return is_int($selected) && $selected > 0;
+        return $selected > 0;
     }
 
     /**

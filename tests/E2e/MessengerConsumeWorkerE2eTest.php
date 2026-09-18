@@ -9,9 +9,12 @@ use Symfony\Component\Messenger\Transport\Receiver\KeepaliveReceiverInterface;
 
 use function array_unique;
 use function class_exists;
+use function file_get_contents;
 use function interface_exists;
 use function microtime;
 use function sort;
+use function str_contains;
+use function usleep;
 
 class MessengerConsumeWorkerE2eTest extends E2eTestCase
 {
@@ -89,5 +92,47 @@ class MessengerConsumeWorkerE2eTest extends E2eTestCase
         self::assertGreaterThan(3.0, microtime(true) - $started);
         self::assertSame([$id], $this->idsOf($this->recordsOfType(E2eKeepaliveMessage::class)));
         $this->assertQueueEventuallyEmpty('e2e_keepalive');
+    }
+
+    public function testConsumptionContinuesAfterAnIdleKeepaliveInterruptsTheWait(): void
+    {
+        if (! interface_exists(KeepaliveReceiverInterface::class)) {
+            self::markTestSkipped('messenger:consume --keepalive requires Symfony >= 7.2');
+        }
+
+        if (! class_exists(SignalRegistry::class) || ! SignalRegistry::isSupported()) {
+            self::markTestSkipped('messenger:consume --keepalive requires pcntl signals');
+        }
+
+        if (! $this->consumeSupports('--keepalive')) {
+            self::markTestSkipped('messenger:consume --keepalive is not available');
+        }
+
+        $consume = $this->startConsume(['e2e_high'], limit: 1, sleep: 5, extra: ['--keepalive=1']);
+        $this->waitUntilConsuming($consume);
+
+        $deadline = microtime(true) + 4.0;
+        $debugLog = '';
+
+        while (microtime(true) < $deadline) {
+            $debugLog = file_get_contents($this->debugLogFile);
+            self::assertNotFalse($debugLog);
+
+            if (str_contains($debugLog, 'stream_select finished')) {
+                break;
+            }
+
+            usleep(20_000);
+        }
+
+        self::assertStringContainsString('stream_select finished', $debugLog, $consume->debugOutput());
+        self::assertMatchesRegularExpression('/"selected":(?:false|0)\b/', $debugLog);
+
+        $id = $this->uniqueId('idle_keepalive');
+        $this->bus()->dispatch(new E2eMessage($id));
+        $this->assertConsumeExitsSuccessfully($consume);
+
+        self::assertSame([$id], $this->idsOf($this->recordsOfType(E2eMessage::class)));
+        $this->assertQueueEventuallyEmpty('e2e_high');
     }
 }
