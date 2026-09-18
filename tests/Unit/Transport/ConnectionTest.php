@@ -30,6 +30,7 @@ use PhpAmqpLib\Exception\AMQPIOException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
 use ReflectionMethod;
@@ -3320,6 +3321,56 @@ class ConnectionTest extends TestCase
             delayInMs: 5000,
             amqpStamp: new AmqpStamp('orders'),
         );
+    }
+
+    /** @return iterable<string, array{bool, string}> */
+    public static function provideDelayedPublishModes(): iterable
+    {
+        yield 'initial delivery' => [false, 'exchange_name'];
+        yield 'retry delivery' => [true, ''];
+    }
+
+    #[DataProvider('provideDelayedPublishModes')]
+    public function testDelayedPublishPreservesConfiguredArgumentsWithoutOverridingRequiredArguments(bool $retry, string $deadLetterExchange): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            delay: new DelayConfig(arguments: [
+                'x-queue-type' => 'classic',
+                'x-max-length' => 100,
+                'x-message-ttl' => 1,
+                'x-expires' => 2,
+                'x-dead-letter-exchange' => 'wrong-exchange',
+                'x-dead-letter-routing-key' => 'wrong-key',
+            ]),
+        ));
+
+        $stamp = $this->createStub(AmqpStamp::class);
+        $stamp->method('getRoutingKey')->willReturn('orders');
+        $stamp->method('isRetryAttempt')->willReturn($retry);
+
+        $amqpChannel->expects(self::once())
+            ->method('queue_declare')
+            ->with(
+                queue: $retry ? 'delay_exchange_name_orders_5000_retry' : 'delay_exchange_name_orders_5000_delay',
+                passive: false,
+                durable: false,
+                exclusive: false,
+                auto_delete: true,
+                nowait: false,
+                arguments: new AMQPTable([
+                    'x-queue-type' => 'classic',
+                    'x-max-length' => 100,
+                    'x-message-ttl' => 5000,
+                    'x-expires' => 15000,
+                    'x-dead-letter-exchange' => $deadLetterExchange,
+                    'x-dead-letter-routing-key' => 'orders',
+                ]),
+            );
+
+        $connection->publish(body: 'delayed message', delayInMs: 5000, amqpStamp: $stamp);
     }
 
     public function testDelayedPublishSetsUpDelayExchangeOnce(): void

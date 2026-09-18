@@ -1189,12 +1189,15 @@ class Connection
             queue: $delayQueueName,
             durable: $this->connectionConfig->delay->durable,
             nowait: false,
-            arguments: new AMQPTable([
-                'x-message-ttl' => $delay,
-                'x-expires' => $delay + 10000,
-                'x-dead-letter-exchange' => $isRetryAttempt ? '' : $this->connectionConfig->exchange->name,
-                'x-dead-letter-routing-key' => $routingKey ?? '',
-            ]),
+            arguments: new AMQPTable(array_merge(
+                $this->connectionConfig->delay->arguments,
+                [
+                    'x-message-ttl' => $delay,
+                    'x-expires' => $delay + 10000,
+                    'x-dead-letter-exchange' => $isRetryAttempt ? '' : $this->connectionConfig->exchange->name,
+                    'x-dead-letter-routing-key' => $routingKey ?? '',
+                ],
+            )),
         );
 
         $this->channel()->queue_bind(
