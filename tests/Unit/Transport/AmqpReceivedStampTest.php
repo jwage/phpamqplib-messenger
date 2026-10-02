@@ -7,7 +7,11 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Unit\Transport;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpReceivedStamp;
+use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Message\AMQPMessage;
+
+use function serialize;
+use function unserialize;
 
 class AmqpReceivedStampTest extends TestCase
 {
@@ -25,6 +29,20 @@ class AmqpReceivedStampTest extends TestCase
     public function testGetQueueName(): void
     {
         self::assertSame('queue_name', $this->stamp->getQueueName());
+    }
+
+    public function testSerializeStampOfDeliveredMessage(): void
+    {
+        $this->message->setChannel($this->createStub(AMQPChannel::class));
+        $this->message->setDeliveryInfo(1, false, 'exchange_name', 'routing_key');
+
+        $copy = unserialize(serialize($this->stamp));
+
+        self::assertInstanceOf(AmqpReceivedStamp::class, $copy);
+        self::assertSame('queue_name', $copy->getQueueName());
+        self::assertSame('test message', $copy->getAmqpEnvelope()->getBody());
+        self::assertSame('routing_key', $copy->getAmqpEnvelope()->getRoutingKey());
+        self::assertNull($copy->getAmqpEnvelope()->getAMQPMessage()->getChannel());
     }
 
     protected function setUp(): void

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use OutOfBoundsException;
+use PhpAmqpLib\Exception\AMQPEmptyDeliveryTagException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 
@@ -18,6 +19,47 @@ class AmqpEnvelope
         private AMQPMessage $amqpMessage,
         private bool $noAck = false,
     ) {
+    }
+
+    /**
+     * Copies the message without its channel: the copy can be read in another
+     * process, but only the instance that received the message can ack or nack it.
+     *
+     * @return array{body: string, properties: array<mixed>, deliveryTag: int|null, redelivered: bool|null, exchange: string|null, routingKey: string|null, consumerTag: string|null, noAck: bool}
+     */
+    public function __serialize(): array
+    {
+        $message = $this->amqpMessage;
+
+        try {
+            $deliveryTag = $message->getDeliveryTag();
+        } catch (AMQPEmptyDeliveryTagException) {
+            $deliveryTag = null;
+        }
+
+        return [
+            'body' => $message->getBody(),
+            'properties' => $message->get_properties(),
+            'deliveryTag' => $deliveryTag,
+            'redelivered' => $message->isRedelivered(),
+            'exchange' => $message->getExchange(),
+            'routingKey' => $message->getRoutingKey(),
+            'consumerTag' => $message->getConsumerTag(),
+            'noAck' => $this->noAck,
+        ];
+    }
+
+    /**
+     * @param array{body: string, properties: array<mixed>, deliveryTag: int|null, redelivered: bool|null, exchange: string|null, routingKey: string|null, consumerTag: string|null, noAck: bool} $data
+     *
+     * @psalm-suppress PossiblyNullArgument
+     */
+    public function __unserialize(array $data): void
+    {
+        $this->amqpMessage = (new AMQPMessage($data['body'], $data['properties']))
+            ->setDeliveryInfo($data['deliveryTag'], $data['redelivered'], $data['exchange'], $data['routingKey'])
+            ->setConsumerTag($data['consumerTag']);
+        $this->noAck       = $data['noAck'];
     }
 
     public function getAMQPMessage(): AMQPMessage

@@ -6,10 +6,17 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Unit\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
+use LogicException;
 use OutOfBoundsException;
+use PhpAmqpLib\Channel\AMQPChannel;
+use PhpAmqpLib\Exception\AMQPEmptyDeliveryTagException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use PHPUnit\Framework\MockObject\MockObject;
+use ReflectionClass;
+
+use function serialize;
+use function unserialize;
 
 class AmqpEnvelopeTest extends TestCase
 {
@@ -324,5 +331,90 @@ class AmqpEnvelopeTest extends TestCase
         self::assertSame('text/plain', $envelope->getContentType());
         self::assertSame(AMQPMessage::DELIVERY_MODE_PERSISTENT, $envelope->getDeliveryMode());
         self::assertSame(['foo' => 'bar'], $envelope->getHeaders());
+    }
+
+    public function testSerializeDetachesTheMessageFromItsChannel(): void
+    {
+        $envelope = new AmqpEnvelope($this->createDeliveredMessage());
+
+        $copy = unserialize(serialize($envelope));
+
+        self::assertInstanceOf(AmqpEnvelope::class, $copy);
+
+        $message = $copy->getAMQPMessage();
+
+        self::assertNull($message->getChannel());
+        self::assertSame('test body', $copy->getBody());
+        self::assertEquals($envelope->getAttributes(), $copy->getAttributes());
+        self::assertSame(['foo' => 'bar'], $copy->getHeaders());
+        self::assertSame('test message id', $copy->getMessageId());
+        self::assertSame('routing_key', $copy->getRoutingKey());
+        self::assertSame(42, $message->getDeliveryTag());
+        self::assertTrue($message->isRedelivered());
+        self::assertSame('exchange_name', $message->getExchange());
+        self::assertSame('consumer_tag', $message->getConsumerTag());
+    }
+
+    public function testSerializeMessageThatWasNotDelivered(): void
+    {
+        $copy = unserialize(serialize(new AmqpEnvelope(new AMQPMessage('test body'))));
+
+        self::assertInstanceOf(AmqpEnvelope::class, $copy);
+        self::assertSame('test body', $copy->getBody());
+        self::assertNull($copy->getRoutingKey());
+
+        $this->expectException(AMQPEmptyDeliveryTagException::class);
+
+        $copy->getAMQPMessage()->getDeliveryTag();
+    }
+
+    public function testAckOnUnserializedCopyThrows(): void
+    {
+        $copy = unserialize(serialize(new AmqpEnvelope($this->createDeliveredMessage())));
+
+        self::assertInstanceOf(AmqpEnvelope::class, $copy);
+
+        $this->expectException(LogicException::class);
+
+        $copy->ack();
+    }
+
+    public function testNackOnUnserializedCopyThrows(): void
+    {
+        $copy = unserialize(serialize(new AmqpEnvelope($this->createDeliveredMessage())));
+
+        self::assertInstanceOf(AmqpEnvelope::class, $copy);
+
+        $this->expectException(LogicException::class);
+
+        $copy->nack();
+    }
+
+    public function testUnserializedCopyKeepsNoAck(): void
+    {
+        $copy = unserialize(serialize(new AmqpEnvelope($this->createDeliveredMessage(), noAck: true)));
+
+        self::assertInstanceOf(AmqpEnvelope::class, $copy);
+
+        $copy->ack();
+        $copy->nack();
+    }
+
+    private function createDeliveredMessage(): AMQPMessage
+    {
+        // A consumer channel holds its consumer callbacks, which cannot be serialized.
+        $channel = (new ReflectionClass(AMQPChannel::class))->newInstanceWithoutConstructor();
+        /** @psalm-suppress InternalProperty */
+        $channel->callbacks['consumer_tag'] = static function (): void {
+        };
+
+        return (new AMQPMessage('test body', [
+            'content_type' => 'text/plain',
+            'message_id' => 'test message id',
+            'application_headers' => new AMQPTable(['foo' => 'bar']),
+        ]))
+            ->setChannel($channel)
+            ->setDeliveryInfo(42, true, 'exchange_name', 'routing_key')
+            ->setConsumerTag('consumer_tag');
     }
 }
