@@ -42,6 +42,15 @@ class AmqpStampTest extends TestCase
         self::assertTrue($stamp->isRetryAttempt());
     }
 
+    public function testCreateFromAMQPEnvelopeKeepsTheContentEncoding(): void
+    {
+        $amqpEnvelope = new AmqpEnvelope(new AMQPMessage('test', ['content_encoding' => 'gzip']));
+
+        $stamp = AmqpStamp::createFromAMQPEnvelope(amqpEnvelope: $amqpEnvelope, retryRoutingKey: 'test');
+
+        self::assertSame('gzip', $stamp->getAttributes()['content_encoding']);
+    }
+
     public function testCreateFromAMQPEnvelopeWithoutRetryRoutingKey(): void
     {
         $amqpEnvelope = new AmqpEnvelope(new AMQPMessage('test'));

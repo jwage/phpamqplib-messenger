@@ -117,7 +117,8 @@ class AmqpEnvelopeTest extends TestCase
         [$message, $envelope] = $this->createMockEnvelope();
 
         $message->expects(self::once())
-            ->method('getContentEncoding')
+            ->method('get')
+            ->with('content_encoding')
             ->willReturn('test content encoding');
 
         self::assertSame('test content encoding', $envelope->getContentEncoding());
