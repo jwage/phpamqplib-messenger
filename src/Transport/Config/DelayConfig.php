@@ -28,7 +28,12 @@ readonly class DelayConfig
 
     public bool $durable;
 
-    /** @var array<string, mixed> */
+    /**
+     * Extra delay queue arguments. The generated `x-message-ttl`, `x-expires`,
+     * `x-dead-letter-exchange` and `x-dead-letter-routing-key` always take precedence.
+     *
+     * @var array<string, mixed>
+     */
     public array $arguments;
 
     /** @param array<string, mixed> $arguments */
