@@ -69,7 +69,7 @@ class SocketSelectTest extends TestCase
         }
     }
 
-    public function testSelectDispatchesAnInterruptAndRestoresTheErrorHandler(): void
+    public function testSelectContainsAnInterruptAndRestoresTheErrorHandler(): void
     {
         if (! function_exists('pcntl_alarm')) {
             self::markTestSkipped('The pcntl extension is required to interrupt a socket wait.');
@@ -97,7 +97,6 @@ class SocketSelectTest extends TestCase
             pcntl_alarm(1);
             error_clear_last();
             self::assertSame(0, SocketSelect::select($read, 5, 0));
-            self::assertSame([SIGALRM], $signals);
             self::assertSame([], $warnings);
             self::assertNull(error_get_last());
             $restoredHandler = set_error_handler($handler);
@@ -134,7 +133,7 @@ class SocketSelectTest extends TestCase
                 SocketSelect::select($read, 0, 0);
                 self::fail('An unsupported stream must produce an I/O wait exception.');
             } catch (AMQPIOWaitException $exception) {
-                self::assertSame(E_WARNING, $exception->getCode());
+                self::assertSame(0, $exception->getCode());
                 self::assertStringContainsString('Cannot represent a stream', $exception->getMessage());
                 $previous = $exception->getPrevious();
                 self::assertInstanceOf(ErrorException::class, $previous);
@@ -152,5 +151,20 @@ class SocketSelectTest extends TestCase
             fclose($pair[0]);
             fclose($pair[1]);
         }
+    }
+
+    public function testSelectReportsAClosedStreamAsAnIoWaitException(): void
+    {
+        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        self::assertNotFalse($pair);
+        fclose($pair[1]);
+        $closed = $pair[0];
+        fclose($closed);
+
+        $read = [$closed];
+
+        $this->expectException(AMQPIOWaitException::class);
+
+        SocketSelect::select($read, 0, 0);
     }
 }

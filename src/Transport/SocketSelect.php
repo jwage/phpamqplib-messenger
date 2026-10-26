@@ -7,11 +7,10 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 use ErrorException;
 use PhpAmqpLib\Exception\AMQPIOWaitException;
 use PhpAmqpLib\Helper\SocketConstants;
+use TypeError;
+use ValueError;
 
-use function assert;
-use function function_exists;
 use function is_resource;
-use function pcntl_signal_dispatch;
 use function preg_match;
 use function restore_error_handler;
 use function set_error_handler;
@@ -31,7 +30,11 @@ final class SocketSelect
     {
         $streams = [];
         foreach ($read as $key => $socket) {
-            assert(is_resource($socket));
+            // A closed or non-stream socket makes stream_select() throw; report it like any other wait failure.
+            if (! is_resource($socket)) {
+                throw new AMQPIOWaitException('Cannot wait on a socket that is not a valid stream resource');
+            }
+
             $streams[$key] = $socket;
         }
 
@@ -46,7 +49,7 @@ final class SocketSelect
                 return $previousHandler !== null ? $previousHandler($severity, $message, $file, $line) !== false : false;
             }
 
-            $code = preg_match('/\s+\[([1-9]\d*)\]:\s+/', $message, $matches) === 1 ? (int) $matches[1] : $severity;
+            $code = preg_match('/\s+\[([1-9]\d*)\]:\s+/', $message, $matches) === 1 ? (int) $matches[1] : 0;
 
             // Match php-amqplib's StreamIO handling of retryable socket conditions.
             if ($code === $constants->__get('SOCKET_EINTR')) {
@@ -72,15 +75,14 @@ final class SocketSelect
             $selected = stream_select($streams, $write, $except, $seconds, $microseconds);
             $read     = $streams;
 
-            if ($error !== null) {
+            // A warning alongside a positive result does not invalidate the ready sockets.
+            if ($error !== null && ! $selected) {
                 throw new AMQPIOWaitException($error->getMessage(), $error->getCode(), $error);
             }
+        } catch (TypeError | ValueError $e) {
+            throw new AMQPIOWaitException($e->getMessage(), 0, $e);
         } finally {
             restore_error_handler();
-        }
-
-        if (function_exists('pcntl_signal_dispatch')) {
-            pcntl_signal_dispatch();
         }
 
         return $selected === false ? 0 : $selected;
