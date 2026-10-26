@@ -3337,9 +3337,9 @@ class ConnectionTest extends TestCase
         $amqpChannel->expects(self::once())
             ->method('basic_publish')
             ->with(
-                body: $amqpMessage,
-                exchange: 'exchange_name',
-                routing_key: '',
+                $amqpMessage,
+                'exchange_name',
+                '',
             );
 
         $amqpChannel->expects(self::once())
@@ -4592,9 +4592,9 @@ class ConnectionTest extends TestCase
         $amqpChannel->expects(self::once())
             ->method('basic_publish')
             ->with(
-                body: $amqpMessage,
-                exchange: 'exchange_name',
-                routing_key: '',
+                $amqpMessage,
+                'exchange_name',
+                '',
             );
 
         $amqpChannel->expects(self::never())
