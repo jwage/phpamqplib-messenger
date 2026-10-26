@@ -414,6 +414,19 @@ class AmqpEnvelopeTest extends TestCase
         self::assertSame([], $envelope->getAttributes());
     }
 
+    public function testUnserializeDefaultsRedeliveredAndNoAckWhenTheyAreMissing(): void
+    {
+        $envelope = unserialize('O:' . strlen(AmqpEnvelope::class) . ':"' . AmqpEnvelope::class . '":1:{s:11:"deliveryTag";i:5;}');
+
+        self::assertInstanceOf(AmqpEnvelope::class, $envelope);
+        self::assertSame(5, $envelope->getAMQPMessage()->getDeliveryTag());
+        self::assertFalse($envelope->getAMQPMessage()->isRedelivered());
+
+        $this->expectException(LogicException::class);
+
+        $envelope->ack();
+    }
+
     private function createDeliveredMessage(): AMQPMessage
     {
         // A consumer channel holds its consumer callbacks, which cannot be serialized.
