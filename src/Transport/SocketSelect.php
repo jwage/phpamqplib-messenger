@@ -76,7 +76,7 @@ final class SocketSelect
             $read     = $streams;
 
             // A warning alongside a positive result does not invalidate the ready sockets.
-            if ($error !== null && ! $selected) {
+            if ($error !== null && ($selected === false || $selected === 0)) {
                 throw new AMQPIOWaitException($error->getMessage(), $error->getCode(), $error);
             }
         } catch (TypeError | ValueError $e) {
