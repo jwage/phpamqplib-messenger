@@ -27,9 +27,11 @@ use PhpAmqpLib\Exception\AMQPChannelClosedException;
 use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
 use PhpAmqpLib\Exception\AMQPIOException;
+use PhpAmqpLib\Exception\AMQPIOWaitException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
 use ReflectionMethod;
@@ -40,12 +42,18 @@ use Symfony\Component\Messenger\Exception\TransportException;
 use Traversable;
 
 use function assert;
+use function error_clear_last;
+use function error_get_last;
 use function fclose;
+use function fopen;
 use function fwrite;
 use function hrtime;
 use function is_array;
 use function iterator_to_array;
+use function restore_error_handler;
+use function set_error_handler;
 use function stream_get_contents;
+use function stream_select;
 use function stream_set_blocking;
 use function stream_socket_pair;
 
@@ -2867,6 +2875,145 @@ class ConnectionTest extends TestCase
         $connection->drainConsumerChannel();
     }
 
+    /** @return iterable<string, array{bool, bool}> */
+    public static function provideSocketFailurePaths(): iterable
+    {
+        yield 'individual readiness probe' => [false, true];
+        yield 'aggregate wait followed by individual recovery' => [true, true];
+        yield 'aggregate wait without a coordinator logger' => [true, false];
+    }
+
+    #[DataProvider('provideSocketFailurePaths')]
+    public function testDrainConsumerChannelClosesWhenItsSocketCannotBeSelected(bool $coordinated, bool $withCoordinatorLogger): void
+    {
+        $descriptors = [];
+        $pair        = false;
+        $healthyPair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        self::assertNotFalse($healthyPair);
+
+        try {
+            // A valid socket above FD_SETSIZE produces a genuine select warning,
+            // unlike a closed PHP resource, which raises a programming error.
+            for ($i = 0; $i < 1100; $i++) {
+                $descriptor = @fopen('/dev/null', 'r');
+                if ($descriptor === false) {
+                    self::markTestSkipped('The descriptor limit is too low to exercise FD_SETSIZE.');
+                }
+
+                $descriptors[] = $descriptor;
+            }
+
+            $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+            if ($pair === false) {
+                self::fail('stream_socket_pair failed');
+            }
+
+            [$left]  = $pair;
+            $read    = [$left];
+            $write   = $except = null;
+            $warning = null;
+            set_error_handler(static function (int $severity, string $message) use (&$warning): bool {
+                $warning = $message;
+
+                return true;
+            });
+            try {
+                stream_select($read, $write, $except, 0);
+            } finally {
+                restore_error_handler();
+            }
+
+            if ($warning === null) {
+                self::markTestSkipped('This PHP build supports selecting the allocated high descriptor.');
+            }
+
+            $factory        = $this->createStub(AmqpConnectionFactory::class);
+            $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+            $channel        = $this->createMock(AMQPChannel::class);
+            $logger         = $this->createMock(LoggerInterface::class);
+            $factory->method('create')->willReturn($amqpConnection);
+            $amqpConnection->method('channel')->willReturn($channel);
+            $amqpConnection->method('isConnected')->willReturn(true);
+            $amqpConnection->expects(self::once())->method('close');
+            $channel->method('is_open')->willReturn(true);
+            $channel->method('is_consuming')->willReturn(true);
+            if ($coordinated) {
+                // The pre-drain processes pending channel work before the shared
+                // wait encounters the unselectable descriptor.
+                $channel->method('hasPendingMethods')->willReturn(true, false);
+                $channel->expects(self::once())->method('wait')
+                    ->willThrowException(new AMQPTimeoutException('no delivery'));
+            } else {
+                $channel->method('hasPendingMethods')->willReturn(false);
+                $channel->expects(self::never())->method('wait');
+            }
+
+            $loggedWarnings = [];
+            $logger->expects(self::exactly($coordinated && $withCoordinatorLogger ? 2 : 1))->method('warning')
+                ->willReturnCallback(static function (string $message, array $context) use (&$loggedWarnings, $warning): void {
+                    self::assertSame($warning, $context['message']);
+                    self::assertInstanceOf(AMQPIOWaitException::class, $context['exception']);
+                    $loggedWarnings[] = $message;
+                });
+            $connection = new Connection(
+                retryFactory: new RetryFactory(),
+                amqpConnectionFactory: $factory,
+                connectionConfig: new ConnectionConfig(autoSetup: false, confirmEnabled: false),
+                logger: $logger,
+            );
+            $connection->consumerChannel();
+            $this->bindAmqpSocket($connection, $amqpConnection, $left);
+
+            $errorHandler = static fn (): bool => true;
+            set_error_handler($errorHandler);
+            error_clear_last();
+            try {
+                if ($coordinated) {
+                    $healthy = $this->createMock(Connection::class);
+                    $healthy->method('getConsumerSocket')->willReturn($healthyPair[0]);
+                    $healthy->expects(self::exactly(2))->method('drainConsumerChannel')->willReturn(false);
+                    $healthy->expects(self::never())->method('close');
+                    $coordinator = new ConsumerWaitCoordinator(logger: $withCoordinatorLogger ? $logger : null);
+                    $coordinator->register($connection);
+                    $coordinator->register($healthy);
+                    $coordinator->wait(0.01);
+                    $expectedWarnings = [];
+                    if ($withCoordinatorLogger) {
+                        $expectedWarnings[] = 'AMQP exception occurred while waiting for consumer sockets: {message}';
+                    }
+
+                    $expectedWarnings[] = 'AMQP exception occurred while draining consumer channel: {message}';
+                    self::assertSame($expectedWarnings, $loggedWarnings);
+                } else {
+                    self::assertFalse($connection->drainConsumerChannel());
+                    self::assertSame(['AMQP exception occurred while draining consumer channel: {message}'], $loggedWarnings);
+                }
+
+                self::assertNull($connection->getConsumerSocket());
+                self::assertNull(error_get_last());
+                $restoredHandler = set_error_handler($errorHandler);
+                restore_error_handler();
+                self::assertSame($errorHandler, $restoredHandler);
+            } finally {
+                restore_error_handler();
+            }
+        } finally {
+            foreach ($healthyPair as $socket) {
+                fclose($socket);
+            }
+
+            if ($pair !== false) {
+                foreach ($pair as $socket) {
+                    fclose($socket);
+                }
+            }
+
+            foreach ($descriptors as $descriptor) {
+                fclose($descriptor);
+            }
+        }
+    }
+
     public function testDrainConsumerChannelClosesOnAmqpExceptionWithoutALogger(): void
     {
         $connectionConfig = new ConnectionConfig(
@@ -3190,9 +3337,9 @@ class ConnectionTest extends TestCase
         $amqpChannel->expects(self::once())
             ->method('basic_publish')
             ->with(
-                body: $amqpMessage,
-                exchange: 'exchange_name',
-                routing_key: '',
+                $amqpMessage,
+                'exchange_name',
+                '',
             );
 
         $amqpChannel->expects(self::once())
@@ -4445,9 +4592,9 @@ class ConnectionTest extends TestCase
         $amqpChannel->expects(self::once())
             ->method('basic_publish')
             ->with(
-                body: $amqpMessage,
-                exchange: 'exchange_name',
-                routing_key: '',
+                $amqpMessage,
+                'exchange_name',
+                '',
             );
 
         $amqpChannel->expects(self::never())

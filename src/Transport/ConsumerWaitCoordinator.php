@@ -5,18 +5,17 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Debug;
+use PhpAmqpLib\Exception\AMQPIOWaitException;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Exception\TransportException;
-use Throwable;
 
 use function count;
 use function function_exists;
 use function intdiv;
-use function is_int;
 use function max;
 use function pcntl_signal_dispatch;
 use function round;
 use function spl_object_id;
-use function stream_select;
 use function usleep;
 
 /**
@@ -38,6 +37,7 @@ class ConsumerWaitCoordinator
 
     public function __construct(
         private Debug $debug = new Debug(),
+        private LoggerInterface|null $logger = null,
     ) {
     }
 
@@ -152,8 +152,6 @@ class ConsumerWaitCoordinator
             return;
         }
 
-        $write        = null;
-        $except       = null;
         $ready        = $read;
         [$sec, $usec] = $this->splitTimeout($timeout);
 
@@ -165,9 +163,14 @@ class ConsumerWaitCoordinator
         ]);
 
         try {
-            /** @psalm-suppress InvalidArgument */
-            $selected = stream_select($ready, $write, $except, $sec, $usec);
-        } catch (Throwable) {
+            $selected = SocketSelect::select($ready, $sec, $usec);
+        } catch (AMQPIOWaitException $e) {
+            $this->logger?->warning('AMQP exception occurred while waiting for consumer sockets: {message}', [
+                'message' => $e->getMessage(),
+                'exception' => $e,
+            ]);
+
+            // Probe each connection below so only failed sockets are logged and closed.
             $selected = 0;
         }
 
@@ -181,7 +184,7 @@ class ConsumerWaitCoordinator
             pcntl_signal_dispatch();
         }
 
-        if (is_int($selected) && $selected > 0) {
+        if ($selected > 0) {
             foreach ($indexed as $index => $connection) {
                 if (isset($ready[$index])) {
                     $connection->drainConsumerChannel();
