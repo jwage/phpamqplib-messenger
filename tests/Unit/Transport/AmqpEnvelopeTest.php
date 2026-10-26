@@ -16,6 +16,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use ReflectionClass;
 
 use function serialize;
+use function strlen;
 use function unserialize;
 
 class AmqpEnvelopeTest extends TestCase
@@ -376,6 +377,7 @@ class AmqpEnvelopeTest extends TestCase
         self::assertInstanceOf(AmqpEnvelope::class, $copy);
 
         $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Cannot ack an AmqpEnvelope that was unserialized');
 
         $copy->ack();
     }
@@ -387,6 +389,7 @@ class AmqpEnvelopeTest extends TestCase
         self::assertInstanceOf(AmqpEnvelope::class, $copy);
 
         $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Cannot nack an AmqpEnvelope that was unserialized');
 
         $copy->nack();
     }
@@ -399,6 +402,16 @@ class AmqpEnvelopeTest extends TestCase
 
         $copy->ack();
         $copy->nack();
+    }
+
+    public function testUnserializeToleratesAPayloadWithMissingKeys(): void
+    {
+        $envelope = unserialize('O:' . strlen(AmqpEnvelope::class) . ':"' . AmqpEnvelope::class . '":1:{s:4:"body";s:4:"test";}');
+
+        self::assertInstanceOf(AmqpEnvelope::class, $envelope);
+        self::assertSame('test', $envelope->getBody());
+        self::assertNull($envelope->getRoutingKey());
+        self::assertSame([], $envelope->getAttributes());
     }
 
     private function createDeliveredMessage(): AMQPMessage
