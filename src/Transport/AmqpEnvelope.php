@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 
+use LogicException;
 use OutOfBoundsException;
 use PhpAmqpLib\Exception\AMQPEmptyDeliveryTagException;
 use PhpAmqpLib\Message\AMQPMessage;
@@ -12,9 +13,13 @@ use PhpAmqpLib\Wire\AMQPTable;
 use function assert;
 use function is_numeric;
 use function is_string;
+use function sprintf;
 
 class AmqpEnvelope
 {
+    /** True for a copy that went through serialization and so has no channel to ack or nack on. */
+    private bool $detached = false;
+
     public function __construct(
         private AMQPMessage $amqpMessage,
         private bool $noAck = false,
@@ -49,17 +54,30 @@ class AmqpEnvelope
         ];
     }
 
-    /**
-     * @param array{body: string, properties: array<mixed>, deliveryTag: int|null, redelivered: bool|null, exchange: string|null, routingKey: string|null, consumerTag: string|null, noAck: bool} $data
-     *
-     * @psalm-suppress PossiblyNullArgument
-     */
+    /** @param array{body?: string, properties?: array<mixed>, deliveryTag?: int|null, redelivered?: bool|null, exchange?: string|null, routingKey?: string|null, consumerTag?: string|null, noAck?: bool} $data */
     public function __unserialize(array $data): void
     {
-        $this->amqpMessage = (new AMQPMessage($data['body'], $data['properties']))
-            ->setDeliveryInfo($data['deliveryTag'], $data['redelivered'], $data['exchange'], $data['routingKey'])
-            ->setConsumerTag($data['consumerTag']);
-        $this->noAck       = $data['noAck'];
+        $message = new AMQPMessage($data['body'] ?? '', $data['properties'] ?? []);
+
+        // A message that was never delivered has no delivery info to restore.
+        $deliveryTag = $data['deliveryTag'] ?? null;
+        if ($deliveryTag !== null) {
+            $message->setDeliveryInfo(
+                $deliveryTag,
+                $data['redelivered'] ?? false,
+                $data['exchange'] ?? '',
+                $data['routingKey'] ?? '',
+            );
+        }
+
+        $consumerTag = $data['consumerTag'] ?? null;
+        if ($consumerTag !== null) {
+            $message->setConsumerTag($consumerTag);
+        }
+
+        $this->amqpMessage = $message;
+        $this->noAck       = $data['noAck'] ?? false;
+        $this->detached    = true;
     }
 
     public function getAMQPMessage(): AMQPMessage
@@ -76,22 +94,34 @@ class AmqpEnvelope
         return $attributes;
     }
 
+    /** @throws LogicException When the envelope is an unserialized copy. */
     public function ack(): void
     {
         if ($this->noAck) {
             return;
         }
 
+        $this->assertNotDetached('ack');
         $this->amqpMessage->ack();
     }
 
+    /** @throws LogicException When the envelope is an unserialized copy. */
     public function nack(): void
     {
         if ($this->noAck) {
             return;
         }
 
+        $this->assertNotDetached('nack');
         $this->amqpMessage->nack();
+    }
+
+    /** @throws LogicException */
+    private function assertNotDetached(string $operation): void
+    {
+        if ($this->detached) {
+            throw new LogicException(sprintf('Cannot %s an AmqpEnvelope that was unserialized: only the process holding the original channel can acknowledge the message.', $operation));
+        }
     }
 
     public function getBody(): string
