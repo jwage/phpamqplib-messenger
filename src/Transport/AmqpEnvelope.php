@@ -111,7 +111,7 @@ class AmqpEnvelope
 
     public function getContentEncoding(): string|null
     {
-        return $this->amqpMessage->getContentEncoding();
+        return $this->getString('content_encoding');
     }
 
     /** @return array<string, string> */
