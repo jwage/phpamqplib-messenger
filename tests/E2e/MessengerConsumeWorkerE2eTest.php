@@ -134,5 +134,9 @@ class MessengerConsumeWorkerE2eTest extends E2eTestCase
 
         self::assertSame([$id], $this->idsOf($this->recordsOfType(E2eMessage::class)));
         $this->assertQueueEventuallyEmpty('e2e_high');
+
+        // The keepalive alarm must be absorbed by the wait, not reported as a PHP warning.
+        self::assertStringNotContainsString('Interrupted system call', $consume->debugOutput());
+        self::assertStringNotContainsString('Unable to select', $consume->debugOutput());
     }
 }

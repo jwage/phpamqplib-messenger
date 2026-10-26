@@ -7,8 +7,12 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\E2e\E2eMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\E2e\E2eSslMessage;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\E2e\E2eTestCase;
+use Symfony\Component\Console\SignalRegistry\SignalRegistry;
+use Symfony\Component\Messenger\Transport\Receiver\KeepaliveReceiverInterface;
 use Throwable;
 
+use function class_exists;
+use function interface_exists;
 use function microtime;
 use function putenv;
 use function sprintf;
@@ -31,6 +35,37 @@ class MessengerConsumeChaosE2eTest extends E2eTestCase
         $this->dispatchUntilSuccess(new E2eMessage($id));
         $this->waitForRecord(E2eMessage::class, $id, timeout: 30.0);
         $this->assertConsumeExitsSuccessfully();
+    }
+
+    public function testMessengerConsumeWithKeepaliveRecoversAfterBrokerRestart(): void
+    {
+        if (! interface_exists(KeepaliveReceiverInterface::class)) {
+            self::markTestSkipped('messenger:consume --keepalive requires Symfony >= 7.2');
+        }
+
+        if (! class_exists(SignalRegistry::class) || ! SignalRegistry::isSupported()) {
+            self::markTestSkipped('messenger:consume --keepalive requires pcntl signals');
+        }
+
+        if (! $this->consumeSupports('--keepalive')) {
+            self::markTestSkipped('messenger:consume --keepalive is not available');
+        }
+
+        $id = $this->uniqueId('keepalive_restart');
+
+        $consume = $this->startConsume(['e2e_high'], limit: 1, timeLimit: 40, extra: ['--keepalive=1']);
+        $this->waitUntilConsuming($consume);
+
+        // Let the keepalive alarm interrupt the socket wait before and after the broker drops the connection.
+        usleep(2_500_000);
+        $this->harness->broker('restart');
+        $this->harness->waitUntilReady();
+
+        $this->dispatchUntilSuccess(new E2eMessage($id));
+        $this->waitForRecord(E2eMessage::class, $id, timeout: 30.0);
+        $this->assertConsumeExitsSuccessfully($consume);
+
+        self::assertStringNotContainsString('Interrupted system call', $consume->debugOutput());
     }
 
     public function testMessengerConsumeWorksOverTls(): void
