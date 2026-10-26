@@ -7,8 +7,6 @@ namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
 use ErrorException;
 use PhpAmqpLib\Exception\AMQPIOWaitException;
 use PhpAmqpLib\Helper\SocketConstants;
-use TypeError;
-use ValueError;
 
 use function is_resource;
 use function preg_match;
@@ -79,8 +77,6 @@ final class SocketSelect
             if ($error !== null && ($selected === false || $selected === 0)) {
                 throw new AMQPIOWaitException($error->getMessage(), $error->getCode(), $error);
             }
-        } catch (TypeError | ValueError $e) {
-            throw new AMQPIOWaitException($e->getMessage(), 0, $e);
         } finally {
             restore_error_handler();
         }
