@@ -47,6 +47,7 @@ use function error_get_last;
 use function fclose;
 use function fopen;
 use function fwrite;
+use function gmdate;
 use function hrtime;
 use function is_array;
 use function iterator_to_array;
@@ -3457,6 +3458,41 @@ class ConnectionTest extends TestCase
                 arguments: new AMQPTable([
                     'x-message-ttl' => 5000,
                     'x-expires' => 15000,
+                    'x-dead-letter-exchange' => 'exchange_name',
+                    'x-dead-letter-routing-key' => 'orders',
+                ]),
+            );
+
+        $connection->publish(
+            body: 'test body',
+            delayInMs: 5000,
+            amqpStamp: new AmqpStamp('orders'),
+        );
+    }
+
+    public function testDailyDelayQueuesUseDatedQueueNameAndOneDayExpiry(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            autoSetup: false,
+            confirmEnabled: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            delay: new DelayConfig(dailyDelayQueues: true),
+        );
+
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock($connectionConfig);
+
+        $amqpChannel->expects(self::once())
+            ->method('queue_declare')
+            ->with(
+                queue: 'delay_exchange_name_orders_5000_' . gmdate('Ymd') . '_delay',
+                passive: false,
+                durable: false,
+                exclusive: false,
+                auto_delete: true,
+                nowait: false,
+                arguments: new AMQPTable([
+                    'x-message-ttl' => 5000,
+                    'x-expires' => 86405000,
                     'x-dead-letter-exchange' => 'exchange_name',
                     'x-dead-letter-routing-key' => 'orders',
                 ]),
