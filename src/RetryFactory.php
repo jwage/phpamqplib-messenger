@@ -7,6 +7,7 @@ namespace Jwage\PhpAmqpLibMessengerBundle;
 use Closure;
 use PhpAmqpLib\Exception\AMQPChannelClosedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
+use PhpAmqpLib\Exception\AMQPInvalidFrameException;
 use PhpAmqpLib\Exception\AMQPIOException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use Psr\Log\LoggerInterface;
@@ -30,6 +31,7 @@ class RetryFactory
             ->catch([
                 AMQPChannelClosedException::class,
                 AMQPConnectionClosedException::class,
+                AMQPInvalidFrameException::class,
                 AMQPIOException::class,
                 AMQPTimeoutException::class,
             ]);

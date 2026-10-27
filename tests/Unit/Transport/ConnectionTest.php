@@ -26,6 +26,7 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPChannelClosedException;
 use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
+use PhpAmqpLib\Exception\AMQPInvalidFrameException;
 use PhpAmqpLib\Exception\AMQPIOException;
 use PhpAmqpLib\Exception\AMQPIOWaitException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
@@ -5885,6 +5886,126 @@ class ConnectionTest extends TestCase
 
         self::assertSame(3, $count);
         self::assertSame('test', $check);
+    }
+
+    public function testRetryWithReconnectRetriesWhenReconnectThrowsAnInvalidFrame(): void
+    {
+        [$connection, $amqpConnection] = $this->createConnectionWithConnectionMock();
+
+        $connection->channel();
+
+        // A broker mid-election can answer the reconnect handshake with a non-AMQP header.
+        $amqpConnection->expects(self::exactly(3))
+            ->method('reconnect')
+            ->willReturnOnConsecutiveCalls(
+                self::throwException(new AMQPInvalidFrameException('Invalid frame type 65')),
+                self::throwException(new AMQPInvalidFrameException('Invalid frame type 65')),
+                null,
+            );
+
+        $count  = 0;
+        $result = $connection->retryWithReconnect(static function () use (&$count): string {
+            $count++;
+
+            if ($count === 1) {
+                throw new AMQPConnectionClosedException('Broken pipe or closed connection');
+            }
+
+            return 'recovered';
+        }, waitTime: 0)->run();
+
+        self::assertSame('recovered', $result);
+        self::assertSame(2, $count);
+    }
+
+    public function testDirectPublishOpensAFreshConnectionWhenAnInvalidFrameLeavesTheConnectionOpen(): void
+    {
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+
+        // php-amqplib does not mark the connection closed after a framing error, so
+        // isConnected() stays true while the stream is desynchronized.
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+        $amqpConnection->expects(self::once())
+            ->method('close');
+
+        $amqpChannel1->method('confirm_select');
+        $amqpChannel1->expects(self::once())
+            ->method('basic_publish')
+            ->willThrowException(new AMQPInvalidFrameException('Invalid frame type 65'));
+
+        $amqpChannel2->method('confirm_select');
+        $amqpChannel2->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel2->expects(self::once())
+            ->method('wait_for_pending_acks');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: new ConnectionConfig(
+                autoSetup: false,
+                confirmEnabled: true,
+                exchange: new ExchangeConfig(name: 'exchange_name'),
+            ),
+        );
+
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $connection->publish(body: 'retried body');
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+    }
+
+    public function testDirectPublishReportsTheInvalidFrameWhenClosingTheCorruptedConnectionFails(): void
+    {
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+        $amqpConnection->expects(self::once())
+            ->method('close')
+            ->willThrowException(new AMQPIOException('Broken pipe while closing'));
+
+        $amqpChannel->method('confirm_select');
+        $amqpChannel->expects(self::once())
+            ->method('basic_publish')
+            ->willThrowException(new AMQPInvalidFrameException('Invalid frame type 65'));
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: new ConnectionConfig(
+                autoSetup: false,
+                confirmEnabled: true,
+                retriesEnabled: false,
+                exchange: new ExchangeConfig(name: 'exchange_name'),
+            ),
+        );
+
+        try {
+            $connection->publish(body: 'test body');
+
+            self::fail('Expected the publish to fail.');
+        } catch (TransportException $e) {
+            // The close failure must not replace the original exception.
+            self::assertInstanceOf(AMQPInvalidFrameException::class, $e->getPrevious());
+            self::assertSame('Invalid frame type 65', $e->getMessage());
+        }
     }
 
     public function testRetryWithReconnectFailure(): void

@@ -16,6 +16,7 @@ use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
+use PhpAmqpLib\Exception\AMQPInvalidFrameException;
 use PhpAmqpLib\Exception\AMQPIOWaitException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
@@ -690,6 +691,16 @@ class Connection
                     // A failed attempt can leave the channel in a selected/dirty transaction
                     // (or confirm) state. Drop it so the next publish cannot reuse it.
                     $this->discardChannel();
+
+                    // php-amqplib keeps reporting a desynchronized stream as connected.
+                    // Close it so the retry opens a fresh connection instead of reusing the
+                    // socket; the original exception is the one worth reporting.
+                    if ($e instanceof AMQPInvalidFrameException) {
+                        try {
+                            $this->close();
+                        } catch (AMQPExceptionInterface) {
+                        }
+                    }
 
                     throw $e;
                 }
