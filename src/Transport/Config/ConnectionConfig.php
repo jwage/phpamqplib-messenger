@@ -10,6 +10,7 @@ use PhpAmqpLib\Connection\AMQPConnectionConfig;
 use SensitiveParameter;
 
 use function array_keys;
+use function gmdate;
 use function is_string;
 use function sprintf;
 use function str_replace;
@@ -275,6 +276,7 @@ readonly class ConnectionConfig
      *         },
      *         queue_name_pattern?: string,
      *         durable?: bool|mixed,
+     *         daily_delay_queues?: bool|mixed,
      *     },
      *     queues?: array<int|string, array{
      *         name?: string,
@@ -413,7 +415,7 @@ readonly class ConnectionConfig
                 $routingKey ?? '',
             ],
             $this->delay->queueNamePattern,
-        ) . $action;
+        ) . ($this->delay->dailyDelayQueues ? '_' . gmdate('Ymd') : '') . $action;
     }
 
     /**

@@ -112,6 +112,7 @@ class DsnParser
          *         },
          *         queue_name_pattern?: string,
          *         durable?: bool,
+         *         daily_delay_queues?: bool,
          *     },
          *     queues: array<string, array{
          *         passive?: bool,

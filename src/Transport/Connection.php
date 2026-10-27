@@ -1189,7 +1189,7 @@ class Connection
                 $this->connectionConfig->delay->arguments,
                 [
                     'x-message-ttl' => $delay,
-                    'x-expires' => $delay + 10000,
+                    'x-expires' => $delay + ($this->connectionConfig->delay->dailyDelayQueues ? 86400000 : 10000),
                     'x-dead-letter-exchange' => $isRetryAttempt ? '' : $this->connectionConfig->exchange->name,
                     'x-dead-letter-routing-key' => $routingKey ?? '',
                 ],
