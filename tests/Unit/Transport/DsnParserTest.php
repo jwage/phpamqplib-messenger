@@ -14,6 +14,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\QueueConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Config\SslConfig;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\DsnParser;
 use PhpAmqpLib\Connection\AMQPConnectionConfig;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 use function http_build_query;
 
@@ -124,6 +125,22 @@ class DsnParserTest extends TestCase
         $connectionConfig = $this->dsnParser->parseDsn('phpamqplibs://', self::getConnectionConfig());
 
         self::assertConnectionConfig($connectionConfig);
+    }
+
+    /** @return iterable<string, array{string, string, string}> */
+    public static function provideDefaultVhostDsns(): iterable
+    {
+        yield 'single trailing slash' => ['phpamqplib://guest:guest@localhost:5672/', '/', 'messages'];
+        yield 'double slash' => ['phpamqplib://guest:guest@localhost:5672//', '/', 'messages'];
+    }
+
+    #[DataProvider('provideDefaultVhostDsns')]
+    public function testParseDsnUsesDefaultVhostWhenPathVhostIsEmpty(string $dsn, string $vhost, string $exchange): void
+    {
+        $connectionConfig = $this->dsnParser->parseDsn($dsn);
+
+        self::assertSame($vhost, $connectionConfig->vhost);
+        self::assertSame($exchange, $connectionConfig->exchange->name);
     }
 
     public function testParseDsnWithBooleanAutoSetup(): void
