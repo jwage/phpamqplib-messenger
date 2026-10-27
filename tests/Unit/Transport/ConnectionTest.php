@@ -5882,7 +5882,7 @@ class ConnectionTest extends TestCase
         self::assertSame(2, $count);
     }
 
-    public function testDirectPublishReconnectsWhenAnInvalidFrameLeavesTheConnectionOpen(): void
+    public function testDirectPublishOpensAFreshConnectionWhenAnInvalidFrameLeavesTheConnectionOpen(): void
     {
         $factory        = $this->createStub(AmqpConnectionFactory::class);
         $amqpConnection = $this->createMock(AMQPStreamConnection::class);
@@ -5898,7 +5898,7 @@ class ConnectionTest extends TestCase
             ->method('channel')
             ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
         $amqpConnection->expects(self::once())
-            ->method('reconnect');
+            ->method('close');
 
         $amqpChannel1->method('confirm_select');
         $amqpChannel1->expects(self::once())
