@@ -692,6 +692,12 @@ class Connection
                     // (or confirm) state. Drop it so the next publish cannot reuse it.
                     $this->discardChannel();
 
+                    // php-amqplib keeps reporting a desynchronized stream as connected, so
+                    // replace it here or the retry would reuse the corrupted socket.
+                    if ($e instanceof AMQPInvalidFrameException) {
+                        $this->reconnect();
+                    }
+
                     throw $e;
                 }
             })->run();
@@ -845,9 +851,7 @@ class Connection
      *
      * The failed publisher channel is discarded by the operation before a retry. A
      * reconnect is necessary only when the entire AMQP connection is dead; reconnecting
-     * for a channel-local failure would invalidate live consumer delivery tags. An
-     * invalid frame is the exception: the stream is desynchronized yet php-amqplib
-     * still reports the connection as open, so it always forces a reconnect.
+     * for a channel-local failure would invalidate live consumer delivery tags.
      *
      * @param positive-int|0 $waitTime
      *
@@ -859,25 +863,14 @@ class Connection
         int|null $waitTime = null,
         bool|null $jitter = null,
     ): Retry {
-        $desynchronized = false;
-
         return $this->retryFactory->retry(
-            static function (Retry $retry) use ($run, &$desynchronized): mixed {
-                try {
-                    return $run($retry);
-                } catch (AMQPInvalidFrameException $e) {
-                    $desynchronized = true;
-
-                    throw $e;
-                }
-            },
+            $run,
             $this->resolveRetries($retries),
             $this->resolveWaitTime($waitTime),
             $jitter,
         )
-            ->beforeRetry(function () use (&$desynchronized): void {
-                if ($desynchronized || ! $this->isConnected()) {
-                    $desynchronized = false;
+            ->beforeRetry(function (): void {
+                if (! $this->isConnected()) {
                     $this->reconnect();
                 }
             });
