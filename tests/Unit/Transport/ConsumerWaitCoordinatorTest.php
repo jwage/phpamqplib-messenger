@@ -16,6 +16,7 @@ use Symfony\Component\Messenger\Exception\TransportException;
 
 use function assert;
 use function fclose;
+use function fopen;
 use function fread;
 use function function_exists;
 use function fwrite;
@@ -28,6 +29,7 @@ use function pcntl_signal;
 use function pcntl_signal_get_handler;
 use function restore_error_handler;
 use function set_error_handler;
+use function stream_select;
 use function stream_set_blocking;
 use function stream_socket_pair;
 
@@ -527,6 +529,78 @@ class ConsumerWaitCoordinatorTest extends TestCase
         } finally {
             fclose($left);
             fclose($right);
+        }
+    }
+
+    public function testWaitReportsZeroSelectedSocketsWhenSelectingFails(): void
+    {
+        $descriptors = [];
+        $pair        = false;
+
+        try {
+            // A valid socket above FD_SETSIZE produces a genuine select warning,
+            // unlike a closed PHP resource, which raises a programming error.
+            for ($i = 0; $i < 1100; $i++) {
+                $descriptor = @fopen('/dev/null', 'r');
+                if ($descriptor === false) {
+                    self::markTestSkipped('The descriptor limit is too low to exercise FD_SETSIZE.');
+                }
+
+                $descriptors[] = $descriptor;
+            }
+
+            $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+            if ($pair === false) {
+                self::fail('stream_socket_pair failed');
+            }
+
+            [$left] = $pair;
+
+            $read    = [$left];
+            $write   = $except = null;
+            $warning = null;
+            set_error_handler(static function (int $severity, string $message) use (&$warning): bool {
+                $warning = $message;
+
+                return true;
+            });
+            try {
+                stream_select($read, $write, $except, 0);
+            } finally {
+                restore_error_handler();
+            }
+
+            if ($warning === null) {
+                self::markTestSkipped('This PHP build supports selecting the allocated high descriptor.');
+            }
+
+            $connection = $this->createMock(Connection::class);
+            $connection->method('getConsumerSocket')->willReturn($left);
+            $connection->method('hasBufferedDeliveries')->willReturn(false);
+            $connection->expects(self::exactly(2))
+                ->method('drainConsumerChannel')
+                ->willReturn(false);
+
+            $logger      = new CollectingLogger();
+            $coordinator = new ConsumerWaitCoordinator(new Debug($logger, true), $logger);
+            $coordinator->register($connection);
+
+            $coordinator->wait(0.01);
+
+            self::assertSame(
+                ['selected' => 0, 'sockets' => 1],
+                $logger->contextFor('stream_select finished'),
+            );
+        } finally {
+            foreach ($descriptors as $descriptor) {
+                fclose($descriptor);
+            }
+
+            if ($pair !== false) {
+                foreach ($pair as $socket) {
+                    fclose($socket);
+                }
+            }
         }
     }
 
