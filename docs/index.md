@@ -235,6 +235,11 @@ framework:
                         enabled: true
                         auto_setup: true
                         queue_name_pattern: 'delay_%exchange_name%_%routing_key%_%delay%'
+                        # Create a separate delay/retry queue per day (the UTC date is
+                        # appended to the queue name) with an `x-expires` of one day plus
+                        # the delay. Useful with quorum queues, which do not refresh a
+                        # queue's expiration on redeclare. Defaults to false.
+                        daily_delay_queues: false
                         # Declare the delay/retry queues as durable. Defaults to false.
                         # RabbitMQ 4.3+ denies the deprecated `transient_nonexcl_queues`
                         # feature by default, which makes the transient delay queue

@@ -13,6 +13,8 @@ use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 
+use function gmdate;
+
 class ConnectionConfigTest extends TestCase
 {
     public function testDefaultConstruct(): void
@@ -385,6 +387,19 @@ class ConnectionConfigTest extends TestCase
         self::expectExceptionMessage('Transactions and confirms cannot be enabled at the same time. You must choose one.');
 
         new ConnectionConfig(transactionsEnabled: true, confirmEnabled: true);
+    }
+
+    public function testGetDelayQueueNameWithDailyDelayQueues(): void
+    {
+        $connectionConfig = new ConnectionConfig(
+            exchange: new ExchangeConfig(name: 'my_queue_name'),
+            delay: new DelayConfig(dailyDelayQueues: true),
+        );
+
+        self::assertSame(
+            'delay_my_queue_name_routing_key_1000_' . gmdate('Ymd') . '_delay',
+            $connectionConfig->getDelayQueueName(delay: 1000, routingKey: 'routing_key', isRetryAttempt: false),
+        );
     }
 
     public function testGetQueueName(): void

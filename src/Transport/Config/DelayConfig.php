@@ -15,6 +15,7 @@ readonly class DelayConfig
         'auto_setup',
         'queue_name_pattern',
         'durable',
+        'daily_delay_queues',
         'arguments',
     ];
 
@@ -27,6 +28,8 @@ readonly class DelayConfig
     public string $queueNamePattern;
 
     public bool $durable;
+
+    public bool $dailyDelayQueues;
 
     /**
      * Extra delay queue arguments. The generated `x-message-ttl`, `x-expires`,
@@ -43,6 +46,7 @@ readonly class DelayConfig
         bool|null $autoSetup = null,
         string|null $queueNamePattern = null,
         bool|null $durable = null,
+        bool|null $dailyDelayQueues = null,
         array|null $arguments = [],
     ) {
         $this->exchange = $exchange ?? new ExchangeConfig(
@@ -54,6 +58,7 @@ readonly class DelayConfig
         $this->autoSetup        = $autoSetup ?? true;
         $this->queueNamePattern = $queueNamePattern ?? 'delay_%exchange_name%_%routing_key%_%delay%';
         $this->durable          = $durable ?? false;
+        $this->dailyDelayQueues = $dailyDelayQueues ?? false;
         $this->arguments        = $arguments ?? [];
     }
 
@@ -72,6 +77,7 @@ readonly class DelayConfig
      *     auto_setup?: bool|mixed,
      *     queue_name_pattern?: string,
      *     durable?: bool|mixed,
+     *     daily_delay_queues?: bool|mixed,
      *     arguments?: array<string, mixed>,
      * } $delayConfig
      *
@@ -87,6 +93,7 @@ readonly class DelayConfig
             autoSetup: ConfigHelper::getBool($delayConfig, 'auto_setup'),
             queueNamePattern: ConfigHelper::getString($delayConfig, 'queue_name_pattern'),
             durable: ConfigHelper::getBool($delayConfig, 'durable'),
+            dailyDelayQueues: ConfigHelper::getBool($delayConfig, 'daily_delay_queues'),
             arguments: ConfigHelper::getArray($delayConfig, 'arguments'),
         );
     }
