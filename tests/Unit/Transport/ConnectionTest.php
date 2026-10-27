@@ -5931,6 +5931,47 @@ class ConnectionTest extends TestCase
         }
     }
 
+    public function testDirectPublishReportsTheInvalidFrameWhenClosingTheCorruptedConnectionFails(): void
+    {
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel    = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->method('channel')->willReturn($amqpChannel);
+        $amqpConnection->expects(self::once())
+            ->method('close')
+            ->willThrowException(new AMQPIOException('Broken pipe while closing'));
+
+        $amqpChannel->method('confirm_select');
+        $amqpChannel->expects(self::once())
+            ->method('basic_publish')
+            ->willThrowException(new AMQPInvalidFrameException('Invalid frame type 65'));
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: new ConnectionConfig(
+                autoSetup: false,
+                confirmEnabled: true,
+                retriesEnabled: false,
+                exchange: new ExchangeConfig(name: 'exchange_name'),
+            ),
+        );
+
+        try {
+            $connection->publish(body: 'test body');
+
+            self::fail('Expected the publish to fail.');
+        } catch (TransportException $e) {
+            // The close failure must not replace the original exception.
+            self::assertInstanceOf(AMQPInvalidFrameException::class, $e->getPrevious());
+            self::assertSame('Invalid frame type 65', $e->getMessage());
+        }
+    }
+
     public function testRetryWithReconnectFailure(): void
     {
         self::expectException(TransportException::class);
