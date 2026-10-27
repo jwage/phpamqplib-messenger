@@ -16,6 +16,7 @@ use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPExceptionInterface;
+use PhpAmqpLib\Exception\AMQPInvalidFrameException;
 use PhpAmqpLib\Exception\AMQPIOWaitException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
@@ -844,7 +845,9 @@ class Connection
      *
      * The failed publisher channel is discarded by the operation before a retry. A
      * reconnect is necessary only when the entire AMQP connection is dead; reconnecting
-     * for a channel-local failure would invalidate live consumer delivery tags.
+     * for a channel-local failure would invalidate live consumer delivery tags. An
+     * invalid frame is the exception: the stream is desynchronized yet php-amqplib
+     * still reports the connection as open, so it always forces a reconnect.
      *
      * @param positive-int|0 $waitTime
      *
@@ -856,14 +859,25 @@ class Connection
         int|null $waitTime = null,
         bool|null $jitter = null,
     ): Retry {
+        $desynchronized = false;
+
         return $this->retryFactory->retry(
-            $run,
+            static function (Retry $retry) use ($run, &$desynchronized): mixed {
+                try {
+                    return $run($retry);
+                } catch (AMQPInvalidFrameException $e) {
+                    $desynchronized = true;
+
+                    throw $e;
+                }
+            },
             $this->resolveRetries($retries),
             $this->resolveWaitTime($waitTime),
             $jitter,
         )
-            ->beforeRetry(function (): void {
-                if (! $this->isConnected()) {
+            ->beforeRetry(function () use (&$desynchronized): void {
+                if ($desynchronized || ! $this->isConnected()) {
+                    $desynchronized = false;
                     $this->reconnect();
                 }
             });
