@@ -12,6 +12,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\PublisherNack;
 use PhpAmqpLib\Exception\AMQPChannelClosedException;
 use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
+use PhpAmqpLib\Exception\AMQPInvalidFrameException;
 use PhpAmqpLib\Exception\AMQPIOException;
 use PhpAmqpLib\Exception\AMQPProtocolChannelException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
@@ -100,6 +101,7 @@ class RetryFactoryTest extends TestCase
     /** @param class-string<Throwable> $exceptionClass */
     #[TestWith([AMQPChannelClosedException::class])]
     #[TestWith([AMQPConnectionClosedException::class])]
+    #[TestWith([AMQPInvalidFrameException::class])]
     #[TestWith([AMQPIOException::class])]
     #[TestWith([AMQPTimeoutException::class])]
     public function testRetriesRetryableAmqpExceptions(string $exceptionClass): void
