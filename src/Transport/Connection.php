@@ -43,6 +43,9 @@ class Connection
 {
     private AMQPStreamConnection|null $connection = null;
 
+    /** Set when the stream is known to be unusable although php-amqplib still reports it open. */
+    private bool $connectionLost = false;
+
     private AMQPChannel|null $channel = null;
 
     private AMQPChannel|null $consumerChannel = null;
@@ -159,7 +162,7 @@ class Connection
 
     public function isConnected(): bool
     {
-        return $this->connection !== null && $this->connection->isConnected();
+        return $this->connection !== null && ! $this->connectionLost && $this->connection->isConnected();
     }
 
     public function close(): void
@@ -174,6 +177,7 @@ class Connection
             $this->invalidateConsumers();
             $this->connection?->close();
         } finally {
+            $this->connectionLost  = false;
             $this->connection      = null;
             $this->channel         = null;
             $this->consumerChannel = null;
@@ -189,6 +193,7 @@ class Connection
     {
         $this->forgetChannels();
         $this->connection?->reconnect();
+        $this->connectionLost = false;
     }
 
     /**
@@ -692,10 +697,10 @@ class Connection
                     // (or confirm) state. Drop it so the next publish cannot reuse it.
                     $this->discardChannel();
 
-                    // php-amqplib keeps reporting a desynchronized stream as connected, so
-                    // replace it here or the retry would reuse the corrupted socket.
+                    // php-amqplib keeps reporting a desynchronized stream as connected.
+                    // Mark it lost so the retry reconnects instead of reusing the socket.
                     if ($e instanceof AMQPInvalidFrameException) {
-                        $this->reconnect();
+                        $this->connectionLost = true;
                     }
 
                     throw $e;
