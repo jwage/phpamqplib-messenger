@@ -1025,7 +1025,10 @@ class Connection
         }
     }
 
-    /** @throws TransportException */
+    /**
+     * @throws TransportException
+     * @throws PublisherNack
+     */
     private function waitForBatchConfirm(AMQPChannel $channel): void
     {
         // Do not retry timeouts here: flush()/publish() already own retry. Nested
