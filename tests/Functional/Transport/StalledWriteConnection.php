@@ -28,25 +28,25 @@ final class StalledWriteConnection extends AMQPStreamConnection
         parent::reconnect();
     }
 
-    public function write($data): void
+    public function write(mixed $data): void
     {
         $hook = $this->duringNextWrite;
 
-        if ($hook === null || strlen($data) < 2) {
+        if ($hook === null || strlen((string) $data) < 2) {
             parent::write($data);
 
             return;
         }
 
         $this->duringNextWrite = null;
-        $half                  = intdiv(strlen($data), 2);
+        $half                  = intdiv(strlen((string) $data), 2);
 
         $this->writing = true;
 
         try {
-            $this->io->write(substr($data, 0, $half));
+            $this->io->write(substr((string) $data, 0, $half));
             $hook();
-            $this->io->write(substr($data, $half));
+            $this->io->write(substr((string) $data, $half));
         } finally {
             $this->writing = false;
         }
