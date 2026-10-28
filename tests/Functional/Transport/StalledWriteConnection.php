@@ -28,7 +28,6 @@ final class StalledWriteConnection extends AMQPStreamConnection
         parent::reconnect();
     }
 
-    /** @param string $data */
     public function write($data): void
     {
         $hook = $this->duringNextWrite;
