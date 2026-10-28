@@ -14,6 +14,8 @@ use function substr;
 /**
  * Simulates a signal handler firing between two fwrite() calls of a single frame by
  * invoking a hook after the first half of the next frame has been written.
+ *
+ * @psalm-suppress PropertyNotSetInConstructor
  */
 final class StalledWriteConnection extends AMQPStreamConnection
 {
@@ -32,21 +34,21 @@ final class StalledWriteConnection extends AMQPStreamConnection
     {
         $hook = $this->duringNextWrite;
 
-        if ($hook === null || strlen((string) $data) < 2) {
+        if ($hook === null || strlen($data) < 2) {
             parent::write($data);
 
             return;
         }
 
         $this->duringNextWrite = null;
-        $half                  = intdiv(strlen((string) $data), 2);
+        $half                  = intdiv(strlen($data), 2);
 
         $this->writing = true;
 
         try {
-            $this->io->write(substr((string) $data, 0, $half));
+            $this->io->write(substr($data, 0, $half));
             $hook();
-            $this->io->write(substr((string) $data, $half));
+            $this->io->write(substr($data, $half));
         } finally {
             $this->writing = false;
         }
