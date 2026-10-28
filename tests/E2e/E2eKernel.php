@@ -226,9 +226,9 @@ class E2eKernel extends Kernel
 
     private function e2eCacheKey(): string
     {
-        $cache = $_SERVER['E2E_CACHE'] ?? $this->environment;
+        $cache = $_SERVER['E2E_CACHE'] ?? null;
 
-        return is_string($cache) ? $cache : $this->environment;
+        return is_string($cache) ? $cache : $this->getEnvironment();
     }
 
     public function getLogDir(): string

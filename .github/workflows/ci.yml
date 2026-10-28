@@ -72,7 +72,9 @@ jobs:
       - name: PHPCS
         run: ./vendor/bin/phpcs
 
+      # Lowest dependencies ship older PHPUnit/Symfony stubs that PHPStan cannot resolve.
       - name: PHPStan
+        if: matrix.dependencies == 'highest'
         run: ./vendor/bin/phpstan analyse --no-progress
 
       - name: Prepare test logs

@@ -1,0 +1,15 @@
+<?php
+
+declare(strict_types=1);
+
+use Jwage\PhpAmqpLibMessengerBundle\Tests\E2e\E2eKernel;
+use Symfony\Bundle\FrameworkBundle\Console\Application;
+
+require dirname(__DIR__, 2) . '/vendor/autoload.php';
+
+$debug = filter_var($_SERVER['APP_DEBUG'] ?? '0', FILTER_VALIDATE_BOOL);
+
+$kernel = new E2eKernel($_SERVER['APP_ENV'] ?? 'test', $debug === true);
+
+$application = new Application($kernel);
+$application->run();

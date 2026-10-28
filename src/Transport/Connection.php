@@ -34,7 +34,7 @@ use function array_sum;
 use function array_unshift;
 use function assert;
 use function count;
-use function is_numeric;
+use function is_int;
 use function is_object;
 use function is_resource;
 use function min;
@@ -1161,7 +1161,9 @@ class Connection
             arguments: new AMQPTable($queueConfig->arguments),
         ) ?? [$queueName, 0];
 
-        return is_numeric($messageCount) ? (int) $messageCount : 0;
+        assert(is_int($messageCount));
+
+        return $messageCount;
     }
 
     /** @throws TransportException */

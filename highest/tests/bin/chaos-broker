@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$ROOT"
+
+COMPOSE=(docker compose)
+DOCKER=(docker)
+SERVICE=rabbitmq
+
+usage() {
+  cat <<'EOF'
+Inject docker compose RabbitMQ faults for the chaos PHPUnit suite.
+
+Tests call this via Harness::broker() / brokerLater(). Do not use it to run
+tests; use ./vendor/bin/phpunit --testsuite chaos (or composer chaos).
+
+Usage:
+  tests/bin/chaos-broker <command>
+
+Commands:
+  restart        Restart RabbitMQ and wait until it is healthy
+  stop           Stop the container without removing it
+  start          Start a stopped container and wait until healthy
+  kill           SIGKILL the container (no chance to drain confirms)
+  pause          Freeze the broker process (TCP stays up, no AMQP progress)
+  unpause        Resume a paused broker
+  memory-alarm   Force a memory alarm (connection.blocked)
+  memory-ok      Restore the default memory watermark
+  disk-alarm     Force a disk alarm (connection.blocked)
+  disk-ok        Restore the default disk free space limit (50MB)
+EOF
+}
+
+need_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "docker is required to inject chaos broker faults" >&2
+    exit 1
+  fi
+
+  if docker info >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+    DOCKER=(docker)
+    return
+  fi
+
+  if command -v run0 >/dev/null 2>&1 && run0 docker info >/dev/null 2>&1; then
+    COMPOSE=(run0 docker compose)
+    DOCKER=(run0 docker)
+    return
+  fi
+
+  echo "docker is required to inject chaos broker faults" >&2
+  exit 1
+}
+
+wait_ready() {
+  local timeout="${1:-60}"
+  local started
+  started="$(date +%s)"
+
+  until "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmq-diagnostics -q check_running >/dev/null 2>&1 \
+     && "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmq-diagnostics -q ping >/dev/null 2>&1; do
+    if (( "$(date +%s)" - started >= timeout )); then
+      echo "RabbitMQ did not become ready within ${timeout}s" >&2
+      append_log "wait_ready_timeout" "timeout=${timeout}"
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+wait_for_alarms() {
+  local timeout="${1:-20}"
+  local started
+  started="$(date +%s)"
+
+  # check_local_alarms exits 0 when there are no alarms.
+  while "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmq-diagnostics -q check_local_alarms >/dev/null 2>&1; do
+    if (( "$(date +%s)" - started >= timeout )); then
+      echo "RabbitMQ did not report a resource alarm within ${timeout}s" >&2
+      exit 1
+    fi
+    sleep 0.25
+  done
+}
+
+wait_for_no_alarms() {
+  local timeout="${1:-20}"
+  local started
+  started="$(date +%s)"
+
+  until "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmq-diagnostics -q check_local_alarms >/dev/null 2>&1; do
+    if (( "$(date +%s)" - started >= timeout )); then
+      echo "RabbitMQ alarms did not clear within ${timeout}s" >&2
+      exit 1
+    fi
+    sleep 0.25
+  done
+}
+
+# Start existing containers without recreating them. `start`/`restart`
+# followed by `up -d --wait` can race: Compose recreates the just-started
+# container and `--wait` reports "container exited (0)".
+compose_up() {
+  append_log "compose_up"
+  "${COMPOSE[@]}" up -d --no-recreate "$SERVICE"
+}
+
+append_log() {
+  local dir="${TEST_LOG_DIR:-$ROOT/tests/_output}"
+  local message="$1"
+  local extra="${2:-}"
+
+  mkdir -p "$dir" || return 0
+  printf '{"t":%s,"event":"chaos-broker","command":"%s","message":"%s","extra":"%s"}\n' \
+    "$(date +%s)" \
+    "$cmd" \
+    "$(printf '%s' "$message" | tr '"\n' '  ')" \
+    "$(printf '%s' "$extra" | tr '"\n' '  ')" \
+    >> "$dir/chaos-broker.ndjson" 2>/dev/null || true
+}
+
+start_and_wait() {
+  local attempt=1
+
+  while true; do
+    append_log "start_and_wait" "attempt=${attempt}"
+    compose_up
+    if wait_ready 30; then
+      append_log "start_and_wait_ready" "attempt=${attempt}"
+      return 0
+    fi
+    if (( attempt >= 3 )); then
+      echo "RabbitMQ did not become ready after ${attempt} start attempts" >&2
+      append_log "start_and_wait_failed" "attempt=${attempt}"
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    echo "RabbitMQ start attempt failed; retrying (${attempt}/3)" >&2
+    sleep 2
+  done
+}
+
+need_docker
+
+cmd="${1:-}"
+append_log "begin"
+case "$cmd" in
+  restart)
+    "${COMPOSE[@]}" restart "$SERVICE"
+    if ! wait_ready 30; then
+      start_and_wait
+    fi
+    ;;
+  stop)
+    "${COMPOSE[@]}" stop "$SERVICE"
+    ;;
+  kill)
+    "${COMPOSE[@]}" kill -s SIGKILL "$SERVICE"
+    ;;
+  start)
+    start_and_wait
+    ;;
+  pause)
+    id="$("${COMPOSE[@]}" ps -q "$SERVICE")"
+    "${COMPOSE[@]}" pause "$SERVICE"
+    paused="$("${DOCKER[@]}" inspect -f '{{.State.Paused}}' "$id")"
+    if [ "$paused" != "true" ]; then
+      echo "RabbitMQ container was not paused" >&2
+      exit 1
+    fi
+    ;;
+  unpause)
+    id="$("${COMPOSE[@]}" ps -q "$SERVICE")"
+    paused="$("${DOCKER[@]}" inspect -f '{{.State.Paused}}' "$id")"
+    if [ "$paused" = "true" ]; then
+      "${COMPOSE[@]}" unpause "$SERVICE"
+    fi
+    wait_ready 15
+    ;;
+  memory-alarm)
+    wait_ready
+    "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmqctl set_vm_memory_high_watermark absolute 1
+    wait_for_alarms
+    ;;
+  memory-ok)
+    wait_ready
+    "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmqctl set_vm_memory_high_watermark 0.4
+    ;;
+  disk-alarm)
+    wait_ready
+    "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmqctl set_disk_free_limit mem_relative 1000
+    wait_for_alarms
+    ;;
+  disk-ok)
+    wait_ready
+    "${COMPOSE[@]}" exec -T "$SERVICE" rabbitmqctl set_disk_free_limit 50MB
+    wait_for_no_alarms
+    ;;
+  -h|--help|help|'')
+    usage
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

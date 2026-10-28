@@ -1,0 +1,84 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
+
+use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
+
+use function array_merge;
+
+class AmqpStamp implements NonSendableStampInterface
+{
+    private bool $isRetryAttempt = false;
+
+    /** @param array<string, mixed> $attributes */
+    public function __construct(
+        private string|null $routingKey = null,
+        private array $attributes = [],
+    ) {
+    }
+
+    public static function createFromAMQPEnvelope(
+        AmqpEnvelope $amqpEnvelope,
+        self|null $previousStamp = null,
+        string|null $retryRoutingKey = null,
+    ): self {
+        $attr = $previousStamp === null ? [] : $previousStamp->attributes;
+
+        $attr['headers']          ??= $amqpEnvelope->getHeaders();
+        $attr['content_type']     ??= $amqpEnvelope->getContentType();
+        $attr['content_encoding'] ??= $amqpEnvelope->getContentEncoding();
+        $attr['delivery_mode']    ??= $amqpEnvelope->getDeliveryMode();
+        $attr['priority']         ??= $amqpEnvelope->getPriority();
+        $attr['timestamp']        ??= $amqpEnvelope->getTimestamp();
+        $attr['app_id']           ??= $amqpEnvelope->getAppId();
+        $attr['message_id']       ??= $amqpEnvelope->getMessageId();
+        $attr['user_id']          ??= $amqpEnvelope->getUserId();
+        $attr['expiration']       ??= $amqpEnvelope->getExpiration();
+        $attr['type']             ??= $amqpEnvelope->getType();
+        $attr['reply_to']         ??= $amqpEnvelope->getReplyTo();
+        $attr['correlation_id']   ??= $amqpEnvelope->getCorrelationId();
+
+        if ($retryRoutingKey === null) {
+            if ($previousStamp !== null) {
+                $routingKey = $previousStamp->routingKey ?? $amqpEnvelope->getRoutingKey();
+            } else {
+                $routingKey = $amqpEnvelope->getRoutingKey();
+            }
+
+            $stamp = new self($routingKey, $attr);
+        } else {
+            $stamp = new self($retryRoutingKey, $attr);
+
+            $stamp->isRetryAttempt = true;
+        }
+
+        return $stamp;
+    }
+
+    /** @param array<string, mixed> $attributes */
+    public static function createWithAttributes(array $attributes, self|null $previousStamp = null): self
+    {
+        return new self(
+            routingKey: $previousStamp?->routingKey,
+            attributes: array_merge($previousStamp === null ? [] : $previousStamp->attributes, $attributes),
+        );
+    }
+
+    public function getRoutingKey(): string|null
+    {
+        return $this->routingKey;
+    }
+
+    /** @return array<string, mixed> */
+    public function getAttributes(): array
+    {
+        return $this->attributes;
+    }
+
+    public function isRetryAttempt(): bool
+    {
+        return $this->isRetryAttempt;
+    }
+}

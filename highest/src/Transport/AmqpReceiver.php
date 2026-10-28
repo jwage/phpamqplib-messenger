@@ -1,0 +1,164 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Jwage\PhpAmqpLibMessengerBundle\Transport;
+
+use LogicException;
+use Override;
+use PhpAmqpLib\Exception\AMQPExceptionInterface;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
+use Symfony\Component\Messenger\Exception\TransportException;
+use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
+use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
+use Symfony\Component\Messenger\Transport\Receiver\QueueReceiverInterface;
+use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
+use Throwable;
+
+use function max;
+
+class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
+{
+    public function __construct(
+        private Connection $connection,
+        private SerializerInterface $serializer,
+    ) {
+    }
+
+    /** @return iterable<Envelope> */
+    #[Override]
+    public function get(int|null $fetchSize = null): iterable
+    {
+        yield from $this->getFromQueues($this->connection->getQueueNames(), $fetchSize);
+    }
+
+    /**
+     * @param array<string> $queueNames
+     *
+     * @return iterable<Envelope>
+     */
+    #[Override]
+    public function getFromQueues(array $queueNames, int|null $fetchSize = null): iterable
+    {
+        // Symfony 8.1+ Worker always passes $fetchSize (--fetch-size). Config is
+        // only the default when that argument is omitted (Symfony < 8.1).
+        $fetchSize ??= $this->connection->getConfig()->fetchSize;
+
+        if ($fetchSize === null) {
+            foreach ($queueNames as $queueName) {
+                yield from $this->getEnvelopes($queueName);
+            }
+
+            return;
+        }
+
+        $fetchSize = max(1, $fetchSize);
+        $remaining = $fetchSize;
+
+        foreach ($queueNames as $queueName) {
+            foreach ($this->getEnvelopes($queueName, $fetchSize) as $envelope) {
+                yield $envelope;
+
+                if (--$remaining <= 0) {
+                    return;
+                }
+            }
+        }
+    }
+
+    /**
+     * @throws TransportException
+     * @throws LogicException
+     * @throws Throwable
+     */
+    #[Override]
+    public function ack(Envelope $envelope): void
+    {
+        $amqpEnvelope = $this->findAMQPReceivedStamp($envelope)->getAmqpEnvelope();
+        $amqpEnvelope->ack();
+    }
+
+    /**
+     * @throws TransportException
+     * @throws LogicException
+     * @throws Throwable
+     */
+    #[Override]
+    public function reject(Envelope $envelope): void
+    {
+        $amqpEnvelope = $this->findAMQPReceivedStamp($envelope)->getAmqpEnvelope();
+        $amqpEnvelope->nack();
+    }
+
+    /** @throws TransportException */
+    #[Override]
+    public function getMessageCount(): int
+    {
+        try {
+            return $this->connection->countMessagesInQueues();
+        } catch (AMQPExceptionInterface $e) {
+            throw new TransportException($e->getMessage(), 0, $e);
+        }
+    }
+
+    /**
+     * @return iterable<Envelope>
+     *
+     * @throws MessageDecodingFailedException
+     * @throws TransportException
+     * @throws Throwable
+     */
+    private function getEnvelopes(string $queueName, int|null $fetchSize = null): iterable
+    {
+        $amqpEnvelopes = $this->connection->consume($queueName, $fetchSize);
+
+        foreach ($amqpEnvelopes as $amqpEnvelope) {
+            $body = $amqpEnvelope->getBody();
+
+            $headers = $amqpEnvelope->getHeaders();
+
+            try {
+                $envelope = $this->serializer->decode([
+                    'body' => $body,
+                    'headers' => $headers,
+                ]);
+            } catch (Throwable $e) {
+                // Symfony 8's SigningSerializer throws InvalidMessageSignatureException
+                // (not a MessageDecodingFailedException) for an unverified garbage body.
+                $amqpEnvelope->nack();
+
+                throw $e;
+            }
+
+            // Symfony 8+'s PhpSerializer wraps a decode failure in an Envelope instead of throwing.
+            $decodedMessage = $envelope->getMessage();
+
+            if ($decodedMessage instanceof MessageDecodingFailedException) {
+                $amqpEnvelope->nack();
+
+                throw $decodedMessage;
+            }
+
+            if (($messageId = $amqpEnvelope->getMessageId()) !== null) {
+                $envelope = $envelope
+                    ->withoutAll(TransportMessageIdStamp::class)
+                    ->with(new TransportMessageIdStamp($messageId));
+            }
+
+            yield $envelope->with(new AmqpReceivedStamp($amqpEnvelope, $queueName));
+        }
+    }
+
+    /** @throws LogicException */
+    private function findAMQPReceivedStamp(Envelope $envelope): AmqpReceivedStamp
+    {
+        $amqpReceivedStamp = $envelope->last(AmqpReceivedStamp::class);
+
+        if ($amqpReceivedStamp === null) {
+            throw new LogicException('No "AMQPReceivedStamp" stamp found on the Envelope.');
+        }
+
+        return $amqpReceivedStamp;
+    }
+}
