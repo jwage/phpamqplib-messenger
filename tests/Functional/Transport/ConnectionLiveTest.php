@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Functional\Transport;
 
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
+use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\Chaos\Harness;
 use Jwage\PhpAmqpLibMessengerBundle\Tests\TestCase;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpEnvelope;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransport;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\Connection;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
+use Jwage\PhpAmqpLibMessengerBundle\Transport\DsnParser;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\PublisherNack;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PHPUnit\Framework\AssertionFailedError;
@@ -434,6 +436,50 @@ class ConnectionLiveTest extends TestCase
         }
 
         self::assertTrue($threw, 'Expected the broker to close the connection after missed heartbeats');
+    }
+
+    public function testKeepaliveSkipsTheHeartbeatWhileAFrameIsPartiallyWritten(): void
+    {
+        $name    = $this->harness->topologyName('keepalive_mid_write');
+        $factory = new StalledWriteConnectionFactory();
+
+        $connection = new Connection(
+            new RetryFactory(),
+            $factory,
+            (new DsnParser())->parseDsn($this->harness->dsn(), $this->harness->topology($name, ['wait_timeout' => 2], [
+                'heartbeat' => 1,
+                'keepalive_enabled' => true,
+            ])),
+        );
+        $connection->setup();
+
+        $amqpConnection = $factory->created;
+        self::assertInstanceOf(StalledWriteConnection::class, $amqpConnection);
+
+        $keepaliveRan = false;
+
+        // Stall mid-frame for longer than half the heartbeat interval, so a heartbeat is
+        // due when the simulated SIGALRM handler calls keepalive().
+        $amqpConnection->duringNextWrite = static function () use ($connection, $amqpConnection, &$keepaliveRan): void {
+            self::assertTrue($amqpConnection->isWriting());
+
+            usleep(700_000);
+            $connection->keepalive();
+
+            $keepaliveRan = true;
+        };
+
+        $connection->publish(body: 'frame-in-flight');
+
+        self::assertTrue($keepaliveRan);
+
+        // A heartbeat written into the frame makes the broker close the connection with a
+        // frame error, and publish() then recovers by reconnecting and retrying.
+        self::assertSame(0, $amqpConnection->reconnects);
+        self::assertTrue($connection->isConnected());
+        self::assertSame(1, $this->harness->waitForMessageCount($connection, 1));
+
+        $connection->close();
     }
 
     public function testDrainConsumerChannelReturnsOnAnIdleLiveConsumer(): void
