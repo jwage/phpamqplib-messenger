@@ -212,12 +212,20 @@ class Connection
      * Sends an AMQP heartbeat frame if the heartbeat interval has elapsed.
      *
      * This prevents RabbitMQ from closing the connection during long message processing.
+     * The heartbeat is skipped while the connection is closed or a frame is being written.
      *
      * @throws TransportException
      */
     public function keepalive(): void
     {
         if ($this->connection === null) {
+            return;
+        }
+
+        // keepalive() runs from a signal handler and can interrupt a frame write on this
+        // same connection; writing a heartbeat then would corrupt the frame. Skipping one
+        // beat is harmless, the next alarm fires within the heartbeat timeout.
+        if (! $this->connection->isConnected() || $this->connection->isWriting()) {
             return;
         }
 
