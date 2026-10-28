@@ -97,11 +97,6 @@ class Retry
         return $this;
     }
 
-    /**
-     * @psalm-suppress MissingThrowsDocblock
-     * @psalm-suppress InvalidReturnType
-     * @psalm-suppress UnusedVariable
-     */
     public function run(Closure|null $callable = null): mixed
     {
         if ($callable === null) {
@@ -142,8 +137,6 @@ class Retry
 
             goto beginning;
         }
-
-        $this->isRetry = false;
     }
 
     /** @return int<0, max> */

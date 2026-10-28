@@ -906,14 +906,16 @@ class TransportFunctionalTest extends KernelTestCase
     {
         parent::setUp();
 
-        /** @psalm-suppress InternalMethod */
         TestLog::beginTest(static::class . '::' . $this->name());
 
         self::bootKernel();
 
         $container = static::getContainer();
 
-        $this->bus = $container->get(MessageBusInterface::class);
+        $bus = $container->get(MessageBusInterface::class);
+        assert($bus instanceof MessageBusInterface);
+
+        $this->bus = $bus;
 
         $confirmsTransport = $container->get('messenger.transport.with_confirms');
         assert($confirmsTransport instanceof AmqpTransport);
@@ -960,8 +962,9 @@ class TransportFunctionalTest extends KernelTestCase
         $this->multipleQueuesTransport->getConnection()->close();
         $this->noAckTransport->getConnection()->close();
 
-        /** @psalm-suppress InternalMethod */
         TestLog::endTest(static::class . '::' . $this->name());
+
+        parent::tearDown();
     }
 
     /** @param array<object> $messages */

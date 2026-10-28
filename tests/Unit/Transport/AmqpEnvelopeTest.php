@@ -431,7 +431,6 @@ class AmqpEnvelopeTest extends TestCase
     {
         // A consumer channel holds its consumer callbacks, which cannot be serialized.
         $channel = (new ReflectionClass(AMQPChannel::class))->newInstanceWithoutConstructor();
-        /** @psalm-suppress InternalProperty */
         $channel->callbacks['consumer_tag'] = static function (): void {
         };
 

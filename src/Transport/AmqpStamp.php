@@ -19,7 +19,6 @@ class AmqpStamp implements NonSendableStampInterface
     ) {
     }
 
-    /** @psalm-suppress MixedAssignment */
     public static function createFromAMQPEnvelope(
         AmqpEnvelope $amqpEnvelope,
         self|null $previousStamp = null,

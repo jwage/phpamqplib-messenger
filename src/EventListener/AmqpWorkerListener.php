@@ -214,7 +214,6 @@ class AmqpWorkerListener implements EventSubscriberInterface
             return null;
         }
 
-        /** @psalm-suppress MixedAssignment */
         $deadline = $getter();
 
         return is_float($deadline) ? $deadline : null;
@@ -234,11 +233,9 @@ class AmqpWorkerListener implements EventSubscriberInterface
         $getter = [$event, 'getIdleTimeout'];
 
         if (is_callable($getter)) {
-            /** @psalm-suppress MixedAssignment */
             $idleTimeout = $getter();
 
             if (is_int($idleTimeout) || is_float($idleTimeout)) {
-                /** @psalm-suppress InvalidOperand */
                 return $idleTimeout / 1_000_000.0;
             }
         }

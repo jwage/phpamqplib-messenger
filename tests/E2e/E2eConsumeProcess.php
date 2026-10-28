@@ -192,10 +192,9 @@ final class E2eConsumeProcess
             return null;
         }
 
-        /** @var array{running: bool, pid: int, exitcode: int|false} $status */
         $status = proc_get_status($this->process);
 
-        return $status;
+        return ['running' => $status['running'], 'pid' => $status['pid'], 'exitcode' => $status['exitcode']];
     }
 
     public function cleanupFiles(): void

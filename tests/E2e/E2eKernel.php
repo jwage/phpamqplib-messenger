@@ -21,11 +21,7 @@ class E2eKernel extends Kernel
 {
     use MicroKernelTrait;
 
-    /**
-     * @return iterable<object>
-     *
-     * @psalm-suppress LessSpecificImplementedReturnType
-     */
+    /** @return iterable<object> */
     public function registerBundles(): iterable
     {
         return [
@@ -224,7 +220,7 @@ class E2eKernel extends Kernel
 
     public function getCacheDir(): string
     {
-        return sys_get_temp_dir() . '/phpamqplib-messenger-e2e/' . ($_SERVER['E2E_CACHE'] ?? $this->environment) . ($this->isDebug() ? '-debug' : '');
+        return sys_get_temp_dir() . '/phpamqplib-messenger-e2e/' . (string) ($_SERVER['E2E_CACHE'] ?? $this->environment) . ($this->isDebug() ? '-debug' : '');
     }
 
     public function getLogDir(): string

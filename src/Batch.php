@@ -38,7 +38,6 @@ class Batch implements MessageBusInterface
     #[Override]
     public function dispatch(object $message, array $stamps = []): Envelope
     {
-        /** @psalm-suppress ArgumentTypeCoercion */
         $envelope = Envelope::wrap($message, $stamps)
             ->with(new DeferrableStamp($this->batchSize));
 

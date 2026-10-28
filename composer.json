@@ -22,13 +22,14 @@
     "require-dev": {
         "doctrine/coding-standard": "^13.0",
         "infection/infection": "^0.35.2",
+        "phpstan/extension-installer": "^1.4",
+        "phpstan/phpstan": "^2.1",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpstan/phpstan-symfony": "^2.0",
         "phpunit/phpunit": "^12.1",
-        "psalm/plugin-phpunit": "^0.19.5",
-        "psalm/plugin-symfony": "^5.2",
         "symfony/framework-bundle": "^6.4 || ^7.0 || ^8.0",
         "symfony/phpunit-bridge": "^7.2 || ^8.0",
-        "symfony/uid": "^7.2 || ^8.0",
-        "vimeo/psalm": "^6"
+        "symfony/uid": "^7.2 || ^8.0"
     },
     "autoload": {
         "psr-4": {
@@ -44,7 +45,8 @@
         "sort-packages": true,
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true,
-            "infection/extension-installer": true
+            "infection/extension-installer": true,
+            "phpstan/extension-installer": true
         }
     },
     "minimum-stability": "stable",

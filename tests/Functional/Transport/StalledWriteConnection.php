@@ -14,8 +14,6 @@ use function substr;
 /**
  * Simulates a signal handler firing between two fwrite() calls of a single frame by
  * invoking a hook after the first half of the next frame has been written.
- *
- * @psalm-suppress PropertyNotSetInConstructor
  */
 final class StalledWriteConnection extends AMQPStreamConnection
 {

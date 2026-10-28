@@ -51,7 +51,6 @@ class ConnectionConfigTest extends TestCase
         );
     }
 
-    /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);

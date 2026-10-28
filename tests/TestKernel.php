@@ -25,8 +25,6 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
     /**
      * @return iterable<object>
-     *
-     * @psalm-suppress LessSpecificImplementedReturnType
      */
     public function registerBundles(): iterable
     {

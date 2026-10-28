@@ -36,7 +36,7 @@ use function unlink;
 use function usleep;
 
 /**
- * @psalm-type E2eRecord = array{
+ * @phpstan-type E2eRecord = array{
  *     t: float,
  *     type: string,
  *     id: string,
@@ -475,7 +475,6 @@ abstract class E2eTestCase extends TestCase
             return;
         }
 
-        /** @psalm-suppress InternalMethod */
         $name = TestLog::safeBasename(static::class . '_' . $this->name());
 
         TestLog::copyFile($this->logFile, $name . '.e2e.jsonl');
@@ -495,7 +494,6 @@ abstract class E2eTestCase extends TestCase
                     continue;
                 }
 
-                /** @psalm-suppress MixedAssignment */
                 $pool = $this->container()->get($id);
 
                 if ($pool instanceof CacheItemPoolInterface) {

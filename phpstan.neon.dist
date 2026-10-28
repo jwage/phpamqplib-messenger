@@ -1,0 +1,44 @@
+parameters:
+    level: max
+    treatPhpDocTypesAsCertain: false
+    paths:
+        - config
+        - src
+        - tests
+    tmpDir: var/phpstan
+    ignoreErrors:
+        # Tests deliberately assert on values PHPStan can already infer, cast loosely
+        # typed fixtures and exercise exception paths through mocks.
+        -
+            identifiers:
+                - catch.neverThrown
+                - cast.double
+                - cast.int
+                - cast.string
+                - deadCode.unreachable
+                - function.alreadyNarrowedType
+                - identical.alwaysTrue
+                - nullsafe.neverNull
+                - nullCoalesce.offset
+                - smaller.alwaysTrue
+                - staticMethod.alreadyNarrowedType
+                - phpunit.assertTrue
+                - phpunit.assertFalse
+                - phpunit.assertNull
+            path: tests
+        # Handler message classes are plain objects with public counters.
+        -
+            identifier: property.notFound
+            path: tests/Functional/TransportFunctionalTest.php
+        # These tests intentionally pass invalid values or call undeclared methods.
+        -
+            identifier: argument.type
+            paths:
+                - tests/Unit/Transport/Config/BindingConfigTest.php
+                - tests/Unit/Transport/Config/ExchangeConfigTest.php
+                - tests/Unit/Transport/Config/SslConfigTest.php
+        -
+            identifiers:
+                - method.notFound
+                - phpunit.mockMethod
+            path: tests/Unit/BatchTest.php

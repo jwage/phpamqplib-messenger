@@ -43,7 +43,6 @@ class SslConfigTest extends TestCase
         self::assertNull($sslConfig->cryptoMethod);
     }
 
-    /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
@@ -79,7 +78,6 @@ class SslConfigTest extends TestCase
         self::assertSame(1, $sslConfig->cryptoMethod);
     }
 
-    /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidTypes(): void
     {
         self::expectException(InvalidArgumentException::class);

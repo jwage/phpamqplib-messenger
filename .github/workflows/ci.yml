@@ -72,8 +72,8 @@ jobs:
       - name: PHPCS
         run: ./vendor/bin/phpcs
 
-      - name: Psalm
-        run: ./vendor/bin/psalm
+      - name: PHPStan
+        run: ./vendor/bin/phpstan analyse --no-progress
 
       - name: Prepare test logs
         run: mkdir -p test-logs
