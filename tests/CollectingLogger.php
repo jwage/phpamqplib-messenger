@@ -37,14 +37,14 @@ final class CollectingLogger extends AbstractLogger
 
         $this->records[] = [
             't' => microtime(true),
-            'level' => (string) $level,
+            'level' => is_string($level) ? $level : get_debug_type($level),
             'message' => $interpolated,
             'template' => $template,
             'context' => $safeContext,
         ];
 
         TestLog::event('psr-log', [
-            'level' => (string) $level,
+            'level' => is_string($level) ? $level : get_debug_type($level),
             'message' => $interpolated,
             'template' => $template,
             'context' => $safeContext,

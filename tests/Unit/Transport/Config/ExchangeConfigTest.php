@@ -18,7 +18,7 @@ class ExchangeConfigTest extends TestCase
 
         self::assertSame('', $exchangeConfig->name);
         self::assertSame(AMQPExchangeType::FANOUT, $exchangeConfig->type);
-        self::assertSame(null, $exchangeConfig->defaultPublishRoutingKey);
+        self::assertNull($exchangeConfig->defaultPublishRoutingKey);
         self::assertFalse($exchangeConfig->passive);
         self::assertTrue($exchangeConfig->durable);
         self::assertFalse($exchangeConfig->autoDelete);

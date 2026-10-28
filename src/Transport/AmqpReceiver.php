@@ -26,9 +26,7 @@ class AmqpReceiver implements QueueReceiverInterface, MessageCountAwareInterface
     ) {
     }
 
-    /**
-     * @return iterable<Envelope>
-     */
+    /** @return iterable<Envelope> */
     #[Override]
     public function get(int|null $fetchSize = null): iterable
     {

@@ -37,7 +37,7 @@ class MessengerConsumeE2eTest extends E2eTestCase
         $records = $this->recordsOfType(E2eMessage::class);
         self::assertCount(8, $records);
         self::assertSame($ids, $this->idsOf($records));
-        self::assertNotSame($this->parentPid(), $records[0]['pid'] ?? 0);
+        self::assertNotSame($this->parentPid(), $records[0]['pid']);
 
         $gaps = [];
 

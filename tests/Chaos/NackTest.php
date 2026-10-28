@@ -22,7 +22,7 @@ class NackTest extends ChaosTestCase
         $connection->publish(body: 'kept');
         self::assertSame(1, $connection->countMessagesInQueues());
 
-        $elapsed = (float) $this->harness->withRetryDefaults(3, 500, function () use ($connection): float {
+        $elapsed = $this->harness->withRetryDefaults(3, 500, function () use ($connection): float {
             return $this->harness->milliseconds(static function () use ($connection): void {
                 try {
                     $connection->publish(body: 'rejected');
@@ -55,7 +55,7 @@ class NackTest extends ChaosTestCase
         $connection->publish(body: 'batch-two', batchSize: 3);
         self::assertSame(2, $this->harness->pendingBatchSize($connection));
 
-        $elapsed = (float) $this->harness->withRetryDefaults(3, 500, function () use ($connection): float {
+        $elapsed = $this->harness->withRetryDefaults(3, 500, function () use ($connection): float {
             return $this->harness->milliseconds(static function () use ($connection): void {
                 try {
                     $connection->flush();
@@ -94,7 +94,7 @@ class NackTest extends ChaosTestCase
         $consumerBefore  = $connection->consumerChannel();
         self::assertNotSame($publisherBefore, $consumerBefore);
 
-        $elapsed = (float) $this->harness->withRetryDefaults(3, 500, function () use ($connection): float {
+        $elapsed = $this->harness->withRetryDefaults(3, 500, function () use ($connection): float {
             return $this->harness->milliseconds(static function () use ($connection): void {
                 try {
                     $connection->publish(body: 'rejected');

@@ -571,6 +571,7 @@ class Connection
      *
      * @throws TransportException
      * @throws InvalidArgumentException
+     * @throws AMQPConnectionBlockedException
      */
     public function publish(
         string $body,
@@ -717,7 +718,10 @@ class Connection
         }
     }
 
-    /** @throws TransportException */
+    /**
+     * @throws TransportException
+     * @throws AMQPConnectionBlockedException
+     */
     public function flush(): void
     {
         if ($this->batchMessages === []) {

@@ -23,9 +23,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
 {
     use MicroKernelTrait;
 
-    /**
-     * @return iterable<object>
-     */
+    /** @return iterable<object> */
     public function registerBundles(): iterable
     {
         return [

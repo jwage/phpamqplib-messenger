@@ -51,7 +51,7 @@ final class FileLogger extends AbstractLogger
 
         $encoded = json_encode([
             't' => microtime(true),
-            'level' => (string) $level,
+            'level' => is_string($level) ? $level : get_debug_type($level),
             'message' => $interpolated,
             'template' => $template,
             'context' => $safeContext,

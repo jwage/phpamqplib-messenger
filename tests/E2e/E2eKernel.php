@@ -15,6 +15,7 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\HttpKernel\Kernel;
 
 use function dirname;
+use function is_string;
 use function sys_get_temp_dir;
 
 class E2eKernel extends Kernel
@@ -220,7 +221,14 @@ class E2eKernel extends Kernel
 
     public function getCacheDir(): string
     {
-        return sys_get_temp_dir() . '/phpamqplib-messenger-e2e/' . (string) ($_SERVER['E2E_CACHE'] ?? $this->environment) . ($this->isDebug() ? '-debug' : '');
+        return sys_get_temp_dir() . '/phpamqplib-messenger-e2e/' . $this->e2eCacheKey() . ($this->isDebug() ? '-debug' : '');
+    }
+
+    private function e2eCacheKey(): string
+    {
+        $cache = $_SERVER['E2E_CACHE'] ?? $this->environment;
+
+        return is_string($cache) ? $cache : $this->environment;
     }
 
     public function getLogDir(): string

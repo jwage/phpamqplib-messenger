@@ -15,9 +15,7 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
 use function is_string;
 use function str_starts_with;
 
-/**
- * @implements TransportFactoryInterface<AmqpTransport>
- */
+/** @implements TransportFactoryInterface<AmqpTransport> */
 class AmqpTransportFactory implements TransportFactoryInterface
 {
     public function __construct(

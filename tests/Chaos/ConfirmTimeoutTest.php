@@ -72,7 +72,7 @@ class ConfirmTimeoutTest extends ChaosTestCase
         $retriesBefore = $this->harness->logger()->countRetryLogs();
 
         try {
-            $elapsed = (float) $this->harness->withRetryDefaults(0, 0, function () use ($connection): float {
+            $elapsed = $this->harness->withRetryDefaults(0, 0, function () use ($connection): float {
                 return $this->harness->milliseconds(function () use ($connection): void {
                     try {
                         $connection->publish(body: 'direct-timeout');

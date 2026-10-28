@@ -32,9 +32,7 @@ class AmqpTransport implements QueueReceiverInterface, MessageCountAwareInterfac
         return $this->connection;
     }
 
-    /**
-     * @return iterable<Envelope>
-     */
+    /** @return iterable<Envelope> */
     #[Override]
     public function get(int|null $fetchSize = null): iterable
     {
