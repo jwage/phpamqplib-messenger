@@ -18,7 +18,6 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Throwable;
 
 use function assert;
-use function is_array;
 use function is_string;
 use function sprintf;
 
@@ -47,6 +46,8 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
             ));
         }
 
+        // Older Symfony versions only document an untyped array here.
+        /** @var array{body: string, headers?: array<string, mixed>} $encodedMessage */
         $encodedMessage = $this->serializer->encode($envelope);
 
         $deferrable = $envelope->last(DeferrableStamp::class);
@@ -57,13 +58,10 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
 
         $amqpStamp = $envelope->last(AmqpStamp::class);
 
-        $headers = $encodedMessage['headers'] ?? [];
-
-        if (is_array($headers) && isset($headers['Content-Type'])) {
-            $contentType = $headers['Content-Type'];
+        if (isset($encodedMessage['headers']['Content-Type'])) {
+            $contentType = $encodedMessage['headers']['Content-Type'];
             assert(is_string($contentType));
-            unset($headers['Content-Type']);
-            $encodedMessage['headers'] = $headers;
+            unset($encodedMessage['headers']['Content-Type']);
 
             if (! $amqpStamp || ! isset($amqpStamp->getAttributes()['content_type'])) {
                 $amqpStamp = AmqpStamp::createWithAttributes(['content_type' => $contentType], $amqpStamp);
