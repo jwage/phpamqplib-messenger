@@ -34,6 +34,7 @@ use function array_sum;
 use function array_unshift;
 use function assert;
 use function count;
+use function is_int;
 use function is_object;
 use function is_resource;
 use function min;
@@ -570,6 +571,7 @@ class Connection
      *
      * @throws TransportException
      * @throws InvalidArgumentException
+     * @throws AMQPConnectionBlockedException
      */
     public function publish(
         string $body,
@@ -716,7 +718,10 @@ class Connection
         }
     }
 
-    /** @throws TransportException */
+    /**
+     * @throws TransportException
+     * @throws AMQPConnectionBlockedException
+     */
     public function flush(): void
     {
         if ($this->batchMessages === []) {
@@ -1020,7 +1025,10 @@ class Connection
         }
     }
 
-    /** @throws TransportException */
+    /**
+     * @throws TransportException
+     * @throws PublisherNack
+     */
     private function waitForBatchConfirm(AMQPChannel $channel): void
     {
         // Do not retry timeouts here: flush()/publish() already own retry. Nested
@@ -1050,6 +1058,8 @@ class Connection
         // already available and preserves frames belonging to the consumer channel.
         $connection->wait(allowed_methods: null, non_blocking: true);
 
+        // wait() above can change the blocked state, which PHPStan does not track.
+        // @phpstan-ignore if.alwaysTrue
         if ($connection->isBlocked()) {
             throw new AMQPConnectionBlockedException();
         }
@@ -1154,7 +1164,9 @@ class Connection
             arguments: new AMQPTable($queueConfig->arguments),
         ) ?? [$queueName, 0];
 
-        return (int) $messageCount;
+        assert(is_int($messageCount));
+
+        return $messageCount;
     }
 
     /** @throws TransportException */

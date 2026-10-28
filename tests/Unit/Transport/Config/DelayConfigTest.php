@@ -78,7 +78,6 @@ class DelayConfigTest extends TestCase
         DelayConfig::fromArray(['durable' => new stdClass()]);
     }
 
-    /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);

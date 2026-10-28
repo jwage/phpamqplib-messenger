@@ -36,15 +36,18 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
     #[Override]
     public function send(Envelope $envelope): Envelope
     {
-        /** @psalm-suppress UndefinedClass */
+        // The Symfony AMQP bridge is an optional dependency, so its stamp class may not exist.
+        // @phpstan-ignore class.notFound, argument.type, argument.templateType
         if ($envelope->last(SymfonyAmqpStamp::class) !== null) {
             throw new LogicException(sprintf(
                 'Wrong AmqpStamp class used. Switch your code from using "%s" to "%s".',
-                SymfonyAmqpStamp::class,
+                SymfonyAmqpStamp::class, // @phpstan-ignore class.notFound
                 AmqpStamp::class,
             ));
         }
 
+        // Older Symfony versions only document an untyped array here.
+        /** @var array{body: string, headers?: array<string, mixed>} $encodedMessage */
         $encodedMessage = $this->serializer->encode($envelope);
 
         $deferrable = $envelope->last(DeferrableStamp::class);
@@ -57,7 +60,6 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
 
         if (isset($encodedMessage['headers']['Content-Type'])) {
             $contentType = $encodedMessage['headers']['Content-Type'];
-            /** @psalm-suppress RedundantConditionGivenDocblockType */
             assert(is_string($contentType));
             unset($encodedMessage['headers']['Content-Type']);
 
@@ -81,7 +83,6 @@ class AmqpSender implements SenderInterface, BatchSenderInterface
         }
 
         $body = $encodedMessage['body'];
-        /** @psalm-suppress RedundantConditionGivenDocblockType */
         assert(is_string($body));
 
         /** @var array<string, mixed> $headers */

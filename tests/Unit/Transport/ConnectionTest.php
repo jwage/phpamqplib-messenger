@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jwage\PhpAmqpLibMessengerBundle\Tests\Unit\Transport;
 
+use ArrayObject;
 use Jwage\PhpAmqpLibMessengerBundle\Debug;
 use Jwage\PhpAmqpLibMessengerBundle\Retry;
 use Jwage\PhpAmqpLibMessengerBundle\RetryFactory;
@@ -363,12 +364,12 @@ class ConnectionTest extends TestCase
         $amqpConnection = $this->createMock(AMQPStreamConnection::class);
         $amqpChannel1   = $this->createMock(AMQPChannel::class);
         $amqpChannel2   = $this->createMock(AMQPChannel::class);
-        $connectionDead = false;
+        $connectionDead = new ArrayObject(['dead' => false]);
 
         $factory->method('create')->willReturn($amqpConnection);
         $amqpConnection->method('isConnected')
-            ->willReturnCallback(static function () use (&$connectionDead): bool {
-                return $connectionDead === false;
+            ->willReturnCallback(static function () use ($connectionDead): bool {
+                return $connectionDead['dead'] === false;
             });
         $amqpConnection->expects(self::exactly(2))
             ->method('channel')
@@ -377,8 +378,8 @@ class ConnectionTest extends TestCase
         if ($expectReconnect) {
             $amqpConnection->expects(self::once())
                 ->method('reconnect')
-                ->willReturnCallback(static function () use (&$connectionDead): void {
-                    $connectionDead = false;
+                ->willReturnCallback(static function () use ($connectionDead): void {
+                    $connectionDead['dead'] = false;
                 });
         } else {
             $amqpConnection->expects(self::never())
@@ -388,9 +389,9 @@ class ConnectionTest extends TestCase
         $amqpChannel1->method('confirm_select');
         $amqpChannel1->expects(self::once())
             ->method('basic_publish')
-            ->willReturnCallback(static function () use (&$connectionDead, $expectReconnect, $firstAttemptException): void {
+            ->willReturnCallback(static function () use ($connectionDead, $expectReconnect, $firstAttemptException): void {
                 if ($expectReconnect) {
-                    $connectionDead = true;
+                    $connectionDead['dead'] = true;
                 }
 
                 throw $firstAttemptException;

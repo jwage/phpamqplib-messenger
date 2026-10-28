@@ -278,6 +278,11 @@ final class Harness
     /**
      * @param positive-int|0 $retries
      * @param positive-int|0 $waitTime
+     * @param callable(): T  $run
+     *
+     * @return T
+     *
+     * @template T
      */
     public function withRetryDefaults(int $retries, int $waitTime, callable $run): mixed
     {
@@ -403,7 +408,7 @@ final class Harness
         TestLog::dumpLogger($this->logger, TestLog::currentTest() !== '' ? TestLog::currentTest() : 'harness');
         foreach ($this->backgroundProcesses as $process) {
             $status = proc_get_status($process);
-            $pid    = $status['pid'] ?? 0;
+            $pid    = $status['pid'];
 
             if ($status['running'] === true && $pid > 0) {
                 posix_kill(-$pid, SIGKILL);

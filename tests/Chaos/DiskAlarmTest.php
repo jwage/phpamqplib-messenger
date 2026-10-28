@@ -50,7 +50,7 @@ class DiskAlarmTest extends ChaosTestCase
         // After connection.blocked is visible, throwIfConnectionBlocked() must fail
         // immediately as AMQPConnectionBlockedException — not a confirm timeout, and
         // not a RetryFactory wrap into TransportException.
-        $elapsed = (float) $this->harness->withRetryDefaults(0, 0, function () use ($connection): float {
+        $elapsed = $this->harness->withRetryDefaults(0, 0, function () use ($connection): float {
             return $this->harness->milliseconds(function () use ($connection): void {
                 try {
                     $connection->publish(body: 'during-alarm-blocked');
@@ -118,7 +118,7 @@ class DiskAlarmTest extends ChaosTestCase
         // the channel and batch). The second must throwIfConnectionBlocked() immediately.
         $flushDuringAlarm();
 
-        $elapsed = (float) $this->harness->withRetryDefaults(0, 0, function () use ($connection): float {
+        $elapsed = $this->harness->withRetryDefaults(0, 0, function () use ($connection): float {
             return $this->harness->milliseconds(function () use ($connection): void {
                 try {
                     $connection->flush();

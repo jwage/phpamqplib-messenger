@@ -51,7 +51,7 @@ final class FileLogger extends AbstractLogger
 
         $encoded = json_encode([
             't' => microtime(true),
-            'level' => (string) $level,
+            'level' => is_string($level) ? $level : get_debug_type($level),
             'message' => $interpolated,
             'template' => $template,
             'context' => $safeContext,
@@ -65,7 +65,6 @@ final class FileLogger extends AbstractLogger
     {
         $replace = [];
 
-        /** @psalm-suppress MixedAssignment */
         foreach ($context as $key => $value) {
             if (is_scalar($value) || $value === null) {
                 $replace['{' . $key . '}'] = (string) $value;
@@ -84,7 +83,6 @@ final class FileLogger extends AbstractLogger
     {
         $safe = [];
 
-        /** @psalm-suppress MixedAssignment */
         foreach ($context as $key => $value) {
             if ($value instanceof Throwable) {
                 $safe[$key] = $value::class . ': ' . TestLog::redact($value->getMessage());

@@ -18,7 +18,7 @@ class ExchangeConfigTest extends TestCase
 
         self::assertSame('', $exchangeConfig->name);
         self::assertSame(AMQPExchangeType::FANOUT, $exchangeConfig->type);
-        self::assertSame(null, $exchangeConfig->defaultPublishRoutingKey);
+        self::assertNull($exchangeConfig->defaultPublishRoutingKey);
         self::assertFalse($exchangeConfig->passive);
         self::assertTrue($exchangeConfig->durable);
         self::assertFalse($exchangeConfig->autoDelete);
@@ -46,7 +46,6 @@ class ExchangeConfigTest extends TestCase
         self::assertSame(['arg1' => 'val1', 'arg2' => 'val2'], $exchangeConfig->arguments);
     }
 
-    /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
@@ -55,7 +54,6 @@ class ExchangeConfigTest extends TestCase
         ExchangeConfig::fromArray(['invalid' => true]);
     }
 
-    /** @psalm-suppress InvalidArgument */
     public function testFromArrayWithInvalidTypes(): void
     {
         self::expectException(InvalidArgumentException::class);

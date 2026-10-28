@@ -165,7 +165,6 @@ class SocketSelectTest extends TestCase
 
         $this->expectException(AMQPIOWaitException::class);
 
-        /** @psalm-suppress InvalidArgument */
         SocketSelect::select($read, 0, 0);
     }
 }

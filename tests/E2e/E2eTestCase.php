@@ -24,6 +24,8 @@ use function glob;
 use function implode;
 use function is_array;
 use function is_file;
+use function is_numeric;
+use function is_scalar;
 use function json_decode;
 use function microtime;
 use function preg_match;
@@ -36,7 +38,7 @@ use function unlink;
 use function usleep;
 
 /**
- * @psalm-type E2eRecord = array{
+ * @phpstan-type E2eRecord = array{
  *     t: float,
  *     type: string,
  *     id: string,
@@ -475,7 +477,6 @@ abstract class E2eTestCase extends TestCase
             return;
         }
 
-        /** @psalm-suppress InternalMethod */
         $name = TestLog::safeBasename(static::class . '_' . $this->name());
 
         TestLog::copyFile($this->logFile, $name . '.e2e.jsonl');
@@ -495,7 +496,6 @@ abstract class E2eTestCase extends TestCase
                     continue;
                 }
 
-                /** @psalm-suppress MixedAssignment */
                 $pool = $this->container()->get($id);
 
                 if ($pool instanceof CacheItemPoolInterface) {
@@ -570,18 +570,33 @@ abstract class E2eTestCase extends TestCase
             }
 
             $records[] = [
-                't' => (float) $decoded['t'],
-                'type' => (string) $decoded['type'],
-                'id' => (string) $decoded['id'],
+                't' => self::asFloat($decoded['t']),
+                'type' => self::asString($decoded['type']),
+                'id' => self::asString($decoded['id']),
                 'failed' => (bool) ($decoded['failed'] ?? false),
                 'will_retry' => (bool) ($decoded['will_retry'] ?? false),
-                'pid' => (int) ($decoded['pid'] ?? 0),
-                'transport' => (string) ($decoded['transport'] ?? ''),
-                'queue' => isset($decoded['queue']) ? (string) $decoded['queue'] : null,
-                'message_id' => isset($decoded['message_id']) ? (string) $decoded['message_id'] : null,
+                'pid' => self::asInt($decoded['pid'] ?? 0),
+                'transport' => self::asString($decoded['transport'] ?? ''),
+                'queue' => isset($decoded['queue']) ? self::asString($decoded['queue']) : null,
+                'message_id' => isset($decoded['message_id']) ? self::asString($decoded['message_id']) : null,
             ];
         }
 
         return $records;
+    }
+
+    private static function asFloat(mixed $value): float
+    {
+        return is_numeric($value) ? (float) $value : 0.0;
+    }
+
+    private static function asInt(mixed $value): int
+    {
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private static function asString(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 }

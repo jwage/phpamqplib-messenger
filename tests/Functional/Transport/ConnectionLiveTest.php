@@ -174,7 +174,7 @@ class ConnectionLiveTest extends TestCase
         $connection->publish(body: 'kept');
         self::assertSame(1, $connection->countMessagesInQueues());
 
-        $elapsed = (float) $this->harness->withRetryDefaults(3, 500, function () use ($connection): float {
+        $elapsed = $this->harness->withRetryDefaults(3, 500, function () use ($connection): float {
             return $this->harness->milliseconds(static function () use ($connection): void {
                 try {
                     $connection->publish(body: 'rejected');
@@ -207,7 +207,7 @@ class ConnectionLiveTest extends TestCase
         $connection->publish(body: 'batch-two', batchSize: 3);
         self::assertSame(2, $this->harness->pendingBatchSize($connection));
 
-        $elapsed = (float) $this->harness->withRetryDefaults(3, 500, function () use ($connection): float {
+        $elapsed = $this->harness->withRetryDefaults(3, 500, function () use ($connection): float {
             return $this->harness->milliseconds(static function () use ($connection): void {
                 try {
                     $connection->flush();

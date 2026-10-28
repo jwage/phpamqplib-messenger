@@ -23,11 +23,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
 {
     use MicroKernelTrait;
 
-    /**
-     * @return iterable<object>
-     *
-     * @psalm-suppress LessSpecificImplementedReturnType
-     */
+    /** @return iterable<object> */
     public function registerBundles(): iterable
     {
         return [

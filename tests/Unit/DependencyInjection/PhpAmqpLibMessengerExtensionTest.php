@@ -12,6 +12,7 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\AmqpTransportFactory;
 use Jwage\PhpAmqpLibMessengerBundle\Transport\ConsumerWaitCoordinator;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Reference;
 
 class PhpAmqpLibMessengerExtensionTest extends TestCase
 {
@@ -27,7 +28,9 @@ class PhpAmqpLibMessengerExtensionTest extends TestCase
         self::assertTrue($container->hasDefinition(Debug::class));
         self::assertCount(2, $container->getDefinition(Debug::class)->getArguments());
         self::assertCount(2, $container->getDefinition(ConsumerWaitCoordinator::class)->getArguments());
-        self::assertSame(LoggerInterface::class, (string) $container->getDefinition(ConsumerWaitCoordinator::class)->getArgument(1));
+        $loggerArgument = $container->getDefinition(ConsumerWaitCoordinator::class)->getArgument(1);
+        self::assertInstanceOf(Reference::class, $loggerArgument);
+        self::assertSame(LoggerInterface::class, (string) $loggerArgument);
         self::assertCount(2, $container->getDefinition(AmqpWorkerListener::class)->getArguments());
     }
 }

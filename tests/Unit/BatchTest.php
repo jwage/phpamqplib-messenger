@@ -162,7 +162,6 @@ class BatchTest extends TestCase
         $this->batch->flush();
     }
 
-    /** @psalm-suppress UndefinedMagicMethod */
     public function testCall(): void
     {
         $this->wrappedBus->expects(self::once())

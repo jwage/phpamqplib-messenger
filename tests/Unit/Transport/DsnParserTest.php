@@ -26,13 +26,13 @@ class DsnParserTest extends TestCase
     {
         $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://');
 
-        self::assertSame(true, $connectionConfig->autoSetup);
+        self::assertTrue($connectionConfig->autoSetup);
         self::assertSame('localhost', $connectionConfig->host);
         self::assertSame(5672, $connectionConfig->port);
         self::assertSame('guest', $connectionConfig->user);
         self::assertSame('guest', $connectionConfig->password);
         self::assertSame('/', $connectionConfig->vhost);
-        self::assertSame(false, $connectionConfig->insist);
+        self::assertFalse($connectionConfig->insist);
         self::assertSame(AMQPConnectionConfig::AUTH_AMQPPLAIN, $connectionConfig->loginMethod);
         self::assertSame('en_US', $connectionConfig->locale);
         self::assertSame(3.0, $connectionConfig->connectTimeout);
@@ -40,8 +40,8 @@ class DsnParserTest extends TestCase
         self::assertSame(3.0, $connectionConfig->writeTimeout);
         self::assertSame(3.0, $connectionConfig->rpcTimeout);
         self::assertSame(0, $connectionConfig->heartbeat);
-        self::assertSame(true, $connectionConfig->keepalive);
-        self::assertSame(false, $connectionConfig->keepaliveEnabled);
+        self::assertTrue($connectionConfig->keepalive);
+        self::assertFalse($connectionConfig->keepaliveEnabled);
         self::assertTrue($connectionConfig->retriesEnabled);
         self::assertSame(ConnectionConfig::DEFAULT_RETRIES, $connectionConfig->retries);
         self::assertSame(ConnectionConfig::DEFAULT_RETRY_WAIT_TIME, $connectionConfig->retryWaitTime);
@@ -147,7 +147,7 @@ class DsnParserTest extends TestCase
     {
         $connectionConfig = $this->dsnParser->parseDsn('phpamqplib://guest:guest@127.0.0.1:5672/vhost?auto_setup=true');
 
-        self::assertSame(true, $connectionConfig->autoSetup);
+        self::assertTrue($connectionConfig->autoSetup);
     }
 
     public function testParseDsnWithInvalidAutoSetupValue(): void
@@ -334,7 +334,7 @@ class DsnParserTest extends TestCase
         self::assertSame('username', $connectionConfig->user);
         self::assertSame('password', $connectionConfig->password);
         self::assertSame('vhost', $connectionConfig->vhost);
-        self::assertSame(true, $connectionConfig->insist);
+        self::assertTrue($connectionConfig->insist);
         self::assertSame('login_method', $connectionConfig->loginMethod);
         self::assertSame('locale', $connectionConfig->locale);
         self::assertSame(1.0, $connectionConfig->connectTimeout);
@@ -342,7 +342,7 @@ class DsnParserTest extends TestCase
         self::assertSame(3.0, $connectionConfig->writeTimeout);
         self::assertSame(4.0, $connectionConfig->rpcTimeout);
         self::assertSame(5, $connectionConfig->heartbeat);
-        self::assertSame(true, $connectionConfig->keepalive);
+        self::assertTrue($connectionConfig->keepalive);
         self::assertSame('connection_name', $connectionConfig->connectionName);
         self::assertFalse($connectionConfig->retriesEnabled);
         self::assertTrue($connectionConfig->noAck);

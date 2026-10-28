@@ -15,10 +15,7 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
 use function is_string;
 use function str_starts_with;
 
-/**
- * @implements TransportFactoryInterface<AMQPTransport>
- * @psalm-suppress TooManyTemplateParams
- */
+/** @implements TransportFactoryInterface<AmqpTransport> */
 class AmqpTransportFactory implements TransportFactoryInterface
 {
     public function __construct(
@@ -28,9 +25,9 @@ class AmqpTransportFactory implements TransportFactoryInterface
     }
 
     /**
-     * @throws InvalidArgumentException
+     * @param array<string, mixed> $options
      *
-     * @inheritDoc
+     * @throws InvalidArgumentException
      */
     #[Override]
     public function createTransport(
@@ -56,7 +53,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
         );
     }
 
-    /** @inheritDoc */
+    /** @param array<string, mixed> $options */
     #[Override]
     public function supports(
         #[SensitiveParameter]

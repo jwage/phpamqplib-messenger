@@ -410,7 +410,7 @@ readonly class ConnectionConfig
         return str_replace(
             ['%delay%', '%exchange_name%', '%routing_key%'],
             [
-                $delay,
+                sprintf('%d', $delay),
                 $this->exchange->name,
                 $routingKey ?? '',
             ],
