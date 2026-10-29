@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace Jwage\PhpAmqpLibMessengerBundle;
 
 use Closure;
-use PhpAmqpLib\Exception\AMQPChannelClosedException;
-use PhpAmqpLib\Exception\AMQPConnectionClosedException;
-use PhpAmqpLib\Exception\AMQPInvalidFrameException;
+use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
+use PhpAmqpLib\Exception\AMQPEmptyDeliveryTagException;
 use PhpAmqpLib\Exception\AMQPIOException;
+use PhpAmqpLib\Exception\AMQPNotImplementedException;
+use PhpAmqpLib\Exception\AMQPRuntimeException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use Psr\Log\LoggerInterface;
 
@@ -28,12 +29,20 @@ class RetryFactory
     ): Retry {
         return (new Retry($run, $retries, $waitTime, $jitter))
             ->setLogger($this->logger)
+            // AMQPRuntimeException covers closed channels and connections, invalid frames and
+            // the generic write and read failures php-amqplib raises when a socket dies without
+            // a clean close, such as "fwrite(): SSL: Connection timed out".
             ->catch([
-                AMQPChannelClosedException::class,
-                AMQPConnectionClosedException::class,
-                AMQPInvalidFrameException::class,
                 AMQPIOException::class,
+                AMQPRuntimeException::class,
                 AMQPTimeoutException::class,
+            ])
+            // A blocked connection will not clear within the retry window, and the other two
+            // point at bugs rather than connection problems, so retrying would only delay them.
+            ->except([
+                AMQPConnectionBlockedException::class,
+                AMQPEmptyDeliveryTagException::class,
+                AMQPNotImplementedException::class,
             ]);
     }
 }
