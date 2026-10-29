@@ -6,7 +6,9 @@ namespace Jwage\PhpAmqpLibMessengerBundle;
 
 use Closure;
 use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
+use PhpAmqpLib\Exception\AMQPEmptyDeliveryTagException;
 use PhpAmqpLib\Exception\AMQPIOException;
+use PhpAmqpLib\Exception\AMQPNotImplementedException;
 use PhpAmqpLib\Exception\AMQPRuntimeException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use Psr\Log\LoggerInterface;
@@ -35,6 +37,12 @@ class RetryFactory
                 AMQPRuntimeException::class,
                 AMQPTimeoutException::class,
             ])
-            ->except(AMQPConnectionBlockedException::class);
+            // A blocked connection will not clear within the retry window, and the other two
+            // point at bugs rather than connection problems, so retrying would only delay them.
+            ->except([
+                AMQPConnectionBlockedException::class,
+                AMQPEmptyDeliveryTagException::class,
+                AMQPNotImplementedException::class,
+            ]);
     }
 }

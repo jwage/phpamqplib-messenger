@@ -166,10 +166,12 @@ framework:
                     # Retry retryable connection and channel failures (closed
                     # connection, I/O errors, timeouts, an invalid frame, e.g.
                     # while reconnecting to a broker that is still electing a
-                    # leader, and write or read failures on a connection that died
-                    # without closing cleanly). Enabled by default so a publish is less likely to
-                    # be lost. Recovery can deliver a message more than once, so
-                    # handlers must be idempotent.
+                    # leader, and write or read failures on a connection that
+                    # died without closing cleanly). Enabled by default so a
+                    # publish is less likely to be lost. Recovery can deliver a
+                    # message more than once, so handlers must be idempotent.
+                    # This includes a write that timed out after the broker had
+                    # already received the message.
                     # Disable only if you cannot make handlers idempotent and
                     # accept possible loss when a connection fails during publish.
                     retries_enabled: true

@@ -12,8 +12,10 @@ use Jwage\PhpAmqpLibMessengerBundle\Transport\PublisherNack;
 use PhpAmqpLib\Exception\AMQPChannelClosedException;
 use PhpAmqpLib\Exception\AMQPConnectionBlockedException;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
+use PhpAmqpLib\Exception\AMQPEmptyDeliveryTagException;
 use PhpAmqpLib\Exception\AMQPInvalidFrameException;
 use PhpAmqpLib\Exception\AMQPIOException;
+use PhpAmqpLib\Exception\AMQPNotImplementedException;
 use PhpAmqpLib\Exception\AMQPProtocolChannelException;
 use PhpAmqpLib\Exception\AMQPRuntimeException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
@@ -140,6 +142,29 @@ class RetryFactoryTest extends TestCase
             self::fail('Expected AMQPConnectionBlockedException to propagate without retry.');
         } catch (AMQPConnectionBlockedException $exception) {
             self::assertSame('Connection blocked', $exception->getMessage());
+        }
+
+        self::assertSame(1, $count);
+    }
+
+    /** @param class-string<Throwable> $exceptionClass */
+    #[TestWith([AMQPEmptyDeliveryTagException::class])]
+    #[TestWith([AMQPNotImplementedException::class])]
+    public function testWillNotRetryAmqpRuntimeExceptionsThatIndicateABug(string $exceptionClass): void
+    {
+        $count = 0;
+
+        try {
+            $this->retryFactory->retry(waitTime: 0)
+                ->run(static function () use (&$count, $exceptionClass): void {
+                    $count++;
+
+                    throw new $exceptionClass('bug');
+                });
+
+            self::fail('Expected the exception to propagate without retry.');
+        } catch (Throwable $exception) {
+            self::assertInstanceOf($exceptionClass, $exception);
         }
 
         self::assertSame(1, $count);
