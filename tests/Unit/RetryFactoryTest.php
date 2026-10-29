@@ -15,6 +15,7 @@ use PhpAmqpLib\Exception\AMQPConnectionClosedException;
 use PhpAmqpLib\Exception\AMQPInvalidFrameException;
 use PhpAmqpLib\Exception\AMQPIOException;
 use PhpAmqpLib\Exception\AMQPProtocolChannelException;
+use PhpAmqpLib\Exception\AMQPRuntimeException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PHPUnit\Framework\Attributes\TestWith;
 use Symfony\Component\Messenger\Exception\TransportException;
@@ -103,6 +104,7 @@ class RetryFactoryTest extends TestCase
     #[TestWith([AMQPConnectionClosedException::class])]
     #[TestWith([AMQPInvalidFrameException::class])]
     #[TestWith([AMQPIOException::class])]
+    #[TestWith([AMQPRuntimeException::class])]
     #[TestWith([AMQPTimeoutException::class])]
     public function testRetriesRetryableAmqpExceptions(string $exceptionClass): void
     {

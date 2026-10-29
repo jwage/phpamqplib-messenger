@@ -30,6 +30,7 @@ use PhpAmqpLib\Exception\AMQPConnectionClosedException;
 use PhpAmqpLib\Exception\AMQPInvalidFrameException;
 use PhpAmqpLib\Exception\AMQPIOException;
 use PhpAmqpLib\Exception\AMQPIOWaitException;
+use PhpAmqpLib\Exception\AMQPRuntimeException;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
@@ -5971,6 +5972,52 @@ class ConnectionTest extends TestCase
         $amqpChannel1->expects(self::once())
             ->method('basic_publish')
             ->willThrowException(new AMQPInvalidFrameException('Invalid frame type 65'));
+
+        $amqpChannel2->method('confirm_select');
+        $amqpChannel2->expects(self::once())
+            ->method('basic_publish');
+        $amqpChannel2->expects(self::once())
+            ->method('wait_for_pending_acks');
+
+        $connection = new Connection(
+            retryFactory: new RetryFactory(),
+            amqpConnectionFactory: $factory,
+            connectionConfig: new ConnectionConfig(
+                autoSetup: false,
+                confirmEnabled: true,
+                exchange: new ExchangeConfig(name: 'exchange_name'),
+            ),
+        );
+
+        $previousWaitTime       = Retry::$defaultWaitTime;
+        Retry::$defaultWaitTime = 0;
+
+        try {
+            $connection->publish(body: 'retried body');
+        } finally {
+            Retry::$defaultWaitTime = $previousWaitTime;
+        }
+    }
+
+    public function testDirectPublishRetriesAGenericWriteFailureOnAFreshChannel(): void
+    {
+        $factory        = $this->createStub(AmqpConnectionFactory::class);
+        $amqpConnection = $this->createMock(AMQPStreamConnection::class);
+        $amqpChannel1   = $this->createMock(AMQPChannel::class);
+        $amqpChannel2   = $this->createMock(AMQPChannel::class);
+
+        $factory->method('create')->willReturn($amqpConnection);
+
+        $amqpConnection->method('isConnected')->willReturn(true);
+        $amqpConnection->expects(self::exactly(2))
+            ->method('channel')
+            ->willReturnOnConsecutiveCalls($amqpChannel1, $amqpChannel2);
+
+        // A half-open socket surfaces as a plain runtime exception, not a closed connection.
+        $amqpChannel1->method('confirm_select');
+        $amqpChannel1->expects(self::once())
+            ->method('basic_publish')
+            ->willThrowException(new AMQPRuntimeException('fwrite(): SSL: Connection timed out'));
 
         $amqpChannel2->method('confirm_select');
         $amqpChannel2->expects(self::once())

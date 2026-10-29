@@ -164,9 +164,10 @@ framework:
                     transactions_enabled: false
 
                     # Retry retryable connection and channel failures (closed
-                    # connection, I/O errors, timeouts, and an invalid frame, e.g.
+                    # connection, I/O errors, timeouts, an invalid frame, e.g.
                     # while reconnecting to a broker that is still electing a
-                    # leader). Enabled by default so a publish is less likely to
+                    # leader, and write or read failures on a connection that died
+                    # without closing cleanly). Enabled by default so a publish is less likely to
                     # be lost. Recovery can deliver a message more than once, so
                     # handlers must be idempotent.
                     # Disable only if you cannot make handlers idempotent and
