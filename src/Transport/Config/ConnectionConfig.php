@@ -276,6 +276,7 @@ readonly class ConnectionConfig
      *         },
      *         queue_name_pattern?: string,
      *         durable?: bool|mixed,
+     *         auto_delete?: bool|mixed,
      *         daily_delay_queues?: bool|mixed,
      *     },
      *     queues?: array<int|string, array{

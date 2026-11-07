@@ -3658,6 +3658,35 @@ class ConnectionTest extends TestCase
         $connection->publish(body: 'test body', delayInMs: 5000);
     }
 
+    public function testPublishWithDelayAutoDeleteDisabledDeclaresNonAutoDeleteDelayQueue(): void
+    {
+        [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
+            autoSetup: false,
+            exchange: new ExchangeConfig(name: 'exchange_name'),
+            delay: new DelayConfig(durable: true, autoDelete: false, arguments: ['x-queue-type' => 'quorum']),
+        ));
+
+        $amqpChannel->expects(self::once())
+            ->method('queue_declare')
+            ->with(
+                queue: 'delay_exchange_name__5000_delay',
+                passive: false,
+                durable: true,
+                exclusive: false,
+                auto_delete: false,
+                nowait: false,
+                arguments: new AMQPTable([
+                    'x-queue-type' => 'quorum',
+                    'x-message-ttl' => 5000,
+                    'x-expires' => 15000,
+                    'x-dead-letter-exchange' => 'exchange_name',
+                    'x-dead-letter-routing-key' => '',
+                ]),
+            );
+
+        $connection->publish(body: 'test body', delayInMs: 5000);
+    }
+
     public function testDirectPublishFailsWhenTheBrokerNacksTheMessage(): void
     {
         [$connection, $amqpChannel] = $this->createConnectionWithChannelMock(new ConnectionConfig(
