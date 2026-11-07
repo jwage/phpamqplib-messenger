@@ -328,6 +328,44 @@ class TransportFunctionalTest extends KernelTestCase
         }
     }
 
+    public function testFetchSizeUpdatesAnAlreadyStartedConsumerWithoutLosingDeliveries(): void
+    {
+        for ($i = 1; $i <= 8; $i++) {
+            $this->fetchSizeTransport->send(Envelope::wrap(new ConfirmMessage($i)));
+        }
+
+        $connection = $this->fetchSizeTransport->getConnection();
+        $connection->reconnect();
+        // WorkerStartedEvent subscribes before the first get() supplies its fetch size.
+        $connection->startConsumers();
+
+        $received = [];
+        try {
+            // Keep the first delivery unacknowledged and any surplus in the buffer.
+            foreach ($this->fetchSizeTransport->get(1) as $envelope) {
+                $received[] = $envelope;
+            }
+
+            self::assertCount(1, $received);
+            for ($poll = 0; $poll < 20 && count($received) < 8; $poll++) {
+                foreach ($this->fetchSizeTransport->get(8) as $envelope) {
+                    $received[] = $envelope;
+                }
+            }
+
+            // Without resubscribing, RabbitMQ stops at the original prefetch of 5.
+            self::assertCount(8, $received);
+            foreach ($received as $index => $envelope) {
+                self::assertSame($index + 1, $this->messageCount($envelope));
+            }
+        } finally {
+            // Delivery tags from before and after the change remain valid.
+            foreach ($received as $envelope) {
+                $this->fetchSizeTransport->ack($envelope);
+            }
+        }
+    }
+
     public function testConfiguredFetchSizeLimitsGetWithoutArgument(): void
     {
         for ($i = 1; $i <= 5; $i++) {

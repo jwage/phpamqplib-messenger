@@ -621,16 +621,28 @@ class AmqpConsumerTest extends TestCase
 
         $consumer = $this->getTestConsumer(connection: $connection);
 
+        $operations             = [];
         $expectedPrefetchCounts = [20, 50];
         $channel->expects(self::exactly(2))
             ->method('basic_qos')
-            ->willReturnCallback(static function (int $prefetchSize, int $prefetchCount, bool $aGlobal) use (&$expectedPrefetchCounts): void {
+            ->willReturnCallback(static function (int $prefetchSize, int $prefetchCount, bool $aGlobal) use (&$expectedPrefetchCounts, &$operations): void {
+                $operations[] = 'qos:' . $prefetchCount;
                 self::assertSame(array_shift($expectedPrefetchCounts), $prefetchCount);
             });
 
-        $channel->expects(self::once())
+        $channel->expects(self::exactly(2))
             ->method('basic_consume')
-            ->willReturn('consumer_tag');
+            ->willReturnCallback(static function () use (&$operations): string {
+                $operations[] = 'consume';
+
+                return 'consumer_tag';
+            });
+        $channel->expects(self::once())
+            ->method('basic_cancel')
+            ->with('consumer_tag')
+            ->willReturnCallback(static function () use (&$operations): void {
+                $operations[] = 'cancel';
+            });
 
         $channel->expects(self::exactly(2))
             ->method('is_consuming')
@@ -649,6 +661,7 @@ class AmqpConsumerTest extends TestCase
         /** @var Traversable<AmqpEnvelope> $amqpEnvelopes */
         $amqpEnvelopes = $consumer->consume('test_queue', 50);
         iterator_to_array($amqpEnvelopes);
+        self::assertSame(['qos:20', 'consume', 'cancel', 'qos:50', 'consume'], $operations);
     }
 
     public function testStopConsumer(): void
