@@ -174,6 +174,13 @@ class AmqpConsumer
 
         $desiredPrefetch = max($fetchSize ?? $queueConfig->prefetchCount, $queueConfig->prefetchCount);
 
+        if ($this->consumerTag !== null && $this->effectivePrefetchCount !== $desiredPrefetch) {
+            // RabbitMQ applies per-consumer QoS when basic_consume registers the
+            // subscription. Updating basic_qos alone does not resize an existing one.
+            // Keep this channel and its buffer so outstanding deliveries can still be acked.
+            $this->stop();
+        }
+
         if ($this->effectivePrefetchCount !== $desiredPrefetch || $this->consumerTag === null) {
             $this->connection->consumerChannel()->basic_qos(
                 prefetch_size: 0,
