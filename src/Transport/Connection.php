@@ -1215,6 +1215,7 @@ class Connection
         $this->channel()->queue_declare(
             queue: $delayQueueName,
             durable: $this->connectionConfig->delay->durable,
+            auto_delete: $this->connectionConfig->delay->autoDelete,
             nowait: false,
             arguments: new AMQPTable(array_merge(
                 $this->connectionConfig->delay->arguments,

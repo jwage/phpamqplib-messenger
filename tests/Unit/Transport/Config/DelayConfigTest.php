@@ -20,6 +20,7 @@ class DelayConfigTest extends TestCase
         self::assertSame(AMQPExchangeType::DIRECT, $delayConfig->exchange->type);
         self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
         self::assertFalse($delayConfig->durable);
+        self::assertTrue($delayConfig->autoDelete);
     }
 
     public function testCustomQueueNamePatternIsNotReplacedByTheDefault(): void
@@ -37,6 +38,7 @@ class DelayConfigTest extends TestCase
         self::assertSame(AMQPExchangeType::DIRECT, $delayConfig->exchange->type);
         self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
         self::assertFalse($delayConfig->durable);
+        self::assertTrue($delayConfig->autoDelete);
     }
 
     public function testFromArray(): void
@@ -53,6 +55,7 @@ class DelayConfigTest extends TestCase
             ],
             'queue_name_pattern' => 'delay_%exchange_name%_%routing_key%_%delay%',
             'durable' => true,
+            'auto_delete' => false,
             'daily_delay_queues' => true,
             'arguments' => ['arg3' => 'val3', 'arg4' => 'val4'],
         ]);
@@ -66,6 +69,7 @@ class DelayConfigTest extends TestCase
         self::assertSame(['arg1' => 'val1', 'arg2' => 'val2'], $delayConfig->exchange->arguments);
         self::assertSame('delay_%exchange_name%_%routing_key%_%delay%', $delayConfig->queueNamePattern);
         self::assertTrue($delayConfig->durable);
+        self::assertFalse($delayConfig->autoDelete);
         self::assertTrue($delayConfig->dailyDelayQueues);
         self::assertSame(['arg3' => 'val3', 'arg4' => 'val4'], $delayConfig->arguments);
     }
@@ -81,7 +85,7 @@ class DelayConfigTest extends TestCase
     public function testFromArrayWithInvalidOptions(): void
     {
         self::expectException(InvalidArgumentException::class);
-        self::expectExceptionMessage('Invalid delay option(s) "invalid" passed to the AMQP Messenger transport - known options: "exchange", "enabled", "auto_setup", "queue_name_pattern", "durable", "daily_delay_queues", "arguments".');
+        self::expectExceptionMessage('Invalid delay option(s) "invalid" passed to the AMQP Messenger transport - known options: "exchange", "enabled", "auto_setup", "queue_name_pattern", "durable", "auto_delete", "daily_delay_queues", "arguments".');
 
         DelayConfig::fromArray(['invalid' => true]);
     }
